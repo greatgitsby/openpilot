@@ -3,6 +3,7 @@ import os
 import math
 import time
 import binascii
+import json
 import requests
 import serial
 import subprocess
@@ -95,6 +96,43 @@ class LPA:
   def list_profiles(self):
     out = self.at('AT+QESIM="list"')
     return out.strip().splitlines()[1:]
+
+
+class LPAC:
+  def __init__(self):
+    self.cmd = ['/usr/comma/lte/lpac.sh']
+
+  def cmd(self, *cmd: str):
+    ret = subprocess.check_output([self.cmd, *cmd])
+    try:
+      j = json.loads(ret)
+    except Exception as e:
+      raise ChildProcessError(f'malformed lpac response: "{ret}"') from e
+
+    assert 'payload' in j
+    assert 'code' in j['payload']
+    assert 'message' in j['payload']
+
+    retcode = j['payload']['code']
+    message = j['payload']['message']
+    if retcode:
+      raise ChildProcessError(f'lpac failed with code {retcode}: {message}')
+
+    return j['payload']
+
+  def enable(self, iccid: str):
+    self.cmd('profile', 'enable', iccid)
+
+  def disable(self, iccid: str):
+    self.cmd('profile', 'disable', iccid)
+
+  def delete(self, iccid: str):
+    self.cmd('profile', 'delete', iccid)
+
+  def list_profiles(self):
+    ret = self.cmd('profile', 'list')
+    print(ret)
+    return ret
 
 
 if __name__ == "__main__":

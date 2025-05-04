@@ -34,12 +34,13 @@ from openpilot.common.file_helpers import CallbackReader, get_upload_stream
 from openpilot.common.params import Params
 from openpilot.common.realtime import set_core_affinity
 from openpilot.system.hardware import HARDWARE, PC
+from openpilot.system.hardware.tici.esim import LPAC
 from openpilot.system.loggerd.xattr_cache import getxattr, setxattr
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.version import get_build_metadata
 from openpilot.system.hardware.hw import Paths
 
-
+LPAC_CLIENT = LPAC()
 ATHENA_HOST = os.getenv('ATHENA_HOST', 'wss://athena.comma.ai')
 HANDLER_THREADS = int(os.getenv('HANDLER_THREADS', "4"))
 LOCAL_PORT_WHITELIST = {22, }  # SSH
@@ -371,6 +372,11 @@ def scan_dir(path: str, prefix: str) -> list[str]:
 @dispatcher.add_method
 def listDataDirectory(prefix='') -> list[str]:
   return scan_dir(Paths.log_root(), prefix)
+
+
+@dispatcher.add_method
+def listEsimProfiles() -> list[str]:
+  return LPAC_CLIENT.list_profiles()
 
 
 @dispatcher.add_method
