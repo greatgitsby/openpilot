@@ -79,7 +79,11 @@ CameraWidget::~CameraWidget() {
     glDeleteVertexArrays(1, &frame_vao);
     glDeleteBuffers(1, &frame_vbo);
     glDeleteBuffers(1, &frame_ibo);
-#ifndef QCOM2
+#ifdef QCOM2
+    if (QGuiApplication::platformName() != "wayland") {
+      glDeleteTextures(2, textures);
+    }
+#else
     glDeleteTextures(2, textures);
 #endif
   }
@@ -138,7 +142,13 @@ void CameraWidget::initializeGL() {
   glUseProgram(program->programId());
 
 #ifdef QCOM2
-  glUniform1i(program->uniformLocation("uTexture"), 0);
+  if (QGuiApplication::platformName() == "wayland") {
+    glUniform1i(program->uniformLocation("uTexture"), 0);
+  } else {
+    glGenTextures(2, textures);
+    glUniform1i(program->uniformLocation("uTextureY"), 0);
+    glUniform1i(program->uniformLocation("uTextureUV"), 1);
+  }
 #else
   glGenTextures(2, textures);
   glUniform1i(program->uniformLocation("uTextureY"), 0);
@@ -227,10 +237,25 @@ void CameraWidget::paintGL() {
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
 #ifdef QCOM2
-  // no frame copy
-  glActiveTexture(GL_TEXTURE0);
-  glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, egl_images[frame->idx]);
-  assert(glGetError() == GL_NO_ERROR);
+  if (QGuiApplication::platformName() == "wayland") {
+    // no frame copy
+    glActiveTexture(GL_TEXTURE0);
+    glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, egl_images[frame->idx]);
+    assert(glGetError() == GL_NO_ERROR);
+  } else {
+    // fallback to copy
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, stream_stride);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textures[0]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, stream_width, stream_height, GL_RED, GL_UNSIGNED_BYTE, frame->y);
+    assert(glGetError() == GL_NO_ERROR);
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, stream_stride/2);
+    glActiveTexture(GL_TEXTURE0 + 1);
+    glBindTexture(GL_TEXTURE_2D, textures[1]);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, stream_width/2, stream_height/2, GL_RG, GL_UNSIGNED_BYTE, frame->uv);
+    assert(glGetError() == GL_NO_ERROR);
+  }
 #else
   // fallback to copy
   glPixelStorei(GL_UNPACK_ROW_LENGTH, stream_stride);
@@ -264,29 +289,47 @@ void CameraWidget::vipcConnected(VisionIpcClient *vipc_client) {
   stream_stride = vipc_client->buffers[0].stride;
 
 #ifdef QCOM2
-  EGLDisplay egl_display = eglGetCurrentDisplay();
-  assert(egl_display != EGL_NO_DISPLAY);
-  for (auto &pair : egl_images) {
-    eglDestroyImageKHR(egl_display, pair.second);
-  }
-  egl_images.clear();
+  if (QGuiApplication::platformName() == "wayland") {
+    EGLDisplay egl_display = eglGetCurrentDisplay();
+    assert(egl_display != EGL_NO_DISPLAY);
+    for (auto &pair : egl_images) {
+      eglDestroyImageKHR(egl_display, pair.second);
+    }
+    egl_images.clear();
 
-  for (int i = 0; i < vipc_client->num_buffers; i++) {  // import buffers into OpenGL
-    int fd = dup(vipc_client->buffers[i].fd);  // eglDestroyImageKHR will close, so duplicate
-    EGLint img_attrs[] = {
-      EGL_WIDTH, (int)vipc_client->buffers[i].width,
-      EGL_HEIGHT, (int)vipc_client->buffers[i].height,
-      EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_NV12,
-      EGL_DMA_BUF_PLANE0_FD_EXT, fd,
-      EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-      EGL_DMA_BUF_PLANE0_PITCH_EXT, (int)vipc_client->buffers[i].stride,
-      EGL_DMA_BUF_PLANE1_FD_EXT, fd,
-      EGL_DMA_BUF_PLANE1_OFFSET_EXT, (int)vipc_client->buffers[i].uv_offset,
-      EGL_DMA_BUF_PLANE1_PITCH_EXT, (int)vipc_client->buffers[i].stride,
-      EGL_NONE
-    };
-    egl_images[i] = eglCreateImageKHR(egl_display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, 0, img_attrs);
-    assert(eglGetError() == EGL_SUCCESS);
+    for (int i = 0; i < vipc_client->num_buffers; i++) {  // import buffers into OpenGL
+      int fd = dup(vipc_client->buffers[i].fd);  // eglDestroyImageKHR will close, so duplicate
+      EGLint img_attrs[] = {
+        EGL_WIDTH, (int)vipc_client->buffers[i].width,
+        EGL_HEIGHT, (int)vipc_client->buffers[i].height,
+        EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_NV12,
+        EGL_DMA_BUF_PLANE0_FD_EXT, fd,
+        EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+        EGL_DMA_BUF_PLANE0_PITCH_EXT, (int)vipc_client->buffers[i].stride,
+        EGL_DMA_BUF_PLANE1_FD_EXT, fd,
+        EGL_DMA_BUF_PLANE1_OFFSET_EXT, (int)vipc_client->buffers[i].uv_offset,
+        EGL_DMA_BUF_PLANE1_PITCH_EXT, (int)vipc_client->buffers[i].stride,
+        EGL_NONE
+      };
+      egl_images[i] = eglCreateImageKHR(egl_display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, 0, img_attrs);
+      assert(eglGetError() == EGL_SUCCESS);
+    }
+  } else {
+    glBindTexture(GL_TEXTURE_2D, textures[0]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, stream_width, stream_height, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    assert(glGetError() == GL_NO_ERROR);
+
+    glBindTexture(GL_TEXTURE_2D, textures[1]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, stream_width/2, stream_height/2, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
+    assert(glGetError() == GL_NO_ERROR);
   }
 #else
   glBindTexture(GL_TEXTURE_2D, textures[0]);
