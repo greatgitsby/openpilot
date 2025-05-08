@@ -142,7 +142,7 @@ void CameraWidget::initializeGL() {
   glUseProgram(program->programId());
 
 #ifdef QCOM2
-  if (QGuiApplication::platformName() == "wayland") {
+  if (QGuiApplication::platformName().contains("wayland")) {
     glUniform1i(program->uniformLocation("uTexture"), 0);
   } else {
     glGenTextures(2, textures);
@@ -237,7 +237,7 @@ void CameraWidget::paintGL() {
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
 #ifdef QCOM2
-  if (QGuiApplication::platformName() == "wayland") {
+  if (QGuiApplication::platformName().contains("wayland")) {
     // no frame copy
     glActiveTexture(GL_TEXTURE0);
     glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, egl_images[frame->idx]);
@@ -289,7 +289,7 @@ void CameraWidget::vipcConnected(VisionIpcClient *vipc_client) {
   stream_stride = vipc_client->buffers[0].stride;
 
 #ifdef QCOM2
-  if (QGuiApplication::platformName() == "wayland") {
+  if (QGuiApplication::platformName().contains("wayland")) {
     EGLDisplay egl_display = eglGetCurrentDisplay();
     assert(egl_display != EGL_NO_DISPLAY);
     for (auto &pair : egl_images) {
