@@ -68,6 +68,9 @@ dependencies = [
 
   # logreader
   "zstandard",
+
+  # "hey, comma" functionality
+  "speechrecognition[audio,pocketsphinx]>=3.14.3",
 ]
 
 [project.optional-dependencies]
