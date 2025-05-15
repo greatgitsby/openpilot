@@ -12,7 +12,7 @@ def callback(recognizer: sr.Recognizer, audio: sr.AudioData):
 
 if __name__ == '__main__':
   r = sr.Recognizer()
-  m = sr.Microphone(device_index=2)
+  m = sr.Microphone()
   with m as source:
     r.adjust_for_ambient_noise(source)
 
