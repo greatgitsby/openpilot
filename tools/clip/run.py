@@ -204,7 +204,7 @@ def clip(
   # TODO: evaluate creating fn that inspects /tmp/.X11-unix and creates unused display to avoid possibility of collision
   display = f':{randint(99, 999)}'
 
-  cams = dict.fromkeys([VisionStreamType.VISION_STREAM_DRIVER])
+  cams = dict.fromkeys([VisionStreamType.VISION_STREAM_DRIVER, VisionStreamType.VISION_STREAM_WIDE_ROAD])
   for cam in cams:
     sock = f'/tmp/{str(cam)}_{randint(100, 99999)}.sock'
     os.mkfifo(sock)
@@ -234,7 +234,11 @@ def clip(
     '-framerate', str(FRAMERATE),
     '-f', 'rawvideo',
     '-i', cams[VisionStreamType.VISION_STREAM_DRIVER],
-    '-filter_complex', f'[0:v]scale=2160:1080,{",".join(text_overlays)}[main];[1:v]scale=iw*0.25:ih*0.25[scaled];[main][scaled]overlay=30:H-h-30[v]',
+    '-video_size', '1928x1208',
+    '-framerate', str(FRAMERATE),
+    '-f', 'rawvideo',
+    '-i', cams[VisionStreamType.VISION_STREAM_WIDE_ROAD],
+    '-filter_complex', f'[0:v]scale=2160:1080,{",".join(text_overlays)}[main];[1:v]scale=iw*0.25:ih*0.25[scaled1];[2:v]scale=iw*0.25:ih*0.25[scaled2];[main][scaled1]overlay=30:H-h-30[intermediate];[intermediate][scaled2]overlay=W-w-30:H-h-30[v]',
     '-map', '[v]',
     '-c:v', 'libx264',
     '-maxrate', f'{bit_rate_kbps}k',
@@ -282,14 +286,14 @@ def clip(
       check_for_failure(proc)
 
     # Start camera frame forwarding thread
-    def forward_frames(halt: threading.Event):
+    def forward_frames(cam: VisionStreamType, halt: threading.Event):
       # Connect to visionipc
-      vipc_client = VisionIpcClient("camerad", VisionStreamType.VISION_STREAM_DRIVER, False)
+      vipc_client = VisionIpcClient("camerad", cam, False)
       if not vipc_client.connect(True):
         logger.error("Failed to connect to visionipc")
         return
 
-      with open(cams[VisionStreamType.VISION_STREAM_DRIVER], 'wb') as pipe:
+      with open(cams[cam], 'wb') as pipe:
         try:
           while not halt.is_set():
             buf = vipc_client.recv()
@@ -316,9 +320,10 @@ def clip(
           logger.exception("Error in forward_frames")
 
     halt = threading.Event()
-    camera_thread = threading.Thread(target=forward_frames, args=(halt,))
-    camera_thread.daemon = True
-    camera_thread.start()
+    for cam in cams:
+      camera_thread = threading.Thread(target=forward_frames, args=(cam, halt))
+      camera_thread.daemon = True
+      camera_thread.start()
 
     ffmpeg_proc = start_proc(ffmpeg_cmd, env)
     procs.append(ffmpeg_proc)
