@@ -42,11 +42,15 @@ def yuv_to_rgb(y, u, v):
   return rgb.astype(np.uint8)
 
 
-def extract_image(buf):
+def buf_to_yuv(buf):
   y = np.array(buf.data[:buf.uv_offset], dtype=np.uint8).reshape((-1, buf.stride))[:buf.height, :buf.width]
   u = np.array(buf.data[buf.uv_offset::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2]
   v = np.array(buf.data[buf.uv_offset+1::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2]
+  return y, u, v
 
+
+def extract_image(buf):
+  y, u, v = buf_to_yuv(buf)
   return yuv_to_rgb(y, u, v)
 
 

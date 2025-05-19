@@ -20,6 +20,7 @@ from cereal.messaging import SubMaster
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params, UnknownKeyName
 from openpilot.common.prefix import OpenpilotPrefix
+from openpilot.system.camerad.snapshot.snapshot import buf_to_yuv
 from openpilot.tools.lib.route import Route
 from openpilot.tools.lib.logreader import LogReader
 from msgq.visionipc import VisionIpcClient, VisionStreamType
@@ -300,14 +301,8 @@ def clip(
             if buf is None:
               time.sleep(0.01)
               continue
-            y = np.ascontiguousarray(np.array(buf.data[:buf.uv_offset], dtype=np.uint8).reshape((-1, buf.stride))[:buf.height, :buf.width])
-            u = np.ascontiguousarray(np.array(buf.data[buf.uv_offset::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2])
-            v = np.ascontiguousarray(np.array(buf.data[buf.uv_offset+1::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2])
-            yuv420p_buffer = np.concatenate([
-                y.ravel(),
-                u.ravel(),
-                v.ravel()
-            ])
+            y, u, v = buf_to_yuv(buf)
+            yuv420p_buffer = np.concatenate([y.ravel(), u.ravel(), v.ravel()])
             try:
               pipe.write(yuv420p_buffer.tobytes())
               pipe.flush()
