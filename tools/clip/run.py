@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import atexit
+import io
 import logging
 import os
 import platform
@@ -18,8 +19,11 @@ from cereal.messaging import SubMaster
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params, UnknownKeyName
 from openpilot.common.prefix import OpenpilotPrefix
+from openpilot.system.camerad.snapshot.snapshot import extract_image, jpeg_write
 from openpilot.tools.lib.route import Route
 from openpilot.tools.lib.logreader import LogReader
+from msgq.visionipc import VisionIpcClient, VisionStreamType
+from PIL import Image
 
 DEFAULT_OUTPUT = 'output.mp4'
 DEMO_START = 90
@@ -201,16 +205,21 @@ def clip(
   # TODO: evaluate creating fn that inspects /tmp/.X11-unix and creates unused display to avoid possibility of collision
   display = f':{randint(99, 999)}'
 
+  # Create socket for camera frames
+  socket_path = f'/tmp/camera_{randint(100, 99999)}.sock'
+  os.mkfifo(socket_path)
+  atexit.register(lambda: os.unlink(socket_path))
+
   box_style = 'box=1:boxcolor=black@0.33:boxborderw=7'
   meta_text = get_meta_text(lr, route)
-  overlays = [
+  text_overlays = [
     # metadata overlay
     f"drawtext=text='{escape_ffmpeg_text(meta_text)}':fontfile={OPENPILOT_FONT}:fontcolor=white:fontsize=15:{box_style}:x=(w-text_w)/2:y=5.5:enable='between(t,1,5)'",
     # route time overlay
     f"drawtext=text='%{{eif\\:floor(({start}+t)/60)\\:d\\:2}}\\:%{{eif\\:mod({start}+t\\,60)\\:d\\:2}}':fontfile={OPENPILOT_FONT}:fontcolor=white:fontsize=24:{box_style}:x=w-text_w-38:y=38"
   ]
   if title:
-    overlays.append(f"drawtext=text='{escape_ffmpeg_text(title)}':fontfile={OPENPILOT_FONT}:fontcolor=white:fontsize=32:{box_style}:x=(w-text_w)/2:y=53")
+    text_overlays.append(f"drawtext=text='{escape_ffmpeg_text(title)}':fontfile={OPENPILOT_FONT}:fontcolor=white:fontsize=32:{box_style}:x=(w-text_w)/2:y=53")
 
   ffmpeg_cmd = [
     'ffmpeg', '-y',
@@ -220,11 +229,17 @@ def clip(
     '-rtbufsize', '100M',
     '-draw_mouse', '0',
     '-i', display,
+    '-video_size', '1928x1208',
+    '-framerate', str(FRAMERATE),
+    '-f', 'rawvideo',
+    '-i', socket_path,
+    # '-filter_complex', f'[0:v]{",".join(text_overlays)}[v0];[1:v]scale=iw*0.5:ih*0.5[scaled];[v0][scaled]overlay=x=0:y=h-H[v]',
+    '-filter_complex', f'[0:v]scale=2160:1080,{",".join(text_overlays)}[main];[1:v]scale=iw*0.25:ih*0.25[scaled];[main][scaled]overlay=30:H-h-30[v]',
+    '-map', '[v]',
     '-c:v', 'libx264',
     '-maxrate', f'{bit_rate_kbps}k',
     '-bufsize', f'{bit_rate_kbps*2}k',
     '-crf', '23',
-    '-filter:v', ','.join(overlays),
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
     '-pix_fmt', 'yuv420p',
@@ -234,7 +249,7 @@ def clip(
     out,
   ]
 
-  replay_cmd = [REPLAY, '--ecam', '-c', '1', '-s', str(begin_at), '--prefix', prefix]
+  replay_cmd = [REPLAY, '--dcam', '--ecam', '-c', '1', '-s', str(begin_at), '--prefix', prefix]
   if data_dir:
     replay_cmd.extend(['--data_dir', data_dir])
   if quality == 'low':
@@ -265,6 +280,41 @@ def clip(
     time.sleep(SECONDS_TO_WARM)
     for proc in procs:
       check_for_failure(proc)
+
+    # Start camera frame forwarding thread
+    def forward_frames():
+      # Connect to visionipc
+      vipc_client = VisionIpcClient("camerad", VisionStreamType.VISION_STREAM_DRIVER, False)
+      if not vipc_client.connect(True):
+        logger.error("Failed to connect to visionipc")
+        return
+
+      import numpy as np
+      with open(socket_path, 'wb') as pipe:
+        try:
+          while True:
+            buf = vipc_client.recv()
+            if buf is None:
+              time.sleep(0.01)
+              continue
+            y = np.ascontiguousarray(np.array(buf.data[:buf.uv_offset], dtype=np.uint8).reshape((-1, buf.stride))[:buf.height, :buf.width])
+            u = np.ascontiguousarray(np.array(buf.data[buf.uv_offset::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2])
+            v = np.ascontiguousarray(np.array(buf.data[buf.uv_offset+1::2], dtype=np.uint8).reshape((-1, buf.stride//2))[:buf.height//2, :buf.width//2])
+            yuv420p_buffer = np.concatenate([
+                y.ravel(),
+                u.ravel(),
+                v.ravel()
+            ])
+            pipe.write(yuv420p_buffer.tobytes())
+            pipe.flush()
+
+        except Exception as e:
+          print(e)
+
+    import threading
+    camera_thread = threading.Thread(target=forward_frames)
+    camera_thread.daemon = True
+    camera_thread.start()
 
     ffmpeg_proc = start_proc(ffmpeg_cmd, env)
     procs.append(ffmpeg_proc)
