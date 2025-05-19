@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import atexit
-import io
 import logging
+import numpy as np
 import os
 import platform
 import shutil
 import sys
+import threading
 import time
 from argparse import ArgumentParser, ArgumentTypeError
 from collections.abc import Sequence
@@ -19,11 +20,9 @@ from cereal.messaging import SubMaster
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params, UnknownKeyName
 from openpilot.common.prefix import OpenpilotPrefix
-from openpilot.system.camerad.snapshot.snapshot import extract_image, jpeg_write
 from openpilot.tools.lib.route import Route
 from openpilot.tools.lib.logreader import LogReader
 from msgq.visionipc import VisionIpcClient, VisionStreamType
-from PIL import Image
 
 DEFAULT_OUTPUT = 'output.mp4'
 DEMO_START = 90
@@ -205,10 +204,12 @@ def clip(
   # TODO: evaluate creating fn that inspects /tmp/.X11-unix and creates unused display to avoid possibility of collision
   display = f':{randint(99, 999)}'
 
-  # Create socket for camera frames
-  socket_path = f'/tmp/camera_{randint(100, 99999)}.sock'
-  os.mkfifo(socket_path)
-  atexit.register(lambda: os.unlink(socket_path))
+  cams = dict.fromkeys([VisionStreamType.VISION_STREAM_DRIVER])
+  for cam in cams:
+    sock = f'/tmp/{str(cam)}_{randint(100, 99999)}.sock'
+    os.mkfifo(sock)
+    cams[cam] = sock
+  atexit.register(lambda: [os.unlink(sock) for sock in cams.values()])
 
   box_style = 'box=1:boxcolor=black@0.33:boxborderw=7'
   meta_text = get_meta_text(lr, route)
@@ -232,8 +233,7 @@ def clip(
     '-video_size', '1928x1208',
     '-framerate', str(FRAMERATE),
     '-f', 'rawvideo',
-    '-i', socket_path,
-    # '-filter_complex', f'[0:v]{",".join(text_overlays)}[v0];[1:v]scale=iw*0.5:ih*0.5[scaled];[v0][scaled]overlay=x=0:y=h-H[v]',
+    '-i', cams[VisionStreamType.VISION_STREAM_DRIVER],
     '-filter_complex', f'[0:v]scale=2160:1080,{",".join(text_overlays)}[main];[1:v]scale=iw*0.25:ih*0.25[scaled];[main][scaled]overlay=30:H-h-30[v]',
     '-map', '[v]',
     '-c:v', 'libx264',
@@ -282,17 +282,16 @@ def clip(
       check_for_failure(proc)
 
     # Start camera frame forwarding thread
-    def forward_frames():
+    def forward_frames(halt: threading.Event):
       # Connect to visionipc
       vipc_client = VisionIpcClient("camerad", VisionStreamType.VISION_STREAM_DRIVER, False)
       if not vipc_client.connect(True):
         logger.error("Failed to connect to visionipc")
         return
 
-      import numpy as np
-      with open(socket_path, 'wb') as pipe:
+      with open(cams[VisionStreamType.VISION_STREAM_DRIVER], 'wb') as pipe:
         try:
-          while True:
+          while not halt.is_set():
             buf = vipc_client.recv()
             if buf is None:
               time.sleep(0.01)
@@ -305,14 +304,19 @@ def clip(
                 u.ravel(),
                 v.ravel()
             ])
-            pipe.write(yuv420p_buffer.tobytes())
-            pipe.flush()
+            try:
+              pipe.write(yuv420p_buffer.tobytes())
+              pipe.flush()
+            except BrokenPipeError:
+              break
+            except Exception:
+              logger.exception("Error writing to pipe")
+              break
+        except Exception:
+          logger.exception("Error in forward_frames")
 
-        except Exception as e:
-          print(e)
-
-    import threading
-    camera_thread = threading.Thread(target=forward_frames)
+    halt = threading.Event()
+    camera_thread = threading.Thread(target=forward_frames, args=(halt,))
     camera_thread.daemon = True
     camera_thread.start()
 
@@ -322,6 +326,7 @@ def clip(
 
     logger.info(f'recording in progress ({duration}s)...')
     ffmpeg_proc.wait(duration + PROC_WAIT_SECONDS)
+    halt.set()
     for proc in procs:
       check_for_failure(proc)
     logger.info(f'recording complete: {Path(out).resolve()}')
