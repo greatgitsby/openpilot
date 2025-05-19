@@ -20,7 +20,7 @@ from cereal.messaging import SubMaster
 from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params, UnknownKeyName
 from openpilot.common.prefix import OpenpilotPrefix
-from openpilot.system.camerad.snapshot.snapshot import buf_to_yuv
+from openpilot.system.camerad.snapshot import buf_to_yuv
 from openpilot.tools.lib.route import Route
 from openpilot.tools.lib.logreader import LogReader
 from msgq.visionipc import VisionIpcClient, VisionStreamType
