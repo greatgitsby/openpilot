@@ -220,12 +220,11 @@ def clip(
     '-draw_mouse', '0',
     '-t', str(SECONDS_TO_WARM),
     '-i', display,
-    '-c:v', 'libx264',
+    '-c:v', 'libx265',
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
     '-b:v', f'{bit_rate_kbps}k',
-    '-pass', '1',
-    '-an',
+    '-x265-params', 'pass=1',
     '-f', 'null',
     '/dev/null'
   ]
@@ -242,7 +241,7 @@ def clip(
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
     '-b:v', f'{bit_rate_kbps}k',
-    '-pass', '2',
+    '-x265-params', 'pass=2',
     '-filter:v', ','.join(overlays),
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
