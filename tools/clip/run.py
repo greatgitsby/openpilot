@@ -6,7 +6,6 @@ import os
 import platform
 import shutil
 import sys
-import time
 from argparse import ArgumentParser, ArgumentTypeError
 from collections.abc import Sequence
 from pathlib import Path
@@ -28,7 +27,7 @@ DEMO_ROUTE = 'a2a0ccea32023010/2023-07-27--13-01-19'
 FRAMERATE = 20
 PIXEL_DEPTH = '24'
 RESOLUTION = '2160x1080'
-SECONDS_TO_WARM = 2
+SECONDS_TO_WARM = 4
 PROC_WAIT_SECONDS = 30
 
 OPENPILOT_FONT = str(Path(BASEDIR, 'selfdrive/assets/fonts/Inter-Regular.ttf').resolve())
@@ -212,6 +211,25 @@ def clip(
   if title:
     overlays.append(f"drawtext=text='{escape_ffmpeg_text(title)}':fontfile={OPENPILOT_FONT}:fontcolor=white:fontsize=32:{box_style}:x=(w-text_w)/2:y=53")
 
+  warmup_ffmpeg_cmd = [
+    'ffmpeg', '-y',
+    '-video_size', RESOLUTION,
+    '-framerate', str(FRAMERATE),
+    '-f', 'x11grab',
+    '-rtbufsize', '100M',
+    '-draw_mouse', '0',
+    '-t', str(SECONDS_TO_WARM),
+    '-i', display,
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-tune', 'zerolatency',
+    '-b:v', f'{bit_rate_kbps}k',
+    '-pass', '1',
+    '-an',
+    '-f', 'null',
+    '/dev/null'
+  ]
+
   ffmpeg_cmd = [
     'ffmpeg', '-y',
     '-video_size', RESOLUTION,
@@ -221,12 +239,11 @@ def clip(
     '-draw_mouse', '0',
     '-i', display,
     '-c:v', 'libx264',
-    '-maxrate', f'{bit_rate_kbps}k',
-    '-bufsize', f'{bit_rate_kbps*2}k',
-    '-crf', '23',
-    '-filter:v', ','.join(overlays),
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
+    '-b:v', f'{bit_rate_kbps}k',
+    '-pass', '2',
+    '-filter:v', ','.join(overlays),
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
     '-f', 'mp4',
@@ -262,9 +279,13 @@ def clip(
     wait_for_frames(procs)
 
     logger.debug(f'letting UI warm up ({SECONDS_TO_WARM}s)...')
-    time.sleep(SECONDS_TO_WARM)
+    warmup_ffmpeg_proc = start_proc(warmup_ffmpeg_cmd, env)
+    procs.append(warmup_ffmpeg_proc)
+    atexit.register(lambda: warmup_ffmpeg_proc.terminate())
+    warmup_ffmpeg_proc.wait(SECONDS_TO_WARM + PROC_WAIT_SECONDS)
     for proc in procs:
       check_for_failure(proc)
+
 
     ffmpeg_proc = start_proc(ffmpeg_cmd, env)
     procs.append(ffmpeg_proc)
