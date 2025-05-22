@@ -195,7 +195,7 @@ def clip(
 
   begin_at = max(start - SECONDS_TO_WARM, 0)
   duration = end - start
-  bit_rate_kbps = int(round(target_mb * 8 * 1024 * 1024 / duration / 1000))
+  bit_rate_kbps = int(round(target_mb * 8 * 1024 * 1024 / duration / 1000 * 0.9))
 
   # TODO: evaluate creating fn that inspects /tmp/.X11-unix and creates unused display to avoid possibility of collision
   display = f':{randint(99, 999)}'
