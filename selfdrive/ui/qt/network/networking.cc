@@ -251,7 +251,7 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
     QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
 
     // Split output into lines and create rows for each SIM profile
-    QStringList profiles = output.split('\n', Qt::SkipEmptyParts);
+    QStringList profiles = output.split('\n', QString::SkipEmptyParts);
     for (const QString &profile : profiles) {
       QJsonDocument doc = QJsonDocument::fromJson(profile.toUtf8());
       if (doc.isObject()) {
