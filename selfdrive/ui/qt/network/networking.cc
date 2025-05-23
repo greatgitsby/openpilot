@@ -15,6 +15,7 @@
 #include "selfdrive/ui/qt/util.h"
 #include "selfdrive/ui/qt/widgets/controls.h"
 #include "selfdrive/ui/qt/widgets/scrollview.h"
+#include "system/hardware/hw.h"
 
 static const int ICON_WIDTH = 49;
 
@@ -493,56 +494,36 @@ void ESIMProfiles::refresh() {
   }
   profile_items.clear();
 
-  // Execute LPAC command
-  QProcess process;
-  process.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
-  process.start("sudo", QStringList() << "LPAC_APDU=qmi" << "QMI_DEVICE=/dev/cdc-wdm0" << "lpac" << "profile" << "list");
-  process.waitForFinished();
-  QString output = process.readAllStandardOutput();
-
-  fprintf(stderr, "output: %s\n", output.toStdString().c_str());
+  // Get profiles from hardware
+  auto profiles = Hardware::get_esim_profiles();
 
   // Load checkmark icon
   QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
 
-  // Parse the JSON output
-  QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
-  if (doc.isObject()) {
-    QJsonObject root = doc.object();
-    if (root["type"].toString() == "lpa") {
-      QJsonObject payload = root["payload"].toObject();
-      if (payload["code"].toInt() == 0) {
-        QJsonArray profiles = payload["data"].toArray();
-        for (const QJsonValue &profile : profiles) {
-          QJsonObject obj = profile.toObject();
-          QString name = obj["profileNickname"].toString();
-          bool enabled = obj["profileState"].toString() == "enabled";
+  // Create UI for each profile
+  for (const auto& profile : profiles) {
+    QWidget *row = new QWidget(list);
+    QHBoxLayout *rowLayout = new QHBoxLayout(row);
+    rowLayout->setContentsMargins(44, 0, 73, 0);
+    rowLayout->setSpacing(50);
 
-          QWidget *row = new QWidget(list);
-          QHBoxLayout *rowLayout = new QHBoxLayout(row);
-          rowLayout->setContentsMargins(44, 0, 73, 0);
-          rowLayout->setSpacing(50);
+    // Profile name
+    ElidedLabel *nameLabel = new ElidedLabel(QString::fromStdString(profile.profileNickname), row);
+    nameLabel->setObjectName("ssidLabel");
+    nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    nameLabel->setFont(InterFont(55, profile.enabled ? QFont::Bold : QFont::Normal));
+    rowLayout->addWidget(nameLabel);
 
-          // Profile name
-          ElidedLabel *nameLabel = new ElidedLabel(name, row);
-          nameLabel->setObjectName("ssidLabel");
-          nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-          nameLabel->setFont(InterFont(55, enabled ? QFont::Bold : QFont::Normal));
-          rowLayout->addWidget(nameLabel);
-
-          // Status icon (checkmark if enabled)
-          QLabel *statusIcon = new QLabel(row);
-          statusIcon->setFixedWidth(ICON_WIDTH);
-          if (enabled) {
-            statusIcon->setPixmap(checkmark);
-          }
-          rowLayout->addWidget(statusIcon);
-
-          list->addItem(row);
-          profile_items.push_back(row);
-        }
-      }
+    // Status icon (checkmark if enabled)
+    QLabel *statusIcon = new QLabel(row);
+    statusIcon->setFixedWidth(ICON_WIDTH);
+    if (profile.enabled) {
+      statusIcon->setPixmap(checkmark);
     }
+    rowLayout->addWidget(statusIcon);
+
+    list->addItem(row);
+    profile_items.push_back(row);
   }
 }
 
