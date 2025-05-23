@@ -223,6 +223,94 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
   });
   list->addItem(hiddenNetworkButton);
 
+  // eSIM Management
+  ButtonControl *esimButton = new ButtonControl(tr("eSIM Profiles"), tr("EDIT"));
+  connect(esimButton, &ButtonControl::clicked, [=]() {
+    QDialog *dialog = new QDialog(this);
+    dialog->setWindowTitle(tr("eSIM Profiles"));
+    dialog->setMinimumSize(800, 600);
+
+    QVBoxLayout *layout = new QVBoxLayout(dialog);
+
+    // Create scroll area for SIM profiles
+    QScrollArea *scrollArea = new QScrollArea(dialog);
+    scrollArea->setWidgetResizable(true);
+    QWidget *scrollContent = new QWidget(scrollArea);
+    QVBoxLayout *scrollLayout = new QVBoxLayout(scrollContent);
+
+    // Test QProcess with echo command containing JSON data
+    QProcess process;
+    process.start("echo", QStringList() <<
+      "{\"name\":\"Profile 1\",\"enabled\":true}\n"
+      "{\"name\":\"Profile 2\",\"enabled\":false}\n"
+      "{\"name\":\"Profile 3\",\"enabled\":true}");
+    process.waitForFinished();
+    QString output = process.readAllStandardOutput();
+
+    // Load checkmark icon
+    QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
+
+    // Split output into lines and create rows for each SIM profile
+    QStringList profiles = output.split('\n', Qt::SkipEmptyParts);
+    for (const QString &profile : profiles) {
+      QJsonDocument doc = QJsonDocument::fromJson(profile.toUtf8());
+      if (doc.isObject()) {
+        QJsonObject obj = doc.object();
+        QString name = obj["name"].toString();
+        bool enabled = obj["enabled"].toBool();
+
+        QWidget *row = new QWidget(scrollContent);
+        QHBoxLayout *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(44, 0, 73, 0);
+        rowLayout->setSpacing(50);
+
+        // Profile name
+        ElidedLabel *nameLabel = new ElidedLabel(name, row);
+        nameLabel->setObjectName("ssidLabel");
+        nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        nameLabel->setFont(InterFont(55, enabled ? QFont::Bold : QFont::Normal));
+        rowLayout->addWidget(nameLabel);
+
+        // Status icon (checkmark if enabled)
+        QLabel *statusIcon = new QLabel(row);
+        statusIcon->setFixedWidth(ICON_WIDTH);
+        if (enabled) {
+          statusIcon->setPixmap(checkmark);
+        }
+        rowLayout->addWidget(statusIcon);
+
+        scrollLayout->addWidget(row);
+      }
+    }
+
+    scrollLayout->addStretch();
+    scrollArea->setWidget(scrollContent);
+    layout->addWidget(scrollArea);
+
+    // Add close button
+    QPushButton *closeButton = new QPushButton(tr("Close"), dialog);
+    closeButton->setFixedSize(400, 100);
+    closeButton->setStyleSheet(R"(
+      QPushButton {
+        font-size: 50px;
+        margin: 0px;
+        padding: 15px;
+        border-width: 0;
+        border-radius: 30px;
+        color: #dddddd;
+        background-color: #393939;
+      }
+      QPushButton:pressed {
+        background-color: #4a4a4a;
+      }
+    )");
+    connect(closeButton, &QPushButton::clicked, dialog, &QDialog::accept);
+    layout->addWidget(closeButton, 0, Qt::AlignCenter);
+
+    dialog->exec();
+  });
+  list->addItem(esimButton);
+
   // Set initial config
   wifi->updateGsmSettings(roamingEnabled, QString::fromStdString(params.get("GsmApn")), metered);
 
