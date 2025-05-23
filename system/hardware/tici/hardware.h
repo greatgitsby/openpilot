@@ -6,6 +6,7 @@
 #include <map>
 #include <string>
 #include <algorithm>  // for std::clamp
+#include "third_party/json11/json11.hpp"
 
 #include "common/params.h"
 #include "common/util.h"
@@ -35,6 +36,24 @@ public:
     auto it = device_map.find(get_name());
     assert(it != device_map.end());
     return it->second;
+  }
+
+  static std::vector<ESIMProfile> get_esim_profiles() {
+    std::vector<ESIMProfile> profiles;
+    try {
+      std::string output = util::check_output("sudo LPAC_APDU=qmi QMI_DEVICE=/dev/cdc-wdm0 lpac profile list");
+      std::string err;
+      auto json = json11::Json::parse(output, err);
+
+      if (json["type"].string_value() == "lpa" && json["payload"]["code"].int_value() == 0) {
+        for (const auto& profile : json["payload"]["data"].array_items()) {
+          profiles.emplace_back(profile);
+        }
+      }
+    } catch (const std::exception& e) {
+      fprintf(stderr, "Failed to parse eSIM profiles: %s\n", e.what());
+    }
+    return profiles;
   }
 
   static int get_voltage() { return std::atoi(util::read_file("/sys/class/hwmon/hwmon1/in1_input").c_str()); }

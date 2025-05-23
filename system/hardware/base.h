@@ -4,8 +4,34 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "cereal/gen/cpp/log.capnp.h"
+#include "common/util.h"
+#include "third_party/json11/json11.hpp"
+
+struct ESIMProfile {
+  std::string iccid;
+  std::string isdpAid;
+  std::string profileState;
+  std::string profileNickname;
+  std::string serviceProviderName;
+  std::string profileName;
+  std::string profileClass;
+  bool enabled;
+
+  ESIMProfile() = default;
+  explicit ESIMProfile(const json11::Json& j) {
+    iccid = j["iccid"].string_value();
+    isdpAid = j["isdpAid"].string_value();
+    profileState = j["profileState"].string_value();
+    profileNickname = j["profileNickname"].string_value();
+    serviceProviderName = j["serviceProviderName"].string_value();
+    profileName = j["profileName"].string_value();
+    profileClass = j["profileClass"].string_value();
+    enabled = profileState == "enabled";
+  }
+};
 
 // no-op base hw class
 class HardwareNone {
@@ -37,4 +63,6 @@ public:
   static bool PC() { return false; }
   static bool TICI() { return false; }
   static bool AGNOS() { return false; }
+
+  static std::vector<ESIMProfile> get_esim_profiles() { return {}; }
 };

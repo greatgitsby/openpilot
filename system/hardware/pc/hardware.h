@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "system/hardware/base.h"
 
@@ -12,4 +13,6 @@ public:
   static bool PC() { return true; }
   static bool TICI() { return util::getenv("TICI", 0) == 1; }
   static bool AGNOS() { return util::getenv("TICI", 0) == 1; }
+
+  static std::vector<ESIMProfile> get_esim_profiles() { return {}; }
 };
