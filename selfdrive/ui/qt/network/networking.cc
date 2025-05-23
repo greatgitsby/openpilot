@@ -228,15 +228,27 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
   connect(esimButton, &ButtonControl::clicked, [=]() {
     QDialog *dialog = new QDialog(this);
     dialog->setWindowTitle(tr("eSIM Profiles"));
-    dialog->setMinimumSize(800, 600);
 
     QVBoxLayout *layout = new QVBoxLayout(dialog);
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(20);
 
-    // Create scroll area for SIM profiles
-    QScrollArea *scrollArea = new QScrollArea(dialog);
-    scrollArea->setWidgetResizable(true);
-    QWidget *scrollContent = new QWidget(scrollArea);
-    QVBoxLayout *scrollLayout = new QVBoxLayout(scrollContent);
+    // Back button
+    QPushButton* back = new QPushButton(tr("Back"));
+    back->setObjectName("back_btn");
+    back->setFixedSize(400, 100);
+    connect(back, &QPushButton::clicked, dialog, &QDialog::accept);
+    layout->addWidget(back, 0, Qt::AlignLeft);
+
+    // Create list widget for SIM profiles
+    ListWidget *list = new ListWidget(dialog);
+    list->setStyleSheet(R"(
+      QScrollBar::handle:vertical {
+        min-height: 0px;
+        border-radius: 4px;
+        background-color: #8A8A8A;
+      }
+    )");
 
     // Test QProcess with echo command containing JSON data
     QProcess process;
@@ -259,7 +271,7 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
         QString name = obj["name"].toString();
         bool enabled = obj["enabled"].toBool();
 
-        QWidget *row = new QWidget(scrollContent);
+        QWidget *row = new QWidget(list);
         QHBoxLayout *rowLayout = new QHBoxLayout(row);
         rowLayout->setContentsMargins(44, 0, 73, 0);
         rowLayout->setSpacing(50);
@@ -279,19 +291,18 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
         }
         rowLayout->addWidget(statusIcon);
 
-        scrollLayout->addWidget(row);
+        list->addItem(row);
       }
     }
 
-    scrollLayout->addStretch();
-    scrollArea->setWidget(scrollContent);
-    layout->addWidget(scrollArea);
+    layout->addWidget(new ScrollView(list, dialog));
+    layout->addStretch(1);
 
-    // Add close button
-    QPushButton *closeButton = new QPushButton(tr("Close"), dialog);
-    closeButton->setFixedSize(400, 100);
-    closeButton->setStyleSheet(R"(
-      QPushButton {
+    dialog->setStyleSheet(R"(
+      QDialog {
+        background-color: #292929;
+      }
+      #back_btn {
         font-size: 50px;
         margin: 0px;
         padding: 15px;
@@ -300,14 +311,21 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
         color: #dddddd;
         background-color: #393939;
       }
-      QPushButton:pressed {
+      #back_btn:pressed {
         background-color: #4a4a4a;
       }
+      #ssidLabel {
+        text-align: left;
+        border: none;
+        padding-top: 50px;
+        padding-bottom: 50px;
+      }
+      #ssidLabel:disabled {
+        color: #696969;
+      }
     )");
-    connect(closeButton, &QPushButton::clicked, dialog, &QDialog::accept);
-    layout->addWidget(closeButton, 0, Qt::AlignCenter);
 
-    dialog->exec();
+    dialog->showFullScreen();
   });
   list->addItem(esimButton);
 
