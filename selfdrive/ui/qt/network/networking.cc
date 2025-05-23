@@ -50,6 +50,11 @@ Networking::Networking(QWidget* parent, bool show_advanced) : QFrame(parent) {
   connect(an, &AdvancedNetworking::requestWifiScreen, [=]() { main_layout->setCurrentWidget(wifiScreen); });
   main_layout->addWidget(an);
 
+  // Add eSIM profiles view
+  ESIMProfiles *esimProfiles = new ESIMProfiles(this);
+  connect(esimProfiles, &ESIMProfiles::backPress, [=]() { main_layout->setCurrentWidget(an); });
+  main_layout->addWidget(esimProfiles);
+
   QPalette pal = palette();
   pal.setColor(QPalette::Window, QColor(0x29, 0x29, 0x29));
   setAutoFillBackground(true);
@@ -226,106 +231,8 @@ AdvancedNetworking::AdvancedNetworking(QWidget* parent, WifiManager* wifi): QWid
   // eSIM Management
   ButtonControl *esimButton = new ButtonControl(tr("eSIM Profiles"), tr("EDIT"));
   connect(esimButton, &ButtonControl::clicked, [=]() {
-    QDialog *dialog = new QDialog(this);
-    dialog->setWindowTitle(tr("eSIM Profiles"));
-
-    QVBoxLayout *layout = new QVBoxLayout(dialog);
-    layout->setContentsMargins(20, 20, 20, 20);
-    layout->setSpacing(20);
-
-    // Back button
-    QPushButton* back = new QPushButton(tr("Back"));
-    back->setObjectName("back_btn");
-    back->setFixedSize(400, 100);
-    connect(back, &QPushButton::clicked, dialog, &QDialog::accept);
-    layout->addWidget(back, 0, Qt::AlignLeft);
-
-    // Create list widget for SIM profiles
-    ListWidget *list = new ListWidget(dialog);
-    list->setStyleSheet(R"(
-      QScrollBar::handle:vertical {
-        min-height: 0px;
-        border-radius: 4px;
-        background-color: #8A8A8A;
-      }
-    )");
-
-    // Test QProcess with echo command containing JSON data
-    QProcess process;
-    process.start("echo", QStringList() <<
-      "{\"name\":\"Profile 1\",\"enabled\":true}\n"
-      "{\"name\":\"Profile 2\",\"enabled\":false}\n"
-      "{\"name\":\"Profile 3\",\"enabled\":true}");
-    process.waitForFinished();
-    QString output = process.readAllStandardOutput();
-
-    // Load checkmark icon
-    QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
-
-    // Split output into lines and create rows for each SIM profile
-    QStringList profiles = output.split('\n', QString::SkipEmptyParts);
-    for (const QString &profile : profiles) {
-      QJsonDocument doc = QJsonDocument::fromJson(profile.toUtf8());
-      if (doc.isObject()) {
-        QJsonObject obj = doc.object();
-        QString name = obj["name"].toString();
-        bool enabled = obj["enabled"].toBool();
-
-        QWidget *row = new QWidget(list);
-        QHBoxLayout *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(44, 0, 73, 0);
-        rowLayout->setSpacing(50);
-
-        // Profile name
-        ElidedLabel *nameLabel = new ElidedLabel(name, row);
-        nameLabel->setObjectName("ssidLabel");
-        nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        nameLabel->setFont(InterFont(55, enabled ? QFont::Bold : QFont::Normal));
-        rowLayout->addWidget(nameLabel);
-
-        // Status icon (checkmark if enabled)
-        QLabel *statusIcon = new QLabel(row);
-        statusIcon->setFixedWidth(ICON_WIDTH);
-        if (enabled) {
-          statusIcon->setPixmap(checkmark);
-        }
-        rowLayout->addWidget(statusIcon);
-
-        list->addItem(row);
-      }
-    }
-
-    layout->addWidget(new ScrollView(list, dialog));
-    layout->addStretch(1);
-
-    dialog->setStyleSheet(R"(
-      QDialog {
-        background-color: #292929;
-      }
-      #back_btn {
-        font-size: 50px;
-        margin: 0px;
-        padding: 15px;
-        border-width: 0;
-        border-radius: 30px;
-        color: #dddddd;
-        background-color: #393939;
-      }
-      #back_btn:pressed {
-        background-color: #4a4a4a;
-      }
-      #ssidLabel {
-        text-align: left;
-        border: none;
-        padding-top: 50px;
-        padding-bottom: 50px;
-      }
-      #ssidLabel:disabled {
-        color: #696969;
-      }
-    )");
-
-    dialog->showFullScreen();
+    emit requestWifiScreen();
+    static_cast<Networking*>(parent)->showESIMProfiles();
   });
   list->addItem(esimButton);
 
@@ -516,4 +423,105 @@ void WifiItem::setItem(const Network &n, const QPixmap &status_icon, bool show_f
 
   iconLabel->setPixmap(status_icon);
   strengthLabel->setPixmap(strength_icon);
+}
+
+// ESIMProfiles implementation
+ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
+  QVBoxLayout *layout = new QVBoxLayout(this);
+  layout->setMargin(40);
+  layout->setSpacing(20);
+
+  // Back button
+  QPushButton* back = new QPushButton(tr("Back"));
+  back->setObjectName("back_btn");
+  back->setFixedSize(400, 100);
+  connect(back, &QPushButton::clicked, [=]() { emit backPress(); });
+  layout->addWidget(back, 0, Qt::AlignLeft);
+
+  // Create list widget for SIM profiles
+  list = new ListWidget(this);
+  list->setStyleSheet(R"(
+    QScrollBar::handle:vertical {
+      min-height: 0px;
+      border-radius: 4px;
+      background-color: #8A8A8A;
+    }
+  )");
+
+  // Test QProcess with echo command containing JSON data
+  QProcess process;
+  process.start("echo", QStringList() <<
+    "{\"name\":\"Profile 1\",\"enabled\":true}\n"
+    "{\"name\":\"Profile 2\",\"enabled\":false}\n"
+    "{\"name\":\"Profile 3\",\"enabled\":true}");
+  process.waitForFinished();
+  QString output = process.readAllStandardOutput();
+
+  // Load checkmark icon
+  QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
+
+  // Split output into lines and create rows for each SIM profile
+  QStringList profiles = output.split('\n', QString::SkipEmptyParts);
+  for (const QString &profile : profiles) {
+    QJsonDocument doc = QJsonDocument::fromJson(profile.toUtf8());
+    if (doc.isObject()) {
+      QJsonObject obj = doc.object();
+      QString name = obj["name"].toString();
+      bool enabled = obj["enabled"].toBool();
+
+      QWidget *row = new QWidget(list);
+      QHBoxLayout *rowLayout = new QHBoxLayout(row);
+      rowLayout->setContentsMargins(44, 0, 73, 0);
+      rowLayout->setSpacing(50);
+
+      // Profile name
+      ElidedLabel *nameLabel = new ElidedLabel(name, row);
+      nameLabel->setObjectName("ssidLabel");
+      nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+      nameLabel->setFont(InterFont(55, enabled ? QFont::Bold : QFont::Normal));
+      rowLayout->addWidget(nameLabel);
+
+      // Status icon (checkmark if enabled)
+      QLabel *statusIcon = new QLabel(row);
+      statusIcon->setFixedWidth(ICON_WIDTH);
+      if (enabled) {
+        statusIcon->setPixmap(checkmark);
+      }
+      rowLayout->addWidget(statusIcon);
+
+      list->addItem(row);
+    }
+  }
+
+  ScrollView *scroll = new ScrollView(list, this);
+  scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  layout->addWidget(scroll, 1);
+
+  setStyleSheet(R"(
+    QWidget {
+      background-color: #292929;
+    }
+    #back_btn {
+      font-size: 50px;
+      margin: 0px;
+      padding: 15px;
+      border-width: 0;
+      border-radius: 30px;
+      color: #dddddd;
+      background-color: #393939;
+    }
+    #back_btn:pressed {
+      background-color: #4a4a4a;
+    }
+    #ssidLabel {
+      text-align: left;
+      border: none;
+      padding-top: 50px;
+      padding-bottom: 50px;
+    }
+    #ssidLabel:disabled {
+      color: #696969;
+    }
+  )");
 }

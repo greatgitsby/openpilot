@@ -79,6 +79,18 @@ public slots:
   void refresh();
 };
 
+class ESIMProfiles : public QWidget {
+  Q_OBJECT
+public:
+  explicit ESIMProfiles(QWidget* parent = 0);
+
+signals:
+  void backPress();
+
+private:
+  ListWidget *list = nullptr;
+};
+
 class Networking : public QFrame {
   Q_OBJECT
 
@@ -86,6 +98,7 @@ public:
   explicit Networking(QWidget* parent = 0, bool show_advanced = true);
   void setPrimeType(PrimeState::Type type);
   WifiManager* wifi = nullptr;
+  void showESIMProfiles() { main_layout->setCurrentIndex(2); }
 
 private:
   QStackedLayout* main_layout = nullptr;
