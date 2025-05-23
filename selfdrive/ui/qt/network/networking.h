@@ -81,14 +81,19 @@ public slots:
 
 class ESIMProfiles : public QWidget {
   Q_OBJECT
+
 public:
-  explicit ESIMProfiles(QWidget* parent = 0);
+  explicit ESIMProfiles(QWidget* parent = nullptr);
 
 signals:
   void backPress();
 
+protected:
+  void showEvent(QShowEvent *event) override;
+
 private:
-  ListWidget *list = nullptr;
+  void refresh();
+  ListWidget *list;
 };
 
 class Networking : public QFrame {

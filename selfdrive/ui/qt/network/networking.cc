@@ -5,6 +5,11 @@
 #include <QHBoxLayout>
 #include <QScrollBar>
 #include <QStyle>
+#include <QProcess>
+#include <QDir>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 #include "selfdrive/ui/qt/qt_window.h"
 #include "selfdrive/ui/qt/util.h"
@@ -448,51 +453,6 @@ ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
     }
   )");
 
-  // Test QProcess with echo command containing JSON data
-  QProcess process;
-  process.start("echo", QStringList() <<
-    "{\"name\":\"Profile 1\",\"enabled\":true}\n"
-    "{\"name\":\"Profile 2\",\"enabled\":false}\n"
-    "{\"name\":\"Profile 3\",\"enabled\":true}");
-  process.waitForFinished();
-  QString output = process.readAllStandardOutput();
-
-  // Load checkmark icon
-  QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
-
-  // Split output into lines and create rows for each SIM profile
-  QStringList profiles = output.split('\n', QString::SkipEmptyParts);
-  for (const QString &profile : profiles) {
-    QJsonDocument doc = QJsonDocument::fromJson(profile.toUtf8());
-    if (doc.isObject()) {
-      QJsonObject obj = doc.object();
-      QString name = obj["name"].toString();
-      bool enabled = obj["enabled"].toBool();
-
-      QWidget *row = new QWidget(list);
-      QHBoxLayout *rowLayout = new QHBoxLayout(row);
-      rowLayout->setContentsMargins(44, 0, 73, 0);
-      rowLayout->setSpacing(50);
-
-      // Profile name
-      ElidedLabel *nameLabel = new ElidedLabel(name, row);
-      nameLabel->setObjectName("ssidLabel");
-      nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-      nameLabel->setFont(InterFont(55, enabled ? QFont::Bold : QFont::Normal));
-      rowLayout->addWidget(nameLabel);
-
-      // Status icon (checkmark if enabled)
-      QLabel *statusIcon = new QLabel(row);
-      statusIcon->setFixedWidth(ICON_WIDTH);
-      if (enabled) {
-        statusIcon->setPixmap(checkmark);
-      }
-      rowLayout->addWidget(statusIcon);
-
-      list->addItem(row);
-    }
-  }
-
   ScrollView *scroll = new ScrollView(list, this);
   scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
   scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -524,4 +484,69 @@ ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
       color: #696969;
     }
   )");
+}
+
+void ESIMProfiles::refresh() {
+  // Clear existing items
+  QLayoutItem* item;
+  while ((item = list->layout()->takeAt(0)) != nullptr) {
+    delete item->widget();
+    delete item;
+  }
+
+  // Execute LPAC command
+  QProcess process;
+  process.setProcessEnvironment(QProcessEnvironment::systemEnvironment());
+  process.start("sudo", QStringList() << "LPAC_APDU=qmi" << "QMI_DEVICE=/dev/cdc-wdm0" << "lpac" << "profile" << "list");
+  process.waitForFinished();
+  QString output = process.readAllStandardOutput();
+
+  fprintf(stderr, "output: %s\n", output.toStdString().c_str());
+
+  // Load checkmark icon
+  QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
+
+  // Parse the JSON output
+  QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
+  if (doc.isObject()) {
+    QJsonObject root = doc.object();
+    if (root["type"].toString() == "lpa") {
+      QJsonObject payload = root["payload"].toObject();
+      if (payload["code"].toInt() == 0) {
+        QJsonArray profiles = payload["data"].toArray();
+        for (const QJsonValue &profile : profiles) {
+          QJsonObject obj = profile.toObject();
+          QString name = obj["profileNickname"].toString();
+          bool enabled = obj["profileState"].toString() == "enabled";
+
+          QWidget *row = new QWidget(list);
+          QHBoxLayout *rowLayout = new QHBoxLayout(row);
+          rowLayout->setContentsMargins(44, 0, 73, 0);
+          rowLayout->setSpacing(50);
+
+          // Profile name
+          ElidedLabel *nameLabel = new ElidedLabel(name, row);
+          nameLabel->setObjectName("ssidLabel");
+          nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+          nameLabel->setFont(InterFont(55, enabled ? QFont::Bold : QFont::Normal));
+          rowLayout->addWidget(nameLabel);
+
+          // Status icon (checkmark if enabled)
+          QLabel *statusIcon = new QLabel(row);
+          statusIcon->setFixedWidth(ICON_WIDTH);
+          if (enabled) {
+            statusIcon->setPixmap(checkmark);
+          }
+          rowLayout->addWidget(statusIcon);
+
+          list->addItem(row);
+        }
+      }
+    }
+  }
+}
+
+void ESIMProfiles::showEvent(QShowEvent *event) {
+  refresh();
+  QWidget::showEvent(event);
 }

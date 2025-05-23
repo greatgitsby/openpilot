@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 
 from openpilot.system.hardware import HARDWARE
 
@@ -13,6 +14,13 @@ if __name__ == '__main__':
   parser.add_argument('--download', nargs=2, metavar=('qr', 'name'), help='download a profile using QR code (format: LPA:1$rsp.truphone.com$QRF-SPEEDTEST)')
   parser.add_argument('--nickname', nargs=2, metavar=('iccid', 'name'), help='update the nickname for a profile')
   args = parser.parse_args()
+
+  print(json.dumps([
+    {'name': 'Profile 1', 'enabled': True},
+    {'name': 'Profile 2', 'enabled': False},
+    {'name': 'Profile 3', 'enabled': True}
+  ]))
+  exit(0)
 
   lpa = HARDWARE.get_sim_lpa()
   if args.switch:
