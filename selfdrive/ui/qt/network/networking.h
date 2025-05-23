@@ -94,6 +94,7 @@ protected:
 private:
   void refresh();
   ListWidget *list;
+  std::vector<QWidget*> profile_items;
 };
 
 class Networking : public QFrame {

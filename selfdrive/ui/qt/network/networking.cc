@@ -488,11 +488,10 @@ ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
 
 void ESIMProfiles::refresh() {
   // Clear existing items
-  QLayoutItem* item;
-  while ((item = list->layout()->takeAt(0)) != nullptr) {
-    delete item->widget();
-    delete item;
+  for (QWidget* item : profile_items) {
+    item->deleteLater();
   }
+  profile_items.clear();
 
   // Execute LPAC command
   QProcess process;
@@ -540,6 +539,7 @@ void ESIMProfiles::refresh() {
           rowLayout->addWidget(statusIcon);
 
           list->addItem(row);
+          profile_items.push_back(row);
         }
       }
     }
