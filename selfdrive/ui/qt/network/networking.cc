@@ -500,7 +500,10 @@ void ESIMProfiles::switchProfile(const std::string& iccid) {
   // Disable back button and all profile buttons
   back_btn->setEnabled(false);
   for (QWidget* item : profile_items) {
-    item->setEnabled(false);
+    QPushButton* btn = item->findChild<QPushButton*>("profileBtn");
+    if (btn) {
+      btn->setEnabled(false);
+    }
   }
 
   // Run the hardware call in a background thread
