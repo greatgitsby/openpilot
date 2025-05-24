@@ -97,7 +97,7 @@ private:
   ListWidget *list;
   std::vector<QWidget*> profile_items;
   QPushButton* back_btn = nullptr;
-  QProcess* process = nullptr;
+  QFutureWatcher<void>* process = nullptr;
 };
 
 class Networking : public QFrame {

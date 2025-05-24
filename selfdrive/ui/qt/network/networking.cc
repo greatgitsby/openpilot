@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QtConcurrent>
 
 #include "selfdrive/ui/qt/qt_window.h"
 #include "selfdrive/ui/qt/util.h"
@@ -502,25 +503,27 @@ void ESIMProfiles::switchProfile(const std::string& iccid) {
     item->setEnabled(false);
   }
 
-  process = new QProcess(this);
-  process->setProcessChannelMode(QProcess::MergedChannels);
+  // Run the hardware call in a background thread
+  QFuture<void> future = QtConcurrent::run([=]() {
+    Hardware::switch_esim_profile(iccid);
+  });
 
-  QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-    this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
-      process->deleteLater();
-      process = nullptr;
+  // Create a watcher to handle completion
+  QFutureWatcher<void>* watcher = new QFutureWatcher<void>(this);
+  watcher->setFuture(future);
 
-      // Re-enable back button
-      back_btn->setEnabled(true);
+  QObject::connect(watcher, &QFutureWatcher<void>::finished, this, [=]() {
+    watcher->deleteLater();
+    process = nullptr;
 
-      // Refresh the UI
-      refresh();
-    });
+    // Re-enable back button
+    back_btn->setEnabled(true);
 
-  // Run the commands
-  QStringList commands;
-  commands << "sudo" << "LPAC_APDU=qmi" << "QMI_DEVICE=/dev/cdc-wdm0" << "lpac" << "profile" << "enable" << QString::fromStdString(iccid);
-  process->start("sudo", commands);
+    // Refresh the UI
+    refresh();
+  });
+
+  process = watcher; // Use process pointer to track the operation
 }
 
 void ESIMProfiles::refresh() {
