@@ -571,20 +571,10 @@ void ESIMProfiles::refresh() {
         background-color: #4a4a4a;
       }
       QPushButton:disabled {
-        color: #FFFFFF;
+        color: #696969;
         background-color: #292929;
       }
-      QPushButton[active="true"] {
-        color: #FFFFFF;
-        background-color: #32D74B;
-      }
     )");
-
-    if (profile.enabled) {
-      profileBtn->setProperty("active", true);
-    } else {
-      profileBtn->setProperty("active", false);
-    }
 
     if (!profile.enabled) {
       connect(profileBtn, &QPushButton::clicked, [=]() {
