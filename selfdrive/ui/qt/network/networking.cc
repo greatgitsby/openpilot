@@ -493,10 +493,12 @@ void ESIMProfiles::switchProfile(const std::string& iccid) {
     return; // Already switching
   }
 
+  // Find and update the currently active button
   for (QWidget* item : profile_items) {
     QPushButton* btn = item->findChild<QPushButton*>("profileBtn");
-    if (btn) {
-      btn->setEnabled(false);
+    if (btn && btn->text() == tr("ACTIVE")) {
+      btn->setText(tr("ACTIVATE"));
+      btn->setEnabled(true);
     }
   }
 
