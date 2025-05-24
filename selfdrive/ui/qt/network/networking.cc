@@ -534,11 +534,9 @@ void ESIMProfiles::refresh() {
   for (const auto& profile : profiles) {
     QWidget *row = new QWidget(list);
     QHBoxLayout *rowLayout = new QHBoxLayout(row);
-    rowLayout->setMargin(40);
-    rowLayout->setSpacing(20);
 
     // Profile name
-    ElidedLabel *nameLabel = new ElidedLabel(QString::fromStdString(profile.profileNickname), row);
+    ElidedLabel *nameLabel = new ElidedLabel(QString::fromStdString(profile.iccid + " (" + profile.profileNickname + ")"), row);
     nameLabel->setObjectName("ssidLabel");
     nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     nameLabel->setFont(InterFont(55, profile.enabled ? QFont::Bold : QFont::Normal));
@@ -569,6 +567,7 @@ void ESIMProfiles::refresh() {
 
     if (!profile.enabled) {
       connect(profileBtn, &QPushButton::clicked, [=]() {
+        profileBtn->setText(tr("ACTIVATING"));
         switchProfile(profile.iccid);
       });
     }
