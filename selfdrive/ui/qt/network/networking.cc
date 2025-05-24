@@ -498,8 +498,8 @@ void ESIMProfiles::switchProfile(const std::string& iccid) {
     QPushButton* btn = item->findChild<QPushButton*>("profileBtn");
     if (btn && btn->text() == tr("ACTIVE")) {
       btn->setText(tr("ACTIVATE"));
-      btn->setEnabled(false);
     }
+    btn->setEnabled(false);
   }
 
   // Run the hardware call in a background thread
