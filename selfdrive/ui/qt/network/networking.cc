@@ -543,7 +543,7 @@ void ESIMProfiles::refresh() {
   for (const auto& profile : profiles) {
     QWidget *row = new QWidget(list);
     QHBoxLayout *rowLayout = new QHBoxLayout(row);
-    rowLayout->setContentsMargins(44, 0, 73, 0);
+    rowLayout->setContentsMargins(0, 0, 0, 0);
     rowLayout->setSpacing(50);
 
     // Profile name
