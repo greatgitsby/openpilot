@@ -93,8 +93,11 @@ protected:
 
 private:
   void refresh();
+  void switchProfile(const std::string& iccid);
   ListWidget *list;
   std::vector<QWidget*> profile_items;
+  QPushButton* back_btn = nullptr;
+  QProcess* process = nullptr;
 };
 
 class Networking : public QFrame {

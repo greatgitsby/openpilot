@@ -438,11 +438,11 @@ ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
   layout->setSpacing(20);
 
   // Back button
-  QPushButton* back = new QPushButton(tr("Back"));
-  back->setObjectName("back_btn");
-  back->setFixedSize(400, 100);
-  connect(back, &QPushButton::clicked, [=]() { emit backPress(); });
-  layout->addWidget(back, 0, Qt::AlignLeft);
+  back_btn = new QPushButton(tr("Back"));
+  back_btn->setObjectName("back_btn");
+  back_btn->setFixedSize(400, 100);
+  connect(back_btn, &QPushButton::clicked, [=]() { emit backPress(); });
+  layout->addWidget(back_btn, 0, Qt::AlignLeft);
 
   // Create list widget for SIM profiles
   list = new ListWidget(this);
@@ -475,6 +475,10 @@ ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
     #back_btn:pressed {
       background-color: #4a4a4a;
     }
+    #back_btn:disabled {
+      color: #696969;
+      background-color: #292929;
+    }
     #ssidLabel {
       text-align: left;
       border: none;
@@ -485,6 +489,38 @@ ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
       color: #696969;
     }
   )");
+}
+
+void ESIMProfiles::switchProfile(const std::string& iccid) {
+  if (process) {
+    return; // Already switching
+  }
+
+  // Disable back button and all profile buttons
+  back_btn->setEnabled(false);
+  for (QWidget* item : profile_items) {
+    item->setEnabled(false);
+  }
+
+  process = new QProcess(this);
+  process->setProcessChannelMode(QProcess::MergedChannels);
+
+  QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+    this, [=](int exitCode, QProcess::ExitStatus exitStatus) {
+      process->deleteLater();
+      process = nullptr;
+
+      // Re-enable back button
+      back_btn->setEnabled(true);
+
+      // Refresh the UI
+      refresh();
+    });
+
+  // Run the commands
+  QStringList commands;
+  commands << "sudo" << "LPAC_APDU=qmi" << "QMI_DEVICE=/dev/cdc-wdm0" << "lpac" << "profile" << "enable" << QString::fromStdString(iccid);
+  process->start("sudo", commands);
 }
 
 void ESIMProfiles::refresh() {
@@ -515,7 +551,7 @@ void ESIMProfiles::refresh() {
     QPushButton *profileBtn = new QPushButton(profile.enabled ? tr("ACTIVE") : tr("ACTIVATE"), row);
     profileBtn->setObjectName("profileBtn");
     profileBtn->setFixedSize(250, 100);
-    profileBtn->setEnabled(!profile.enabled);
+    profileBtn->setEnabled(!profile.enabled && !process);
     profileBtn->setStyleSheet(R"(
       QPushButton {
         padding: 0;
@@ -529,15 +565,14 @@ void ESIMProfiles::refresh() {
         background-color: #4a4a4a;
       }
       QPushButton:disabled {
-        color: #33E4E4E4;
+        color: #FFFFFF;
         background-color: #32D74B;
       }
     )");
 
     if (!profile.enabled) {
       connect(profileBtn, &QPushButton::clicked, [=]() {
-        Hardware::switch_esim_profile(profile.iccid);
-        refresh();
+        switchProfile(profile.iccid);
       });
     }
     rowLayout->addWidget(profileBtn);
