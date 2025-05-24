@@ -517,6 +517,11 @@ void ESIMProfiles::switchProfile(const std::string& iccid) {
 
     // Refresh the UI
     refresh();
+
+    // Ask if user wants to reboot modem
+    if (ConfirmationDialog::confirm(tr("Reboot modem to apply changes?\n\nThis will take about 1 minute."), tr("Reboot"), this)) {
+      QProcess::execute("echo hi");
+    }
   });
 
   process = watcher; // Use process pointer to track the operation
