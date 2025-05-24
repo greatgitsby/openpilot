@@ -8,7 +8,7 @@
 
 class HardwarePC : public HardwareNone {
 private:
-  static bool first_profile_active;
+  static inline bool first_profile_active = true;
 
 public:
   static std::string get_os_version() { return "openpilot for PC"; }
@@ -43,5 +43,3 @@ public:
   }
 };
 
-// Initialize static member
-bool HardwarePC::first_profile_active = true;

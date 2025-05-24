@@ -476,10 +476,6 @@ ESIMProfiles::ESIMProfiles(QWidget* parent) : QWidget(parent) {
     #back_btn:pressed {
       background-color: #4a4a4a;
     }
-    #back_btn:disabled {
-      color: #696969;
-      background-color: #292929;
-    }
     #ssidLabel {
       text-align: left;
       border: none;
@@ -497,8 +493,6 @@ void ESIMProfiles::switchProfile(const std::string& iccid) {
     return; // Already switching
   }
 
-  // Disable back button and all profile buttons
-  back_btn->setEnabled(false);
   for (QWidget* item : profile_items) {
     QPushButton* btn = item->findChild<QPushButton*>("profileBtn");
     if (btn) {
@@ -518,9 +512,6 @@ void ESIMProfiles::switchProfile(const std::string& iccid) {
   QObject::connect(watcher, &QFutureWatcher<void>::finished, this, [=]() {
     watcher->deleteLater();
     process = nullptr;
-
-    // Re-enable back button
-    back_btn->setEnabled(true);
 
     // Refresh the UI
     refresh();
@@ -572,7 +563,7 @@ void ESIMProfiles::refresh() {
       }
       QPushButton:disabled {
         color: #696969;
-        background-color: #292929;
+        background-color: #1a1a1a;
       }
     )");
 
