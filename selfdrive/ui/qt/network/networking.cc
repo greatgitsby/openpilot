@@ -543,8 +543,8 @@ void ESIMProfiles::refresh() {
   for (const auto& profile : profiles) {
     QWidget *row = new QWidget(list);
     QHBoxLayout *rowLayout = new QHBoxLayout(row);
-    rowLayout->setContentsMargins(0, 0, 0, 0);
-    rowLayout->setSpacing(50);
+    rowLayout->setMargin(40);
+    rowLayout->setSpacing(20);
 
     // Profile name
     ElidedLabel *nameLabel = new ElidedLabel(QString::fromStdString(profile.profileNickname), row);
@@ -572,9 +572,19 @@ void ESIMProfiles::refresh() {
       }
       QPushButton:disabled {
         color: #FFFFFF;
+        background-color: #292929;
+      }
+      QPushButton[active="true"] {
+        color: #FFFFFF;
         background-color: #32D74B;
       }
     )");
+
+    if (profile.enabled) {
+      profileBtn->setProperty("active", true);
+    } else {
+      profileBtn->setProperty("active", false);
+    }
 
     if (!profile.enabled) {
       connect(profileBtn, &QPushButton::clicked, [=]() {
