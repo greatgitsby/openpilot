@@ -65,4 +65,5 @@ public:
   static bool AGNOS() { return false; }
 
   static std::vector<ESIMProfile> get_esim_profiles() { return {}; }
+  static void switch_esim_profile(const std::string& iccid) {}
 };

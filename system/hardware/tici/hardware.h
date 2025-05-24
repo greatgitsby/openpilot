@@ -56,6 +56,10 @@ public:
     return profiles;
   }
 
+  static void switch_esim_profile(const std::string& iccid) {
+    std::system(("sudo LPAC_APDU=qmi QMI_DEVICE=/dev/cdc-wdm0 lpac profile enable " + iccid).c_str());
+  }
+
   static int get_voltage() { return std::atoi(util::read_file("/sys/class/hwmon/hwmon1/in1_input").c_str()); }
   static int get_current() { return std::atoi(util::read_file("/sys/class/hwmon/hwmon1/curr1_input").c_str()); }
 

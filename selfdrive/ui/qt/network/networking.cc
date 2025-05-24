@@ -497,9 +497,6 @@ void ESIMProfiles::refresh() {
   // Get profiles from hardware
   auto profiles = Hardware::get_esim_profiles();
 
-  // Load checkmark icon
-  QPixmap checkmark = QPixmap(ASSET_PATH + "icons/checkmark.svg").scaledToWidth(ICON_WIDTH, Qt::SmoothTransformation);
-
   // Create UI for each profile
   for (const auto& profile : profiles) {
     QWidget *row = new QWidget(list);
@@ -514,13 +511,36 @@ void ESIMProfiles::refresh() {
     nameLabel->setFont(InterFont(55, profile.enabled ? QFont::Bold : QFont::Normal));
     rowLayout->addWidget(nameLabel);
 
-    // Status icon (checkmark if enabled)
-    QLabel *statusIcon = new QLabel(row);
-    statusIcon->setFixedWidth(ICON_WIDTH);
-    if (profile.enabled) {
-      statusIcon->setPixmap(checkmark);
+    // Profile button
+    QPushButton *profileBtn = new QPushButton(profile.enabled ? tr("ACTIVE") : tr("ACTIVATE"), row);
+    profileBtn->setObjectName("profileBtn");
+    profileBtn->setFixedSize(250, 100);
+    profileBtn->setEnabled(!profile.enabled);
+    profileBtn->setStyleSheet(R"(
+      QPushButton {
+        padding: 0;
+        border-radius: 50px;
+        font-size: 35px;
+        font-weight: 500;
+        color: #E4E4E4;
+        background-color: #393939;
+      }
+      QPushButton:pressed {
+        background-color: #4a4a4a;
+      }
+      QPushButton:disabled {
+        color: #33E4E4E4;
+        background-color: #32D74B;
+      }
+    )");
+
+    if (!profile.enabled) {
+      connect(profileBtn, &QPushButton::clicked, [=]() {
+        Hardware::switch_esim_profile(profile.iccid);
+        refresh();
+      });
     }
-    rowLayout->addWidget(statusIcon);
+    rowLayout->addWidget(profileBtn);
 
     list->addItem(row);
     profile_items.push_back(row);
