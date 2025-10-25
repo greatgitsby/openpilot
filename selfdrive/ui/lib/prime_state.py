@@ -39,6 +39,7 @@ class PrimeState:
     prime_type_str = os.getenv("PRIME_TYPE") or self._params.get("PrimeType")
     try:
       if prime_type_str is not None:
+        print('loading initial state', prime_type_str)
         return PrimeType(int(prime_type_str))
     except (ValueError, TypeError):
       pass
@@ -60,13 +61,18 @@ class PrimeState:
         self.set_type(PrimeType(prime_type) if is_paired else PrimeType.UNPAIRED)
     except Exception as e:
       cloudlog.error(f"Failed to fetch prime status: {e}")
+      import traceback
+      traceback.print_exc()
 
   def set_type(self, prime_type: PrimeType) -> None:
+    print('setting prime type to', prime_type, 'currently is', self.prime_type)
     with self._lock:
+      print('lock acquired')
       if prime_type != self.prime_type:
         self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
+        print('prime type updated to', prime_type)
 
   def _worker_thread(self) -> None:
     while self._running:
@@ -95,10 +101,12 @@ class PrimeState:
 
   def is_prime(self) -> bool:
     with self._lock:
+      print('is prime', bool(self.prime_type > PrimeType.NONE))
       return bool(self.prime_type > PrimeType.NONE)
 
   def is_paired(self) -> bool:
     with self._lock:
+      print('is paired', self.prime_type > PrimeType.UNPAIRED)
       return self.prime_type > PrimeType.UNPAIRED
 
   def __del__(self):
