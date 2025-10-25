@@ -74,15 +74,10 @@ class PrimeState:
 
   def set_type(self, prime_type: PrimeType) -> None:
     with self._lock:
-      print(f'[instance {self._instance_id}] set_type called: {prime_type}, current: {self.prime_type}')
       if prime_type != self.prime_type:
-        print(f'[instance {self._instance_id}] updating prime type from {self.prime_type} to {prime_type}')
         self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
-        print(f'[instance {self._instance_id}] updated self.prime_type to: {self.prime_type}')
-      else:
-        print(f'[instance {self._instance_id}] prime type unchanged, staying at: {self.prime_type}')
 
   def _worker_thread(self) -> None:
     while self._running:
@@ -111,9 +106,7 @@ class PrimeState:
 
   def is_prime(self) -> bool:
     with self._lock:
-      print(f'[instance {self._instance_id}] prime_type: {self.prime_type}')
-      print(f'[instance {self._instance_id}] is prime', bool(self.prime_type > PrimeType.NONE))
-      return bool(self.prime_type > PrimeType.NONE)
+      return bool(self.prime_type.value > PrimeType.NONE.value)
 
   def is_paired(self) -> bool:
     with self._lock:
