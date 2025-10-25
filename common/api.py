@@ -47,6 +47,4 @@ def api_get(endpoint, method='GET', timeout=None, access_token=None, **params):
 
   headers['User-Agent'] = "openpilot-" + get_version()
 
-  session = requests.Session()
-  session.mount("https://", HTTPAdapter(max_retries=Retry(allowed_methods=["GET"], connect=50, backoff_factor=.1)))
-  return session.request(method, API_HOST + "/" + endpoint, timeout=timeout, headers=headers, params=params)
+  return requests.request(method, API_HOST + "/" + endpoint, timeout=timeout, headers=headers, params=params)

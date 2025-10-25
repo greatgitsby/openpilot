@@ -59,6 +59,8 @@ class PrimeState:
         is_paired = data.get("is_paired", False)
         prime_type = data.get("prime_type", 0)
         self.set_type(PrimeType(prime_type) if is_paired else PrimeType.UNPAIRED)
+      else:
+        print('failed to get prime status', response.status_code, response.text)
     except Exception as e:
       cloudlog.error(f"Failed to fetch prime status: {e}")
       import traceback
@@ -101,12 +103,10 @@ class PrimeState:
 
   def is_prime(self) -> bool:
     with self._lock:
-      print('is prime', bool(self.prime_type > PrimeType.NONE))
       return bool(self.prime_type > PrimeType.NONE)
 
   def is_paired(self) -> bool:
     with self._lock:
-      print('is paired', self.prime_type > PrimeType.UNPAIRED)
       return self.prime_type > PrimeType.UNPAIRED
 
   def __del__(self):
