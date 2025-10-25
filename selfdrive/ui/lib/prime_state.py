@@ -55,6 +55,7 @@ class PrimeState:
     dongle_id = self._params.get("DongleId")
     if not dongle_id or dongle_id == UNREGISTERED_DONGLE_ID:
       print(f'[instance {self._instance_id}] _fetch_prime_status: no dongle_id, skipping')
+      self.set_type(PrimeType.NONE if random.random() < 0.5 else PrimeType.PURPLE)
       return
 
     self.set_type(PrimeType.NONE if random.random() < 0.5 else PrimeType.PURPLE)
@@ -105,16 +106,13 @@ class PrimeState:
       self._thread.join(timeout=1.0)
 
   def get_type(self) -> PrimeType:
-    with self._lock:
-      return self.prime_type
+    return self.prime_type
 
   def is_prime(self) -> bool:
-    with self._lock:
-      return bool(self.prime_type.value > PrimeType.NONE.value)
+    return bool(self.prime_type.value > PrimeType.NONE.value)
 
   def is_paired(self) -> bool:
-    with self._lock:
-      return self.prime_type > PrimeType.UNPAIRED
+    return self.prime_type > PrimeType.UNPAIRED
 
   def __del__(self):
     self.stop()
