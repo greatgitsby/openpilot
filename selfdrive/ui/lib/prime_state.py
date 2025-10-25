@@ -1,5 +1,6 @@
 from enum import IntEnum
 import os
+import random
 import threading
 import time
 
@@ -56,6 +57,8 @@ class PrimeState:
       print(f'[instance {self._instance_id}] _fetch_prime_status: no dongle_id, skipping')
       return
 
+    self.set_type(PrimeType.NONE if random.random() < 0.5 else PrimeType.PURPLE)
+    return
     try:
       print(f'[instance {self._instance_id}] _fetch_prime_status: making API call')
       identity_token = get_token(dongle_id)
