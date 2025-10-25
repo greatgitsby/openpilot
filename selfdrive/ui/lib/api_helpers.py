@@ -1,4 +1,4 @@
-import time
+from datetime import datetime, UTC
 from functools import lru_cache
 from openpilot.common.api import Api
 
@@ -7,8 +7,9 @@ TOKEN_EXPIRY_HOURS = 2
 
 @lru_cache(maxsize=1)
 def _get_token(dongle_id: str, t: int):
+  print('getting token for', dongle_id, 'at', t)
   return Api(dongle_id).get_token(expiry_hours=TOKEN_EXPIRY_HOURS)
 
 
 def get_token(dongle_id: str):
-  return _get_token(dongle_id, int(time.monotonic() / (TOKEN_EXPIRY_HOURS / 2 * 60 * 60)))
+  return _get_token(dongle_id, int(datetime.now(UTC).replace(tzinfo=None).timestamp() / (TOKEN_EXPIRY_HOURS / 2 * 60 * 60)))

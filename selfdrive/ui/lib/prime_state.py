@@ -36,13 +36,16 @@ class PrimeState:
     self.start()
 
   def _load_initial_state(self) -> PrimeType:
-    prime_type_str = os.getenv("PRIME_TYPE") or self._params.get("PrimeType")
+    prime_type_str = os.getenv("PRIME_TYPE") or self._load_state_from_disk()
     try:
       if prime_type_str is not None:
         return PrimeType(int(prime_type_str))
     except (ValueError, TypeError):
       pass
     return PrimeType.UNKNOWN
+
+  def _load_state_from_disk(self) -> PrimeType:
+    return PrimeType(self._params.get("PrimeType"))
 
   def _fetch_prime_status(self) -> None:
     dongle_id = self._params.get("DongleId")
@@ -90,7 +93,7 @@ class PrimeState:
 
   def get_type(self) -> PrimeType:
     with self._lock:
-      return self.prime_type
+      return self._load_state_from_disk()
 
   def is_prime(self) -> bool:
     with self._lock:
