@@ -25,8 +25,13 @@ class PrimeState:
   FETCH_INTERVAL = 5.0  # seconds between API calls
   API_TIMEOUT = 10.0  # seconds for API requests
   SLEEP_INTERVAL = 0.5  # seconds to sleep between checks in the worker thread
+  _instance_count = 0
 
   def __init__(self):
+    PrimeState._instance_count += 1
+    self._instance_id = PrimeState._instance_count
+    print(f'PrimeState instance {self._instance_id} created (total: {PrimeState._instance_count})')
+
     self._params = Params()
     self._lock = threading.Lock()
     self.prime_type: PrimeType = self._load_initial_state()
@@ -39,7 +44,7 @@ class PrimeState:
     prime_type_str = os.getenv("PRIME_TYPE") or self._params.get("PrimeType")
     try:
       if prime_type_str is not None:
-        print('loading initial state', prime_type_str)
+        print(f'[instance {self._instance_id}] loading initial state', prime_type_str)
         return PrimeType(int(prime_type_str))
     except (ValueError, TypeError):
       pass
@@ -48,35 +53,36 @@ class PrimeState:
   def _fetch_prime_status(self) -> None:
     dongle_id = self._params.get("DongleId")
     if not dongle_id or dongle_id == UNREGISTERED_DONGLE_ID:
-      print('_fetch_prime_status: no dongle_id, skipping')
+      print(f'[instance {self._instance_id}] _fetch_prime_status: no dongle_id, skipping')
       return
 
     try:
-      print('_fetch_prime_status: making API call')
+      print(f'[instance {self._instance_id}] _fetch_prime_status: making API call')
       identity_token = get_token(dongle_id)
       response = api_get(f"v1.1/devices/{dongle_id}", timeout=self.API_TIMEOUT, access_token=identity_token)
       if response.status_code == 200:
         data = response.json()
         is_paired = data.get("is_paired", False)
         prime_type = data.get("prime_type", 0)
-        print(f'_fetch_prime_status: API returned is_paired={is_paired}, prime_type={prime_type}')
+        print(f'[instance {self._instance_id}] _fetch_prime_status: API returned is_paired={is_paired}, prime_type={prime_type}')
         self.set_type(PrimeType(prime_type) if is_paired else PrimeType.UNPAIRED)
       else:
-        print(f'_fetch_prime_status: API returned status {response.status_code}')
+        print(f'[instance {self._instance_id}] _fetch_prime_status: API returned status {response.status_code}')
     except Exception as e:
-      print(f'_fetch_prime_status: API call failed: {e}')
+      print(f'[instance {self._instance_id}] _fetch_prime_status: API call failed: {e}')
       cloudlog.error(f"Failed to fetch prime status: {e}")
 
   def set_type(self, prime_type: PrimeType) -> None:
     with self._lock:
-      print(f'set_type called: {prime_type}, current: {self.prime_type}')
+      print(f'[instance {self._instance_id}] set_type called: {prime_type}, current: {self.prime_type}')
       if prime_type != self.prime_type:
-        print(f'updating prime type from {self.prime_type} to {prime_type}')
+        print(f'[instance {self._instance_id}] updating prime type from {self.prime_type} to {prime_type}')
+        self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
+        print(f'[instance {self._instance_id}] updated self.prime_type to: {self.prime_type}')
       else:
-        print('prime type unchanged')
-      self.prime_type = prime_type
+        print(f'[instance {self._instance_id}] prime type unchanged, staying at: {self.prime_type}')
 
   def _worker_thread(self) -> None:
     while self._running:
@@ -105,8 +111,8 @@ class PrimeState:
 
   def is_prime(self) -> bool:
     with self._lock:
-      print(f'prime_type: {self.prime_type}')
-      print('is prime', bool(self.prime_type > PrimeType.NONE))
+      print(f'[instance {self._instance_id}] prime_type: {self.prime_type}')
+      print(f'[instance {self._instance_id}] is prime', bool(self.prime_type > PrimeType.NONE))
       return bool(self.prime_type > PrimeType.NONE)
 
   def is_paired(self) -> bool:
