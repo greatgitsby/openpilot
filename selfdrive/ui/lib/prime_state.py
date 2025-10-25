@@ -98,6 +98,7 @@ class PrimeState:
       return self.prime_type
 
   def is_prime(self) -> bool:
+    print(self.prime_type)
     with self._lock:
       print('is prime', bool(self.prime_type > PrimeType.NONE))
       return bool(self.prime_type > PrimeType.NONE)
