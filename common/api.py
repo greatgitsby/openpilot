@@ -2,8 +2,6 @@ import jwt
 import os
 import requests
 from datetime import datetime, timedelta, UTC
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
 from openpilot.system.hardware.hw import Paths
 from openpilot.system.version import get_version
 
