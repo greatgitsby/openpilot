@@ -2,6 +2,7 @@ import jwt
 import os
 import requests
 from datetime import datetime, timedelta, UTC
+from requests.adapters import HTTPAdapter
 from openpilot.system.hardware.hw import Paths
 from openpilot.system.version import get_version
 
@@ -45,4 +46,6 @@ def api_get(endpoint, method='GET', timeout=None, access_token=None, **params):
 
   headers['User-Agent'] = "openpilot-" + get_version()
 
-  return requests.request(method, API_HOST + "/" + endpoint, timeout=timeout, headers=headers, params=params)
+  session = requests.Session()
+  session.mount("https://", HTTPAdapter(allowed_methods=["GET"], max_retries=10, backoff_factor=1.))
+  return session.request(method, API_HOST + "/" + endpoint, timeout=timeout, headers=headers, params=params)
