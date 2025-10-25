@@ -97,16 +97,13 @@ class PrimeState:
 
   def get_type(self) -> PrimeType:
     with self._lock:
-      return self.prime_type
+      return PrimeType(int(self._params.get("PrimeType")))
 
   def is_prime(self) -> bool:
-    with self._lock:
-      print(f'is_prime: {self.prime_type.value > PrimeType.NONE.value}')
-      return bool(self.prime_type.value > PrimeType.NONE.value)
+    return bool(self.get_type().value > PrimeType.NONE.value)
 
   def is_paired(self) -> bool:
-    with self._lock:
-      return self.prime_type > PrimeType.UNPAIRED
+    return self.get_type() > PrimeType.UNPAIRED
 
   def __del__(self):
     self.stop()
