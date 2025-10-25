@@ -67,6 +67,7 @@ class PrimeState:
       cloudlog.error(f"Failed to fetch prime status: {e}")
 
   def set_type(self, prime_type: PrimeType) -> None:
+    print('set_type', threading.current_thread().ident)
     with self._lock:
       if prime_type != self.prime_type:
         self.prime_type = prime_type
@@ -96,7 +97,12 @@ class PrimeState:
       self._thread.join(timeout=1.0)
 
   def get_type(self) -> PrimeType:
+    import threading
+    print('get_type', threading.current_thread().ident)
     with self._lock:
+      # works on comma device and mac, value changes because it reads directly from the params from disk
+      # return PrimeType(self._params.get("PrimeType"))
+      # works on mac, not on comma device, value never changes despite updates
       return self.prime_type
 
   def is_prime(self) -> bool:
