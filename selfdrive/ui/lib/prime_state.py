@@ -91,7 +91,7 @@ class PrimeState:
     if self._thread and self._thread.is_alive():
       return
     self._running = True
-    self._thread = threading.Thread(target=self._worker_thread, args=(self), daemon=True)
+    self._thread = threading.Thread(target=self._worker_thread, daemon=True)
     self._thread.start()
 
   def stop(self) -> None:
