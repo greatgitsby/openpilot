@@ -51,6 +51,7 @@ class PrimeState:
 
     try:
       identity_token = get_token(dongle_id)
+      print('getting prime status for', dongle_id)
       response = api_get(f"v1.1/devices/{dongle_id}", timeout=self.API_TIMEOUT, access_token=identity_token)
       if response.status_code == 200:
         data = response.json()
