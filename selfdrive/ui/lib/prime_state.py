@@ -36,7 +36,7 @@ class PrimeState:
     self.start()
 
   def _load_initial_state(self) -> PrimeType:
-    prime_type_str = os.getenv("PRIME_TYPE") or self._load_state_from_disk()
+    prime_type_str = os.getenv("PRIME_TYPE") or self._params.get("PrimeType")
     try:
       if prime_type_str is not None:
         return PrimeType(int(prime_type_str))
@@ -44,7 +44,7 @@ class PrimeState:
       pass
     return PrimeType.UNKNOWN
 
-  def _load_state_from_disk(self) -> PrimeType:
+  def _load_state_from_params(self) -> PrimeType:
     return PrimeType(int(self._params.get("PrimeType", PrimeType.UNKNOWN.value)))
 
   def _fetch_prime_status(self) -> None:
@@ -93,15 +93,15 @@ class PrimeState:
 
   def get_type(self) -> PrimeType:
     with self._lock:
-      return self._load_state_from_disk()
+      return self._load_state_from_params()
 
   def is_prime(self) -> bool:
     with self._lock:
-      return bool(self.prime_type > PrimeType.NONE)
+      return bool(self._load_state_from_params() > PrimeType.NONE)
 
   def is_paired(self) -> bool:
     with self._lock:
-      return self.prime_type > PrimeType.UNPAIRED
+      return self._load_state_from_params() > PrimeType.UNPAIRED
 
   def __del__(self):
     self.stop()
