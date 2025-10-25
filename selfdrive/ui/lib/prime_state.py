@@ -45,7 +45,7 @@ class PrimeState:
     return PrimeType.UNKNOWN
 
   def _load_state_from_disk(self) -> PrimeType:
-    return PrimeType(self._params.get("PrimeType"))
+    return PrimeType(int(self._params.get("PrimeType", PrimeType.UNKNOWN.value)))
 
   def _fetch_prime_status(self) -> None:
     dongle_id = self._params.get("DongleId")
