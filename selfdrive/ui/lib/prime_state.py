@@ -108,6 +108,7 @@ class PrimeState:
     return self.prime_type
 
   def is_prime(self) -> bool:
+    print('method is_prime called', id(self))
     print(f'[instance {self._instance_id}] is_prime: {self.prime_type.value > PrimeType.NONE.value}')
     return bool(self.prime_type.value > PrimeType.NONE.value)
 
