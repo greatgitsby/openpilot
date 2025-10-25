@@ -70,6 +70,7 @@ class PrimeState:
     with self._lock:
       if prime_type != self.prime_type:
         self.prime_type = prime_type
+        print(f'set_type: {prime_type}')
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
 
@@ -100,6 +101,7 @@ class PrimeState:
 
   def is_prime(self) -> bool:
     with self._lock:
+      print(f'is_prime: {self.prime_type.value > PrimeType.NONE.value}')
       return bool(self.prime_type.value > PrimeType.NONE.value)
 
   def is_paired(self) -> bool:
