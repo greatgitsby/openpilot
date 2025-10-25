@@ -65,7 +65,9 @@ class PrimeState:
 
   def set_type(self, prime_type: PrimeType) -> None:
     with self._lock:
+      print('setting prime type to', prime_type, 'currently is', self.prime_type)
       if prime_type != self.prime_type:
+        print('updating prime type')
         self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
