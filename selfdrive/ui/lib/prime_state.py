@@ -77,12 +77,11 @@ class PrimeState:
       cloudlog.error(f"Failed to fetch prime status: {e}")
 
   def set_type(self, prime_type: PrimeType) -> None:
-    with self._lock:
-      if prime_type != self.prime_type:
-        self.prime_type = prime_type
-        self._params.put("PrimeType", int(prime_type))
-        cloudlog.info(f"Prime type updated to {prime_type}")
-        print(f'[instance {self._instance_id}] set_type: {prime_type}')
+    if prime_type != self.prime_type:
+      self.prime_type = prime_type
+      self._params.put("PrimeType", int(prime_type))
+      cloudlog.info(f"Prime type updated to {prime_type}")
+      print(f'[instance {self._instance_id}] set_type: {prime_type}')
 
   def _worker_thread(self) -> None:
     while self._running:
@@ -109,6 +108,7 @@ class PrimeState:
     return self.prime_type
 
   def is_prime(self) -> bool:
+    print(f'[instance {self._instance_id}] is_prime: {self.prime_type.value > PrimeType.NONE.value}')
     return bool(self.prime_type.value > PrimeType.NONE.value)
 
   def is_paired(self) -> bool:
