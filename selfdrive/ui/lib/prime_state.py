@@ -81,6 +81,7 @@ class PrimeState:
         self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
+        print(f'[instance {self._instance_id}] set_type: {prime_type}')
 
   def _worker_thread(self) -> None:
     while self._running:
