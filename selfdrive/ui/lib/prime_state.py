@@ -97,7 +97,7 @@ class PrimeState:
 
   def get_type(self) -> PrimeType:
     with self._lock:
-      return PrimeType(int(self._params.get("PrimeType")))
+      return self.prime_type
 
   def is_prime(self) -> bool:
     return bool(self.get_type().value > PrimeType.NONE.value)
