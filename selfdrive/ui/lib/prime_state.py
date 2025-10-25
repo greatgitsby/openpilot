@@ -72,11 +72,11 @@ class PrimeState:
       print(f'set_type called: {prime_type}, current: {self.prime_type}')
       if prime_type != self.prime_type:
         print(f'updating prime type from {self.prime_type} to {prime_type}')
-        self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
       else:
         print('prime type unchanged')
+      self.prime_type = prime_type
 
   def _worker_thread(self) -> None:
     while self._running:
