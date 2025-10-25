@@ -25,7 +25,7 @@ class PrimeType(IntEnum):
 class PrimeState:
   FETCH_INTERVAL = 1.0  # seconds between API calls
   API_TIMEOUT = 10.0  # seconds for API requests
-  SLEEP_INTERVAL = 0.5  # seconds to sleep between checks in the worker thread
+  SLEEP_INTERVAL = 0.1  # seconds to sleep between checks in the worker thread
 
   def __init__(self):
     self._params = Params()
@@ -40,7 +40,6 @@ class PrimeState:
     prime_type_str = os.getenv("PRIME_TYPE") or self._params.get("PrimeType")
     try:
       if prime_type_str is not None:
-        print(f'[instance {self._instance_id}] loading initial state', prime_type_str)
         return PrimeType(int(prime_type_str))
     except (ValueError, TypeError):
       pass
@@ -61,12 +60,10 @@ class PrimeState:
         data = response.json()
         is_paired = data.get("is_paired", False)
         prime_type = data.get("prime_type", 0)
-        print(f'[instance {self._instance_id}] _fetch_prime_status: API returned is_paired={is_paired}, prime_type={prime_type}')
         self.set_type(PrimeType(prime_type) if is_paired else PrimeType.UNPAIRED)
       else:
-        print(f'[instance {self._instance_id}] _fetch_prime_status: API returned status {response.status_code}')
+        cloudlog.error(f"Failed to fetch prime status: {response.status_code}")
     except Exception as e:
-      print(f'[instance {self._instance_id}] _fetch_prime_status: API call failed: {e}')
       cloudlog.error(f"Failed to fetch prime status: {e}")
 
   def set_type(self, prime_type: PrimeType) -> None:
