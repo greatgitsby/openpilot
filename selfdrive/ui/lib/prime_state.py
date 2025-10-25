@@ -48,29 +48,35 @@ class PrimeState:
   def _fetch_prime_status(self) -> None:
     dongle_id = self._params.get("DongleId")
     if not dongle_id or dongle_id == UNREGISTERED_DONGLE_ID:
+      print('_fetch_prime_status: no dongle_id, skipping')
       return
 
     try:
+      print('_fetch_prime_status: making API call')
       identity_token = get_token(dongle_id)
       response = api_get(f"v1.1/devices/{dongle_id}", timeout=self.API_TIMEOUT, access_token=identity_token)
       if response.status_code == 200:
         data = response.json()
         is_paired = data.get("is_paired", False)
         prime_type = data.get("prime_type", 0)
+        print(f'_fetch_prime_status: API returned is_paired={is_paired}, prime_type={prime_type}')
         self.set_type(PrimeType(prime_type) if is_paired else PrimeType.UNPAIRED)
+      else:
+        print(f'_fetch_prime_status: API returned status {response.status_code}')
     except Exception as e:
+      print(f'_fetch_prime_status: API call failed: {e}')
       cloudlog.error(f"Failed to fetch prime status: {e}")
-      import traceback
-      traceback.print_exc()
 
   def set_type(self, prime_type: PrimeType) -> None:
     with self._lock:
-      print('setting prime type to', prime_type, 'currently is', self.prime_type)
+      print(f'set_type called: {prime_type}, current: {self.prime_type}')
       if prime_type != self.prime_type:
-        print('updating prime type')
+        print(f'updating prime type from {self.prime_type} to {prime_type}')
         self.prime_type = prime_type
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
+      else:
+        print('prime type unchanged')
 
   def _worker_thread(self) -> None:
     while self._running:
@@ -85,7 +91,7 @@ class PrimeState:
     if self._thread and self._thread.is_alive():
       return
     self._running = True
-    self._thread = threading.Thread(target=self._worker_thread, daemon=True)
+    self._thread = threading.Thread(target=self._worker_thread, args=(self), daemon=True)
     self._thread.start()
 
   def stop(self) -> None:
@@ -98,8 +104,8 @@ class PrimeState:
       return self.prime_type
 
   def is_prime(self) -> bool:
-    print(self.prime_type)
     with self._lock:
+      print(f'prime_type: {self.prime_type}')
       print('is prime', bool(self.prime_type > PrimeType.NONE))
       return bool(self.prime_type > PrimeType.NONE)
 
