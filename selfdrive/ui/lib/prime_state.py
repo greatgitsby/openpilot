@@ -23,7 +23,7 @@ class PrimeType(IntEnum):
 
 
 class PrimeState:
-  FETCH_INTERVAL = 5.0  # seconds between API calls
+  FETCH_INTERVAL = 1.0  # seconds between API calls
   API_TIMEOUT = 10.0  # seconds for API requests
   SLEEP_INTERVAL = 0.5  # seconds to sleep between checks in the worker thread
   _instance_count = 0
