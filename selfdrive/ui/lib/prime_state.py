@@ -1,5 +1,6 @@
 from enum import IntEnum
 import os
+import multiprocessing
 import threading
 import time
 
@@ -28,8 +29,10 @@ class PrimeState:
 
   def __init__(self):
     self._params = Params()
-    self._lock = threading.Lock()
-    self.prime_type: PrimeType = self._load_initial_state()
+    self._manager = None
+    self._lock = None
+    self.prime_type = None
+    self._initial_prime_type = self._load_initial_state()
 
     self._running = False
     self._thread = None
@@ -43,6 +46,13 @@ class PrimeState:
     except (ValueError, TypeError):
       pass
     return PrimeType.UNKNOWN
+
+  def _ensure_manager(self) -> None:
+    """Lazily initialize the multiprocessing Manager and shared objects."""
+    if self._manager is None:
+      self._manager = multiprocessing.Manager()
+      self._lock = self._manager.Lock()
+      self.prime_type = self._manager.Value('i', int(self._initial_prime_type))
 
   def _fetch_prime_status(self) -> None:
     dongle_id = self._params.get("DongleId")
@@ -61,9 +71,10 @@ class PrimeState:
       cloudlog.error(f"Failed to fetch prime status: {e}")
 
   def set_type(self, prime_type: PrimeType) -> None:
+    self._ensure_manager()
     with self._lock:
-      if prime_type != self.prime_type:
-        self.prime_type = prime_type
+      if prime_type != PrimeType(self.prime_type.value):
+        self.prime_type.value = int(prime_type)
         self._params.put("PrimeType", int(prime_type))
         cloudlog.info(f"Prime type updated to {prime_type}")
 
@@ -85,20 +96,24 @@ class PrimeState:
 
   def stop(self) -> None:
     self._running = False
-    if self._thread and self._thread.is_alive():
+    if hasattr(self, '_thread') and self._thread and self._thread.is_alive():
       self._thread.join(timeout=1.0)
+    self._manager.shutdown()
 
   def get_type(self) -> PrimeType:
+    self._ensure_manager()
     with self._lock:
-      return self.prime_type
+      return PrimeType(self.prime_type.value)
 
   def is_prime(self) -> bool:
+    self._ensure_manager()
     with self._lock:
-      return bool(self.prime_type > PrimeType.NONE)
+      return bool(PrimeType(self.prime_type.value) > PrimeType.NONE)
 
   def is_paired(self) -> bool:
+    self._ensure_manager()
     with self._lock:
-      return self.prime_type > PrimeType.UNPAIRED
+      return PrimeType(self.prime_type.value) > PrimeType.UNPAIRED
 
   def __del__(self):
     self.stop()
