@@ -28,10 +28,17 @@ class DriverCameraDialog(CameraView):
   def __init__(self, on_close: Callable[[], None] | None = None):
     super().__init__("camerad", STREAM_OPTIONS[DEFAULT_STREAM_INDEX])
     self.driver_state_renderer = DriverStateRenderer()
-    self.on_close = on_close
 
-    # TODO: this can grow unbounded, should be given some thought
-    device.add_interactive_timeout_callback(self.close)
+    def _close():
+      self.close()
+
+      ui_state.params.put_bool("IsDriverViewEnabled", False)
+      gui_app.set_modal_overlay(None)
+
+      if on_close:
+        on_close()
+
+    device.add_interactive_timeout_callback(_close, clear_on_timeout=True)
     ui_state.params.put_bool("IsDriverViewEnabled", True)
 
     self.current_stream_index = DEFAULT_STREAM_INDEX
@@ -64,15 +71,6 @@ class DriverCameraDialog(CameraView):
     self.current_stream_index = (self.current_stream_index + 1) % len(STREAM_OPTIONS)
     self.stream_switch_button.set_text(self._get_stream_button_text())
     self.switch_stream(STREAM_OPTIONS[self.current_stream_index])
-
-  def close(self):
-    super().close()
-
-    ui_state.params.put_bool("IsDriverViewEnabled", False)
-    gui_app.set_modal_overlay(None)
-
-    if self.on_close:
-      self.on_close()
 
   def _render(self, rect):
     super()._render(rect)

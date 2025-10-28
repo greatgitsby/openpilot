@@ -180,7 +180,7 @@ class Device:
   def __init__(self):
     self._ignition = False
     self._interaction_time: float = -1
-    self._interactive_timeout_callbacks: list[Callable] = []
+    self._interactive_timeout_callbacks: list[tuple[Callable, bool]] = []
     self._prev_timed_out = False
     self._awake = False
 
@@ -194,8 +194,17 @@ class Device:
       timeout = 10 if ui_state.ignition else 30
     self._interaction_time = time.monotonic() + timeout
 
-  def add_interactive_timeout_callback(self, callback: Callable):
-    self._interactive_timeout_callbacks.append(callback)
+  def add_interactive_timeout_callback(self, callback: Callable, clear_on_timeout: bool = False):
+    print(f"adding interactive timeout callback {callback}")
+    print(f"callbacks: {len(self._interactive_timeout_callbacks)}")
+    self._interactive_timeout_callbacks.append((callback, clear_on_timeout) )
+
+  def remove_interactive_timeout_callback(self, callback: Callable):
+    self._interactive_timeout_callbacks = [
+      (c, clear_on_timeout) for c, clear_on_timeout in self._interactive_timeout_callbacks if c != callback
+    ]
+    print(f"removed interactive timeout callback {callback}")
+    print(f"callbacks: {len(self._interactive_timeout_callbacks)}")
 
   def update(self):
     # do initial reset
@@ -243,7 +252,9 @@ class Device:
 
     interaction_timeout = time.monotonic() > self._interaction_time
     if interaction_timeout and not self._prev_timed_out:
-      for callback in self._interactive_timeout_callbacks:
+      for callback, clear_on_timeout in self._interactive_timeout_callbacks:
+        if clear_on_timeout:
+          self._interactive_timeout_callbacks.remove((callback, clear_on_timeout))
         callback()
     self._prev_timed_out = interaction_timeout
 
