@@ -11,6 +11,7 @@ import math
 import time
 import random
 import pyray as rl
+from openpilot.common.realtime import config_realtime_process
 from openpilot.system.ui.lib.application import FontWeight, GuiApplication
 
 
@@ -270,6 +271,7 @@ class ScreenTearingStressTest:
 
 def main():
     """Entry point for the stress test application."""
+    config_realtime_process([1, 2], 1)
     print("Starting Screen Tearing Stress Test...")
     print("This application is designed to exacerbate screen tearing.")
     print("Use the controls to adjust patterns and intensity.")
