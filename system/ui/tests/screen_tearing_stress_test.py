@@ -9,10 +9,10 @@ It uses the lib/application as the base for window creation and rendering.
 
 import math
 import time
-import random
 import pyray as rl
 from openpilot.common.realtime import config_realtime_process
 from openpilot.system.ui.lib.application import FontWeight, GuiApplication
+from openpilot.system.ui.lib.text_measure import measure_text_cached
 
 
 class ScreenTearingStressTest:
@@ -28,26 +28,22 @@ class ScreenTearingStressTest:
         self.speed_multiplier = 1.0
         self.line_thickness = 2
         self.color_cycle_speed = 1.0
-        self.enable_vsync = False
-        self.show_fps = True
         self.show_instructions = True
 
         # Animation state
         self.animation_time = 0.0
         self.color_offset = 0.0
         self.last_pattern_change = 0.0
-        self.pattern_duration = 5.0  # 5 seconds per pattern
+        self.pattern_duration = 30.0  # 30 seconds per pattern
 
-        # Test patterns data
+        # Test patterns data (order: horizontal, text scrolling, then others)
         self.patterns = [
             "Horizontal Lines",
+            "Text Scrolling",
             "Vertical Lines",
             "Diagonal Lines",
-            "Checkerboard",
-            "Random Pixels",
-            "Sine Wave",
             "Rotating Squares",
-            "Pulsing Circles"
+            "Pulsing Circles",
         ]
 
     def init_window(self):
@@ -115,45 +111,7 @@ class ScreenTearingStressTest:
                 color = self.get_tearing_color(x1, y1, time)
                 rl.draw_line(x1, y1, x2, y2, color)
 
-    def draw_checkerboard(self, time: float):
-        """Draw a moving checkerboard pattern."""
-        square_size = 20
-        offset_x = int(time * self.speed_multiplier * 30) % (square_size * 2)
-        offset_y = int(time * self.speed_multiplier * 30) % (square_size * 2)
 
-        for x in range(0, self.app.width + square_size, square_size):
-            for y in range(0, self.app.height + square_size, square_size):
-                check_x = (x + offset_x) // square_size
-                check_y = (y + offset_y) // square_size
-
-                if (check_x + check_y) % 2 == 0:
-                    color = self.get_tearing_color(x, y, time)
-                    rl.draw_rectangle(x, y, square_size, square_size, color)
-
-    def draw_random_pixels(self, time: float):
-        """Draw random pixels that change rapidly."""
-        random.seed(int(time * 100))
-        for _ in range(10000):  # High pixel count for stress
-            x = random.randint(0, self.app.width - 1)
-            y = random.randint(0, self.app.height - 1)
-            color = self.get_tearing_color(x, y, time)
-            rl.draw_pixel(x, y, color)
-
-    def draw_sine_wave(self, time: float):
-        """Draw animated sine waves."""
-        for x in range(0, self.app.width, 2):
-            # Multiple sine waves with different frequencies
-            y1 = int(self.app.height // 2 + 100 * math.sin(x * 0.01 + time * self.speed_multiplier))
-            y2 = int(self.app.height // 2 + 80 * math.sin(x * 0.015 + time * self.speed_multiplier * 1.2))
-            y3 = int(self.app.height // 2 + 60 * math.sin(x * 0.02 + time * self.speed_multiplier * 0.8))
-
-            color1 = self.get_tearing_color(x, y1, time)
-            color2 = self.get_tearing_color(x, y2, time)
-            color3 = self.get_tearing_color(x, y3, time)
-
-            rl.draw_pixel(x, y1, color1)
-            rl.draw_pixel(x, y2, color2)
-            rl.draw_pixel(x, y3, color3)
 
     def draw_rotating_squares(self, time: float):
         """Draw rotating squares."""
@@ -161,8 +119,9 @@ class ScreenTearingStressTest:
         center_y = self.app.height // 2
         rotation = time * self.speed_multiplier * 2
 
-        for i in range(10):
-            size = 50 + i * 20
+        for i in range(8):
+            # Much larger squares - start at 100, increase by 50 each time
+            size = 100 + i * 50
             angle = rotation + i * 0.5
 
             # Calculate rotated square corners
@@ -194,23 +153,72 @@ class ScreenTearingStressTest:
             color = self.get_tearing_color(x, y, time + i)
             rl.draw_circle(x, y, radius, color)
 
+    def draw_text_scrolling(self, time: float):
+        """Draw text-heavy vertical scrolling pattern."""
+        font = self.app.font(FontWeight.NORMAL)
+
+        # Wider test text for better tearing visibility
+        text_lines = [
+            "SCREEN TEARING TEST - VERTICAL SCROLLING TEXT PATTERN",
+            "This comprehensive pattern tests text rendering performance and helps identify tearing artifacts",
+            "Watch carefully for horizontal lines or stuttering as the text scrolls vertically across the screen",
+            "Text rendering is often a significant source of screen tearing issues in real applications",
+            "This test uses multiple font sizes and colors to stress the text rendering system effectively",
+            "The rapid scrolling motion makes it very easy to spot any tearing or frame drops that occur",
+            "Each line has different properties to test various text rendering scenarios and edge cases",
+            "High-frequency text updates can cause significant tearing on some systems and hardware",
+            "This is particularly common in automotive displays and embedded systems with limited resources",
+            "The scrolling text pattern is specifically designed to maximize the visibility of tearing artifacts",
+            "Continue scrolling to test different aspects of the text rendering pipeline and performance",
+            "Multiple lines help identify whether tearing affects individual characters, entire lines, or blocks",
+            "This comprehensive test should reveal any text-related tearing issues in production applications",
+            "The wide text content provides better coverage and makes horizontal tearing more apparent",
+            "Centered text positioning ensures the pattern is clearly visible across the entire screen width",
+            "Vertical scrolling motion is ideal for detecting horizontal tearing lines in text rendering",
+            "Text-based tearing is often more noticeable than geometric pattern tearing in real UIs",
+            "This pattern specifically targets the text rendering subsystem for comprehensive testing",
+            "The continuous scrolling motion creates a consistent visual flow for tearing detection",
+            "Wide text lines provide maximum horizontal coverage to catch any tearing artifacts",
+            "This test pattern is optimized for identifying text-related screen tearing issues"
+        ]
+
+        # Calculate scroll offset - looped for infinite seamless scrolling
+        scroll_speed = 2.0 * self.speed_multiplier
+        line_spacing = 50
+        total_block_height = len(text_lines) * line_spacing
+        offset = int(time * scroll_speed * (line_spacing)) % total_block_height
+
+        # Draw two repetitions to cover the screen fully
+        for rep in range(2):
+            base_y = -offset + rep * total_block_height
+            for i, line in enumerate(text_lines):
+                y = base_y + i * line_spacing
+
+                # Only draw if text is visible on screen
+                if y > -line_spacing and y < self.app.height + line_spacing:
+                    font_size = 28
+                    text_color = rl.Color(255, 255, 255, 255)  # Bright white
+
+                    # Center the text horizontally
+                    text_width = measure_text_cached(font, line, font_size).x
+                    x_center = (self.app.width - text_width) // 2
+
+                    # Draw the text line centered
+                    rl.draw_text_ex(font, line, rl.Vector2(x_center, y), font_size, 0, text_color)
+
     def draw_test_pattern(self, time: float):
         """Draw the current test pattern."""
         if self.test_mode == 0:
             self.draw_horizontal_lines(time)
         elif self.test_mode == 1:
-            self.draw_vertical_lines(time)
+            self.draw_text_scrolling(time)
         elif self.test_mode == 2:
-            self.draw_diagonal_lines(time)
+            self.draw_vertical_lines(time)
         elif self.test_mode == 3:
-            self.draw_checkerboard(time)
+            self.draw_diagonal_lines(time)
         elif self.test_mode == 4:
-            self.draw_random_pixels(time)
-        elif self.test_mode == 5:
-            self.draw_sine_wave(time)
-        elif self.test_mode == 6:
             self.draw_rotating_squares(time)
-        elif self.test_mode == 7:
+        elif self.test_mode == 5:
             self.draw_pulsing_circles(time)
 
     def draw_ui_overlay(self):
