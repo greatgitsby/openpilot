@@ -17,6 +17,7 @@ def main():
     gui_app.init_window("Screen Tearing Stress Test")
     #shredder = FirehoseLayout()
     shredder = SettingsLayout()
+    shredder.set_enabled(False)
     rect = rl.Rectangle(0, 0, gui_app.width, gui_app.height)
     inset = rl.Rectangle(rect.x + 50, rect.y + 50, rect.width - 100, rect.height - 100)
     shredder.set_rect(inset)
