@@ -15,7 +15,8 @@ def main():
     wifi.add_callbacks(networks_updated=lambda networks: print(networks))
 
     gui_app.init_window("Screen Tearing Stress Test")
-    shredder = FirehoseLayout()
+    #shredder = FirehoseLayout()
+    shredder = SettingsLayout()
     rect = rl.Rectangle(0, 0, gui_app.width, gui_app.height)
     inset = rl.Rectangle(rect.x + 50, rect.y + 50, rect.width - 100, rect.height - 100)
     shredder.set_rect(inset)

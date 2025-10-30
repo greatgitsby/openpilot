@@ -49,19 +49,19 @@ class PanelInfo:
 class SettingsLayout(Widget):
   def __init__(self):
     super().__init__()
-    self._current_panel = PanelType.DEVICE
+    self._current_panel = PanelType.FIREHOSE
 
     # Panel configuration
     wifi_manager = WifiManager()
     wifi_manager.set_active(False)
 
     self._panels = {
-      PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout()),
-      PanelType.NETWORK: PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager)),
-      PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
-      PanelType.SOFTWARE: PanelInfo(tr_noop("Software"), SoftwareLayout()),
+      # PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout()),
+      # PanelType.NETWORK: PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager)),
+      # PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
+      # PanelType.SOFTWARE: PanelInfo(tr_noop("Software"), SoftwareLayout()),
       PanelType.FIREHOSE: PanelInfo(tr_noop("Firehose"), FirehoseLayout()),
-      PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayout()),
+      # PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayout()),
     }
 
     self._font_medium = gui_app.font(FontWeight.MEDIUM)
