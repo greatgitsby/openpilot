@@ -147,16 +147,16 @@ class SettingsLayout(Widget):
 
   def _handle_mouse_release(self, mouse_pos: MousePos) -> bool:
     # Check close button
-    if rl.check_collision_point_rec(mouse_pos, self._close_btn_rect):
-      if self._close_callback:
-        self._close_callback()
-      return True
+    # if rl.check_collision_point_rec(mouse_pos, self._close_btn_rect):
+    #   if self._close_callback:
+    #     self._close_callback()
+    #   return True
 
-    # Check navigation buttons
-    for panel_type, panel_info in self._panels.items():
-      if rl.check_collision_point_rec(mouse_pos, panel_info.button_rect):
-        self.set_current_panel(panel_type)
-        return True
+    # # Check navigation buttons
+    # for panel_type, panel_info in self._panels.items():
+    #   if rl.check_collision_point_rec(mouse_pos, panel_info.button_rect):
+    #     self.set_current_panel(panel_type)
+    #     return True
 
     return False
 
