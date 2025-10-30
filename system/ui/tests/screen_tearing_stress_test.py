@@ -18,7 +18,7 @@ def main():
     for should_render in gui_app.render():
         if should_render:
             rl.draw_rectangle_rounded(
-                inset, 0.04, 30, rl.Color(41, 41, 41, 255)
+                inset, 0.04, 30, rl.Color(24, 24, 24, 255)
             )
             shredder.render()
 
