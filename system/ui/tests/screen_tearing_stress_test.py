@@ -6,6 +6,7 @@ from openpilot.common.realtime import config_realtime_process
 from openpilot.system.ui.lib.application import gui_app, DEFAULT_TEXT_COLOR, DEFAULT_TEXT_SIZE
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.scroller import Scroller
+from openpilot.selfdrive.ui.layouts.settings.firehose import FirehoseLayout
 
 class Line(Widget):
     def __init__(self, text: str, font_size: int = DEFAULT_TEXT_SIZE):
@@ -42,7 +43,7 @@ def main():
     config_realtime_process([1, 2], 1)
 
     gui_app.init_window("Screen Tearing Stress Test")
-    shredder = Shredder()
+    shredder = FirehoseLayout()
     shredder.set_rect(rl.Rectangle(0, 0, gui_app.width, gui_app.height))
 
     for should_render in gui_app.render():
