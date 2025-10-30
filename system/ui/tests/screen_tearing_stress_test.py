@@ -18,14 +18,15 @@ def main():
     #shredder = FirehoseLayout()
     shredder = SettingsLayout()
     rect = rl.Rectangle(0, 0, gui_app.width, gui_app.height)
-    inset = rl.Rectangle(rect.x + 50, rect.y + 50, rect.width - 100, rect.height - 100)
-    shredder.set_rect(inset)
+    # inset = rl.Rectangle(rect.x + 50, rect.y + 50, rect.width - 100, rect.height - 100)
+    panel_rect = rl.Rectangle(rect.x + 500, rect.y, rect.width - 500, rect.height)
+    shredder.set_rect(panel_rect)
 
     for should_render in gui_app.render():
         if should_render:
-            rl.draw_rectangle_rounded(
-                inset, 0.04, 30, rl.Color(24, 24, 24, 255)
-            )
+            # rl.draw_rectangle_rounded(
+            #     inset, 0.04, 30, rl.Color(24, 24, 24, 255)
+            # )
             shredder.render()
 
     gui_app.close()

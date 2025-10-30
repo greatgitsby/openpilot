@@ -80,7 +80,6 @@ class SettingsLayout(Widget):
 
     # Draw components
     # self._draw_sidebar(sidebar_rect)
-    # self._draw_current_panel(panel_rect)
     self._draw_current_panel(rect)
 
   def _draw_sidebar(self, rect: rl.Rectangle):
