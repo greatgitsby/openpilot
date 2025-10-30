@@ -65,7 +65,7 @@ class SettingsLayout(Widget):
     }
 
     self._font_medium = gui_app.font(FontWeight.MEDIUM)
-    self._close_icon = gui_app.texture("icons/close2.png", CLOSE_ICON_SIZE, CLOSE_ICON_SIZE)
+    # self._close_icon = gui_app.texture("icons/close2.png", CLOSE_ICON_SIZE, CLOSE_ICON_SIZE)
 
     # Callbacks
     self._close_callback: Callable | None = None

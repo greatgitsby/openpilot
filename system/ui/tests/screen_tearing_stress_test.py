@@ -10,11 +10,16 @@ def main():
     config_realtime_process([1, 2], 1)
 
     gui_app.init_window("Screen Tearing Stress Test")
-    shredder = SettingsLayout()
-    shredder.set_rect(rl.Rectangle(0, 0, gui_app.width, gui_app.height))
+    shredder = FirehoseLayout()
+    rect = rl.Rectangle(0, 0, gui_app.width, gui_app.height)
+    inset = rl.Rectangle(rect.x + 50, rect.y + 50, rect.width - 100, rect.height - 100)
+    shredder.set_rect(inset)
 
     for should_render in gui_app.render():
         if should_render:
+            rl.draw_rectangle_rounded(
+                inset, 0.04, 30, rl.Color(41, 41, 41, 255)
+            )
             shredder.render()
 
     gui_app.close()
