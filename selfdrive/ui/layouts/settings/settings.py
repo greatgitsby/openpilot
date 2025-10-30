@@ -76,11 +76,12 @@ class SettingsLayout(Widget):
   def _render(self, rect: rl.Rectangle):
     # Calculate layout
     # sidebar_rect = rl.Rectangle(rect.x, rect.y, SIDEBAR_WIDTH, rect.height)
-    panel_rect = rl.Rectangle(rect.x + SIDEBAR_WIDTH, rect.y, rect.width - SIDEBAR_WIDTH, rect.height)
+    # panel_rect = rl.Rectangle(rect.x + SIDEBAR_WIDTH, rect.y, rect.width - SIDEBAR_WIDTH, rect.height)
 
     # Draw components
     # self._draw_sidebar(sidebar_rect)
-    self._draw_current_panel(panel_rect)
+    # self._draw_current_panel(panel_rect)
+    self._draw_current_panel(rect)
 
   def _draw_sidebar(self, rect: rl.Rectangle):
     rl.draw_rectangle_rec(rect, SIDEBAR_COLOR)
