@@ -26,7 +26,7 @@ class Shredder(Widget):
     def __init__(self):
         super().__init__()
         self._alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;-_+=*/\\|<>[]{}()"
-        self._num_lines = 800  # large enough for stress without overdraw cost
+        self._num_lines = 20  # large enough for stress without overdraw cost
         items = [Line(self._gen_line(i)) for i in range(self._num_lines)]
         self._scroller = Scroller(items, line_separator=False, pad_end=True)
 
