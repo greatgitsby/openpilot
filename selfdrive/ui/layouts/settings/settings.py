@@ -69,19 +69,22 @@ class SettingsLayout(Widget):
 
     # Callbacks
     self._close_callback: Callable | None = None
+    self._sidebar_rect = None
+    self._panel_rect = None
 
   def set_callbacks(self, on_close: Callable):
     self._close_callback = on_close
 
   def _render(self, rect: rl.Rectangle):
     # Calculate layout
-    # sidebar_rect = rl.Rectangle(rect.x, rect.y, SIDEBAR_WIDTH, rect.height)
-    # panel_rect = rl.Rectangle(rect.x + SIDEBAR_WIDTH, rect.y, rect.width - SIDEBAR_WIDTH, rect.height)
+    if self._sidebar_rect is None:
+      self._sidebar_rect = rl.Rectangle(rect.x, rect.y, SIDEBAR_WIDTH, rect.height)
+    if self._panel_rect is None:
+      self._panel_rect = rl.Rectangle(rect.x + SIDEBAR_WIDTH, rect.y, rect.width - SIDEBAR_WIDTH, rect.height)
 
     # Draw components
-    # self._draw_sidebar(sidebar_rect)
-    # self._draw_current_panel(panel_rect)
-    self._draw_current_panel(rect)
+    self._draw_sidebar(self._sidebar_rect)
+    self._draw_current_panel(self._panel_rect)
 
   def _draw_sidebar(self, rect: rl.Rectangle):
     rl.draw_rectangle_rec(rect, SIDEBAR_COLOR)
