@@ -43,12 +43,12 @@ rm -rf $INSTALL_H_DIR
 mkdir -p $INSTALL_H_DIR
 
 if [ ! -d raylib_repo ]; then
-  git clone -b master --no-tags https://github.com/commaai/raylib.git raylib_repo
+  git clone -b master --no-tags https://github.com/greatgitsby/raylib.git raylib_repo
 fi
 
 cd raylib_repo
 
-COMMIT=${1:-3425bd9d1fb292ede4d80f97a1f4f258f614cffc}
+COMMIT=${1:-7b5e038e1e3ded9b2bfdb2efe1745bed461c24b7}
 git fetch origin $COMMIT
 git reset --hard $COMMIT
 git clean -xdff .
@@ -61,30 +61,26 @@ echo "raylib development files installed/updated in $INSTALL_H_DIR"
 
 # this commit needs to be in line with raylib
 set -x
-RAYGUI_COMMIT="76b36b597edb70ffaf96f046076adc20d67e7827"
+RAYGUI_COMMIT="3aea427fc80dfc7e9039c25890dae49e2005c804"
 curl -fsSLo $INSTALL_H_DIR/raygui.h https://raw.githubusercontent.com/raysan5/raygui/$RAYGUI_COMMIT/src/raygui.h
 
-if [ -f /TICI ]; then
+# Building the python bindings
+cd $DIR
 
-  # Building the python bindings
-  cd $DIR
-
-  if [ ! -d raylib_python_repo ]; then
-    git clone -b master --no-tags https://github.com/commaai/raylib-python-cffi.git raylib_python_repo
-  fi
-
-  cd raylib_python_repo
-
-  BINDINGS_COMMIT="a0710d95af3c12fd7f4b639589be9a13dad93cb6"
-  git fetch origin $BINDINGS_COMMIT
-  git reset --hard $BINDINGS_COMMIT
-  git clean -xdff .
-
-  RAYLIB_PLATFORM=$RAYLIB_PLATFORM RAYLIB_INCLUDE_PATH=$INSTALL_H_DIR RAYLIB_LIB_PATH=$INSTALL_DIR python setup.py bdist_wheel
-  cd $DIR
-
-  rm -rf wheel
-  mkdir wheel
-  cp raylib_python_repo/dist/*.whl wheel/
-
+if [ ! -d raylib_python_repo ]; then
+  git clone -b master --no-tags https://github.com/commaai/raylib-python-cffi.git raylib_python_repo
 fi
+
+cd raylib_python_repo
+
+BINDINGS_COMMIT="a0710d95af3c12fd7f4b639589be9a13dad93cb6"
+git fetch origin $BINDINGS_COMMIT
+git reset --hard $BINDINGS_COMMIT
+git clean -xdff .
+
+RAYLIB_PLATFORM=$RAYLIB_PLATFORM RAYLIB_INCLUDE_PATH=$INSTALL_H_DIR RAYLIB_LIB_PATH=$INSTALL_DIR python setup.py bdist_wheel
+cd $DIR
+
+rm -rf wheel
+mkdir wheel
+cp raylib_python_repo/dist/*.whl wheel/
