@@ -1,4 +1,6 @@
 import pyray as rl
+import numpy as np
+import cv2
 from cereal import log, messaging
 from msgq.visionipc import VisionStreamType
 from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
@@ -18,6 +20,7 @@ EVENT_TO_INT = EventName.schema.enumerants
 class DriverCameraDialog(NavWidget):
   def __init__(self, no_escape=False):
     super().__init__()
+    self._qr_detector = cv2.QRCodeDetector()
     self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_DRIVER)
     self._original_calc_frame_matrix = self._camera_view._calc_frame_matrix
     self._camera_view._calc_frame_matrix = self._calc_driver_frame_matrix
@@ -85,6 +88,16 @@ class DriverCameraDialog(NavWidget):
       return -1
 
     self._draw_face_detection(rect)
+
+    # detect QR
+    frame = self._camera_view.frame
+    client = self._camera_view.client
+    imgff = np.frombuffer(frame.data, dtype=np.uint8).reshape((len(frame.data) // client.stride, client.stride))
+    rgb = cv2.cvtColor(imgff[:frame.height * 3 // 2, :frame.width], cv2.COLOR_YUV2RGB_NV12)
+    res = self._qr_detector.detectAndDecode(rgb)
+    if res and res[0] is not None:
+      gui_label(rect, res[0], font_size=54, font_weight=FontWeight.BOLD,
+                alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
 
     # Position dmoji on opposite side from driver
     dm_state = ui_state.sm["driverMonitoringState"]
