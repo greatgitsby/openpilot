@@ -89,12 +89,12 @@ class DriverCameraDialog(NavWidget):
 
     self._draw_face_detection(rect)
 
-    # detect QR
+    # detect QR (using Y plane only for faster processing)
     frame = self._camera_view.frame
     client = self._camera_view.client
     imgff = np.frombuffer(frame.data, dtype=np.uint8).reshape((len(frame.data) // client.stride, client.stride))
-    rgb = cv2.cvtColor(imgff[:frame.height * 3 // 2, :frame.width], cv2.COLOR_YUV2RGB_NV12)
-    res = self._qr_detector.detectAndDecode(rgb)
+    y_plane = imgff[:frame.height, :frame.width]
+    res = self._qr_detector.detectAndDecode(y_plane)
     if res and res[0] is not None:
       gui_label(rect, res[0], font_size=54, font_weight=FontWeight.BOLD,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
