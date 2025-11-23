@@ -1,6 +1,7 @@
 import pyray as rl
 import numpy as np
 import cv2
+import threading
 from cereal import log, messaging
 from msgq.visionipc import VisionStreamType
 from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
@@ -42,6 +43,9 @@ class DriverCameraDialog(NavWidget):
     self._glasses_size = 171
 
     self._load_eye_textures()
+    self._qr_frame_counter = 0
+    self._qr_result = None
+    self._qr_thread = None
 
   def stop_dmonitoringmodeld(self):
     ui_state.params.put_bool("IsDriverViewEnabled", False)
@@ -89,14 +93,19 @@ class DriverCameraDialog(NavWidget):
 
     self._draw_face_detection(rect)
 
-    # detect QR (using Y plane only for faster processing)
-    frame = self._camera_view.frame
-    client = self._camera_view.client
-    imgff = np.frombuffer(frame.data, dtype=np.uint8).reshape((len(frame.data) // client.stride, client.stride))
-    y_plane = imgff[:frame.height, :frame.width]
-    res = self._qr_detector.detectAndDecode(y_plane)
-    if res and res[0] is not None:
-      gui_label(rect, res[0], font_size=54, font_weight=FontWeight.BOLD,
+    self._qr_frame_counter += 1
+    if self._qr_frame_counter % 30 == 0 and (self._qr_thread is None or not self._qr_thread.is_alive()):
+      frame = self._camera_view.frame
+      client = self._camera_view.client
+      imgff = np.frombuffer(frame.data, dtype=np.uint8).reshape((len(frame.data) // client.stride, client.stride))
+      y_plane = imgff[:frame.height, :frame.width].copy()
+      def _detect_qr():
+        res = self._qr_detector.detectAndDecode(y_plane)
+        self._qr_result = res[0] if res and res[0] else None
+      self._qr_thread = threading.Thread(target=_detect_qr, daemon=True)
+      self._qr_thread.start()
+    if self._qr_result:
+      gui_label(rect, self._qr_result, font_size=54, font_weight=FontWeight.BOLD,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
 
     # Position dmoji on opposite side from driver
