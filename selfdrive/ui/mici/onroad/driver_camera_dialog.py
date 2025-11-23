@@ -22,7 +22,7 @@ class DriverCameraDialog(NavWidget):
   def __init__(self, no_escape=False):
     super().__init__()
     self._qr_detector = cv2.QRCodeDetector()
-    self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_DRIVER)
+    self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_ROAD)
     self._original_calc_frame_matrix = self._camera_view._calc_frame_matrix
     self._camera_view._calc_frame_matrix = self._calc_driver_frame_matrix
     self.driver_state_renderer = DriverStateRenderer(lines=True)
