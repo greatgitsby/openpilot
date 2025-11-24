@@ -284,6 +284,28 @@ def build_enable_profile_request(iccid: str) -> bytes:
     return bytes([0xBF, 0x31, 0x80 | len(length_bytes)]) + length_bytes + bf31_content
 
 
+def build_disable_profile_request(iccid: str) -> bytes:
+  """Build DER-encoded DisableProfile request with ICCID.
+
+  Structure: BF32 (DisableProfile) containing 5A (ICCID) with TBCD-encoded ICCID value.
+  """
+  iccid_tbcd = string_to_tbcd(iccid)
+  # Build TLV structure: BF32 [length] A0 [length] 5A [iccid_length] [iccid_bytes]
+  # BF32 = DisableProfile tag
+  # A0 = Context tag for DisableProfileRequest
+  # 5A = ICCID tag
+  a0_content = bytearray([0x5A, len(iccid_tbcd)]) + iccid_tbcd
+  bf32_content = bytearray([0xA0, len(a0_content)]) + a0_content
+  bf32_length = len(bf32_content)
+  # Handle length encoding: if length > 127, use multi-byte encoding
+  if bf32_length <= 127:
+    return bytes([0xBF, 0x32, bf32_length]) + bf32_content
+  else:
+    # Multi-byte length encoding (not expected for ICCID, but handle it)
+    length_bytes = bf32_length.to_bytes((bf32_length.bit_length() + 7) // 8, "big")
+    return bytes([0xBF, 0x32, 0x80 | len(length_bytes)]) + length_bytes + bf32_content
+
+
 def enable_profile(client: AtClient, iccid: str) -> None:
   """Enable an eSIM profile by ICCID.
 
@@ -314,6 +336,35 @@ def enable_profile(client: AtClient, iccid: str) -> None:
       raise RuntimeError(f"EnableProfile failed with status 0x{status:02X}")
 
 
+def disable_profile(client: AtClient, iccid: str) -> None:
+  """Disable an eSIM profile by ICCID.
+
+  Sends the ES10c DisableProfile command and verifies the response.
+  """
+  der_request = build_disable_profile_request(iccid)
+  payload = es10x_command(client, der_request)
+
+  # Parse response: expect BF32 (DisableProfileResponse) with status
+  # Response structure: BF32 [length] A0 [length] [status]
+  # Status 0x00 = success, other values = error
+  root = find_tag(payload, 0xBF32)
+  if root is None:
+    raise RuntimeError("Missing DisableProfileResponse (0xBF32)")
+
+  # Find the status in the response
+  # The response should contain status information
+  a0_content = find_tag(root, 0xA0)
+  if a0_content is not None and len(a0_content) > 0:
+    status = a0_content[0]
+    if status != 0x00:
+      raise RuntimeError(f"DisableProfile failed with status 0x{status:02X}")
+  # If no A0 tag, check if root itself indicates success (empty or status byte)
+  elif len(root) > 0:
+    status = root[0] if root else 0xFF
+    if status != 0x00:
+      raise RuntimeError(f"DisableProfile failed with status 0x{status:02X}")
+
+
 def build_cli() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(description="Minimal AT-only lpac profile list and enable clone")
   parser.add_argument("--device", default=DEFAULT_DEVICE, help=f"Serial device path (default: {DEFAULT_DEVICE})")
@@ -323,6 +374,7 @@ def build_cli() -> argparse.ArgumentParser:
   )
   parser.add_argument("--verbose", action="store_true", help="Print raw AT traffic to stderr")
   parser.add_argument("--enable", type=str, help="Enable profile by ICCID")
+  parser.add_argument("--disable", type=str, help="Disable profile by ICCID")
   return parser
 
 
@@ -335,6 +387,11 @@ def main() -> None:
     if args.enable:
       enable_profile(client, args.enable)
       # List profiles after enabling to show updated state
+      profiles = request_profile_info(client)
+      print(json.dumps(profiles, indent=2))
+    elif args.disable:
+      disable_profile(client, args.disable)
+      # List profiles after disabling to show updated state
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
     else:
