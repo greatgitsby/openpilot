@@ -257,9 +257,7 @@ def decode_profiles(blob: bytes) -> list[dict]:
 
 
 def request_profile_info(client: AtClient) -> list[dict]:
-  der_request = bytes.fromhex("BF2D00")
-  payload = es10x_command(client, der_request)
-  return decode_profiles(payload)
+  return decode_profiles(es10x_command(client, bytes.fromhex("BF2D00")))
 
 
 def build_enable_profile_request(iccid: str) -> bytes:
