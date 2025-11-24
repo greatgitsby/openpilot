@@ -24,6 +24,13 @@ ES10X_MSS = 120
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
+EVENT_TYPE_LABELS = {
+  0x01: "ProfileInstallationResult",
+  0x02: "ProfileDeletionResult",
+  0x03: "ProfileEnableResult",
+  0x04: "ProfileDisableResult",
+  0x05: "ProfileMetadataChanged",
+}
 
 
 class AtClient:
@@ -427,6 +434,115 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f'SetNickname failed with status 0x{code:02X}')
 
 
+def build_event_download_request() -> bytes:
+  """Build DER-encoded EventDownload request.
+
+  Structure: BF3E [length] A0 [length]
+  BF3E = EventDownload tag
+  A0 = Context tag for EventDownloadRequest
+  According to SGP.22 specification, EventDownload retrieves notifications stored on the eUICC.
+  """
+  # Build TLV structure: BF3E [length] A0 [length]
+  # A0 is the context tag for EventDownloadRequest (empty request to get all events)
+  a0_content = bytearray()
+  bf3e_content = bytearray([0xA0, len(a0_content)]) + a0_content
+  bf3e_length = len(bf3e_content)
+  # Handle length encoding: if length > 127, use multi-byte encoding
+  if bf3e_length <= 127:
+    return bytes([0xBF, 0x3E, bf3e_length]) + bf3e_content
+  else:
+    # Multi-byte length encoding
+    length_bytes = bf3e_length.to_bytes((bf3e_length.bit_length() + 7) // 8, "big")
+    return bytes([0xBF, 0x3E, 0x80 | len(length_bytes)]) + length_bytes + bf3e_content
+
+
+def decode_event_list(data: bytes) -> list[dict]:
+  """Parse EventList TLV structure from EventDownloadResponse.
+
+  Response structure: BF3E [length] A0 [length] [EventList]
+  EventList contains individual events (tag 0xE4 or similar).
+  """
+  root = find_tag(data, 0xBF3E)
+  if root is None:
+    raise RuntimeError("Missing EventDownloadResponse (0xBF3E)")
+
+  # Find EventList (tag A0)
+  event_list_data = find_tag(root, 0xA0)
+  if event_list_data is None:
+    # No events available
+    return []
+
+  events: list[dict] = []
+  # Parse individual events from the list
+  # Events are typically tagged with 0xE4 or similar
+  for tag, value in iter_tlv(event_list_data):
+    if tag == 0xE4:  # Event tag
+      event = decode_event(value)
+      if event:
+        events.append(event)
+    else:
+      # Some implementations may have events directly in the list
+      event = decode_event(value)
+      if event:
+        events.append(event)
+
+  return events
+
+
+def decode_event(event_data: bytes) -> Optional[dict]:
+  """Parse individual event TLV structure.
+
+  Extracts event type, ICCID, status codes, and error information.
+  Event structure contains:
+  - 0x86: EventType (byte)
+  - 0x5A: ICCID (TBCD) - optional
+  - 0x80: Status/Result code - optional
+  - Other event-specific data
+  """
+  event: dict = {
+    "eventType": None,
+    "eventTypeLabel": None,
+    "iccid": None,
+    "status": None,
+    "error": None,
+  }
+
+  for tag, value in iter_tlv(event_data):
+    if tag == 0x86:  # EventType
+      if len(value) > 0:
+        event_type = value[0]
+        event["eventType"] = event_type
+        event["eventTypeLabel"] = EVENT_TYPE_LABELS.get(event_type, f"Unknown(0x{event_type:02X})")
+    elif tag == 0x5A:  # ICCID
+      event["iccid"] = tbcd_to_string(value)
+    elif tag == 0x80:  # Status/Result code
+      if len(value) > 0:
+        event["status"] = value[0]
+        # Status 0x00 typically means success
+        if value[0] != 0x00:
+          event["error"] = f"Status code: 0x{value[0]:02X}"
+    elif tag == 0x81:  # Additional error information
+      event["error"] = value.hex().upper()
+
+  # Only return event if it has at least an event type
+  if event["eventType"] is not None:
+    return event
+  return None
+
+
+def event_download(client: AtClient) -> list[dict]:
+  """Retrieve notifications stored on the eUICC via EventDownload command.
+
+  Sends the ES10x EventDownload command and parses the response.
+  Returns a list of event dictionaries.
+  """
+  der_request = build_event_download_request()
+  payload = es10x_command(client, der_request)
+
+  # Parse and return the event list
+  return decode_event_list(payload)
+
+
 def build_cli() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(description="Minimal AT-only lpac profile list and enable clone")
   parser.add_argument("--device", default=DEFAULT_DEVICE, help=f"Serial device path (default: {DEFAULT_DEVICE})")
@@ -438,6 +554,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--enable", type=str, help="Enable profile by ICCID")
   parser.add_argument("--disable", type=str, help="Disable profile by ICCID")
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"), help="Set profile nickname by ICCID")
+  parser.add_argument("--list-notifications", action="store_true", help="Retrieve and display notifications from eUICC")
   return parser
 
 
@@ -463,6 +580,9 @@ def main() -> None:
       # List profiles after setting nickname to show updated state
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
+    elif args.list_notifications:
+      events = event_download(client)
+      print(json.dumps(events, indent=2))
     else:
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
