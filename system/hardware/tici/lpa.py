@@ -384,11 +384,10 @@ def build_set_nickname_request(iccid: str, nickname: str) -> bytes:
   # A0 = Context tag for SetNicknameRequest
   # 5A = ICCID tag
   # 90 = ProfileNickname tag
-  a0_content = bytearray([0x5A, len(iccid_tbcd)]) + iccid_tbcd
-  a0_content.extend([0x90, len(nickname_bytes)])
-  a0_content.extend(nickname_bytes)
+  bf29_content = bytearray([0x5A, len(iccid_tbcd)]) + iccid_tbcd
+  bf29_content.extend([0x90, len(nickname_bytes)])
+  bf29_content.extend(nickname_bytes)
 
-  bf29_content = bytearray([0xA0, len(a0_content)]) + a0_content
   bf29_length = len(bf29_content)
 
   # Handle length encoding: if length > 127, use multi-byte encoding
