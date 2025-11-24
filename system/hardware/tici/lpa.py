@@ -598,7 +598,7 @@ def decode_notification_metadata_list(data: bytes) -> list[dict]:
 
   Response structure: BF28 [length] A0 [length] [NotificationMetadataList or listNotificationsResultError]
   NotificationMetadataList is a SEQUENCE OF NotificationMetadata.
-  According to SGP.22 specification.
+  According to SGP.22 and lpac reference implementation.
   """
   root = find_tag(data, 0xBF28)
   if root is None:
@@ -682,16 +682,16 @@ def es10b_get_euicc_challenge_r(client: AtClient) -> str:
 
   Returns base64-encoded challenge response.
   """
-  # Build request: BF2E (GetEUICCChallenge) with empty A0 context
-  # According to SGP.22, the request format is: BF2E [length] A0 [length] [empty]
-  a0_empty = bytes([0xA0, 0x00])  # A0 with length 0
-  request = bytes([0xBF, 0x2E, len(a0_empty)]) + a0_empty
+  # Build request: BF26 (GetEUICCChallenge) with empty A0 context tag
+  # Format: BF26 [length] A0 [length] [empty]
+  a0_content = bytes([])
+  a0_tlv = build_tlv(0xA0, a0_content)
+  request = build_tlv(0xBF26, a0_tlv)
   response = es10x_command(client, request)
-  # Response is BF2E containing the challenge data
-  challenge_data = find_tag(response, 0xBF2E)
+  # Response is BF26 containing the challenge data
+  challenge_data = find_tag(response, 0xBF26)
   if challenge_data is None:
-    # Response might be the challenge data directly
-    challenge_data = response
+    raise RuntimeError("Missing GetEUICCChallengeResponse (0xBF26)")
   # The challenge data is returned as-is, encode to base64 for HTTP transmission
   return base64.b64encode(challenge_data).decode("ascii")
 
@@ -701,16 +701,16 @@ def es10b_get_euicc_info_r(client: AtClient) -> str:
 
   Returns base64-encoded eUICC info response.
   """
-  # Build request: BF27 (GetEUICCInfo) with empty A0 context
-  # According to SGP.22, the request format is: BF27 [length] A0 [length] [empty]
-  a0_empty = bytes([0xA0, 0x00])  # A0 with length 0
-  request = bytes([0xBF, 0x27, len(a0_empty)]) + a0_empty
+  # Build request: BF27 (GetEUICCInfo) with empty A0 context tag
+  # Format: BF27 [length] A0 [length] [empty]
+  a0_content = bytes([])
+  a0_tlv = build_tlv(0xA0, a0_content)
+  request = build_tlv(0xBF27, a0_tlv)
   response = es10x_command(client, request)
   # Response is BF27 containing eUICC info
   info_data = find_tag(response, 0xBF27)
   if info_data is None:
-    # Response might be the info data directly
-    info_data = response
+    raise RuntimeError("Missing GetEUICCInfoResponse (0xBF27)")
   # The info data is returned as-is, encode to base64 for HTTP transmission
   return base64.b64encode(info_data).decode("ascii")
 
@@ -805,52 +805,36 @@ def es10b_prepare_download_r(
   smdp_signature2 = base64.b64decode(smdp_signature2_b64)
   smdp_certificate = base64.b64decode(smdp_certificate_b64)
 
-  # Parse smdpSigned2 to extract transactionId and ccRequiredFlag
-  # smdpSigned2 is a SEQUENCE (tag 0x30)
-  smdp_signed2_seq = find_tag(smdp_signed2, 0x30)
-  if smdp_signed2_seq is None:
-    smdp_signed2_seq = smdp_signed2  # Might already be the sequence
-
-  transaction_id = find_tag(smdp_signed2_seq, 0x80)
-  cc_required_flag = find_tag(smdp_signed2_seq, 0x01)
-
   # Verify SM-DP+ signature
   public_key = parse_certificate(smdp_certificate)
   if not verify_rsa_signature(smdp_signed2, smdp_signature2, public_key):
     raise RuntimeError("SM-DP+ signature verification failed")
 
   # Build PrepareDownloadRequest
-  # BF21 [length] [smdpSigned2] [smdpSignature2] [optional hashCC] [smdpCertificate]
-  # Structure: BF21 with child nodes, not wrapped in A0
+  # BF37 [length] A0 [length] [smdpSigned2] [smdpSignature2] [smdpCertificate] [optional hashCC]
   request_content = bytearray()
   request_content.extend(build_tlv(0x30, smdp_signed2))  # smdpSigned2 as SEQUENCE
   request_content.extend(build_tlv(0x5F37, smdp_signature2))  # smdpSignature2
+  request_content.extend(build_tlv(0x70, smdp_certificate))  # smdpCertificate
 
-  # Add confirmation code hash if required
-  if cc_required_flag and extract_integer(cc_required_flag) != 0:
-    if not confirmation_code:
-      raise RuntimeError("Confirmation code required but not provided")
-    # Hash confirmation code: SHA256(SHA256(confirmationCode) + transactionId)
-    # First hash the confirmation code
+  # Add confirmation code hash if provided
+  if confirmation_code:
+    # Hash confirmation code with SHA256
     hash_obj = SHA256.new(confirmation_code.encode("utf-8"))
     hash_cc = hash_obj.digest()
-    # Then hash the first hash concatenated with transaction ID
-    hash_obj2 = SHA256.new(hash_cc + (transaction_id if transaction_id else b""))
-    hash_cc = hash_obj2.digest()
-    request_content.extend(build_tlv(0x04, hash_cc))  # hashCC (OCTET STRING tag 0x04)
+    request_content.extend(build_tlv(0x81, hash_cc))  # hashCC
 
-  request_content.extend(build_tlv(0x30, smdp_certificate))  # smdpCertificate as SEQUENCE
-
-  # Build request: BF21 with direct children (no A0 wrapper)
-  request = build_tlv(0xBF21, request_content)
+  a0_content = bytes(request_content)
+  bf37_content = build_tlv(0xA0, a0_content)
+  request = build_tlv(0xBF37, bf37_content)
 
   # Send command
   response = es10x_command(client, request)
 
-  # Parse response: BF21 containing PrepareDownloadResponse
-  response_data = find_tag(response, 0xBF21)
+  # Parse response: BF37 containing PrepareDownloadResponse
+  response_data = find_tag(response, 0xBF37)
   if response_data is None:
-    raise RuntimeError("Missing PrepareDownloadResponse (0xBF21)")
+    raise RuntimeError("Missing PrepareDownloadResponse (0xBF37)")
 
   return base64.b64encode(response_data).decode("ascii")
 
@@ -868,102 +852,49 @@ def es10b_load_bound_profile_package_r(client: AtClient, bound_profile_package_b
     "errorReason": ES10B_ERROR_REASON_UNDEFINED,
   }
 
-  # Parse BoundProfilePackage (tag BF37)
-  bpp_data = find_tag(bpp, 0xBF37)
-  if bpp_data is None:
-    raise RuntimeError("Missing BoundProfilePackage (0xBF37)")
+  # Build LoadBoundProfilePackage request
+  # BF38 [length] A0 [length] [boundProfilePackage]
+  a0_content = build_tlv(0xA0, bpp)
+  request = build_tlv(0xBF38, a0_content)
 
-  # Process segments from BoundProfilePackage
-  # Process A0, A1, A2, A3 segments:
-  # A0: initialiseSecureChannel
-  # A1: configureISDP
-  # A2: storeMetadata / storeMetadata2
-  # A3: replaceSessionKeys / loadProfileElements
+  # Send the entire bound profile package to eUICC
+  try:
+    response = es10x_command(client, request)
+  except RuntimeError as e:
+    error_msg = str(e)
+    result["errorReason"] = ES10B_ERROR_REASON_INSTALL_FAILED_DUE_TO_UNKNOWN_ERROR
+    raise RuntimeError(f"Profile installation failed: {error_msg}") from e
 
-  last_response = None
+  # Parse ProfileInstallationResult from response
+  # Response structure: BF37 [length] A0 [length] [ProfileInstallationResultData]
+  result_data = find_tag(response, 0xBF37)
+  if result_data:
+    # Parse ProfileInstallationResultData
+    result_content = find_tag(result_data, 0xA0)
+    if result_content:
+      # Check for finalResult (A2 tag)
+      final_result = find_tag(result_content, 0xA2)
+      if final_result:
+        # Parse finalResult - A0 = SuccessResult, A1 = ErrorResult
+        success = find_tag(final_result, 0xA0)
+        if success is not None:
+          # Success
+          result["bppCommandId"] = 0
+          result["errorReason"] = 0
+          return result
 
-  # Process A0 segments (initialiseSecureChannel)
-  a0_segments = []
-  for tag, value in iter_tlv(bpp_data):
-    if tag == 0xA0:
-      a0_segments.append(value)
-
-  # Process A1 segments (configureISDP)
-  a1_segments = []
-  for tag, value in iter_tlv(bpp_data):
-    if tag == 0xA1:
-      a1_segments.append(value)
-
-  # Process A2 segments (storeMetadata)
-  a2_segments = []
-  for tag, value in iter_tlv(bpp_data):
-    if tag == 0xA2:
-      a2_segments.append(value)
-
-  # Process A3 segments (replaceSessionKeys / loadProfileElements)
-  a3_segments = []
-  for tag, value in iter_tlv(bpp_data):
-    if tag == 0xA3:
-      a3_segments.append(value)
-
-  # Send segments in order: A0, A1, A2, A3
-  for segment in a0_segments + a1_segments + a2_segments + a3_segments:
-    try:
-      last_response = es10x_command(client, segment)
-    except RuntimeError as e:
-      error_msg = str(e)
-      result["errorReason"] = ES10B_ERROR_REASON_INSTALL_FAILED_DUE_TO_UNKNOWN_ERROR
-      raise RuntimeError(f"Profile installation failed: {error_msg}") from e
-
-  # Parse ProfileInstallationResult from last response
-  # Response structure: BF37 -> BF27 -> BF2F -> A2 (finalResult)
-  if last_response:
-    result_data = find_tag(last_response, 0xBF37)
-    if result_data:
-      # ProfileInstallationResultData (BF27)
-      result_content = find_tag(result_data, 0xBF27)
-      if result_content:
-        # NotificationMetadata (BF2F) - optional
-        notification_metadata = find_tag(result_content, 0xBF2F)
-        if notification_metadata:
-          seq_number = find_tag(notification_metadata, 0x80)
-          if seq_number:
-            # Store sequence number if needed
-            pass
-
-        # finalResult (A2)
-        final_result = find_tag(result_content, 0xA2)
-        if final_result:
-          # Parse finalResult - A0 = SuccessResult, A1 = ErrorResult
-          success = find_tag(final_result, 0xA0)
-          if success is not None:
-            # Success
-            result["bppCommandId"] = 0
-            result["errorReason"] = 0
-            return result
-
-          error_result = find_tag(final_result, 0xA1)
-          if error_result is not None:
-            # Parse error details
-            for tag, value in iter_tlv(error_result):
-              if tag == 0x80:  # bppCommandId
-                cmd_id = extract_integer(value)
-                if cmd_id in (
-                  ES10B_BPP_COMMAND_ID_INITIALISE_SECURE_CHANNEL,
-                  ES10B_BPP_COMMAND_ID_CONFIGURE_ISDP,
-                  ES10B_BPP_COMMAND_ID_STORE_METADATA,
-                  ES10B_BPP_COMMAND_ID_STORE_METADATA2,
-                  ES10B_BPP_COMMAND_ID_REPLACE_SESSION_KEYS,
-                  ES10B_BPP_COMMAND_ID_LOAD_PROFILE_ELEMENTS,
-                ):
-                  result["bppCommandId"] = cmd_id
-              elif tag == 0x81:  # errorReason
-                err_reason = extract_integer(value)
-                if err_reason in range(0x01, 0x11) or err_reason == ES10B_ERROR_REASON_UNDEFINED:
-                  result["errorReason"] = err_reason
-            raise RuntimeError(
-              f"Profile installation failed: commandId=0x{result['bppCommandId']:02X}, errorReason=0x{result['errorReason']:02X}"
-            )
+        error_result = find_tag(final_result, 0xA1)
+        if error_result is not None:
+          # Parse error details
+          bpp_command_id = find_tag(error_result, 0x80)
+          error_reason = find_tag(error_result, 0x81)
+          if bpp_command_id:
+            result["bppCommandId"] = extract_integer(bpp_command_id)
+          if error_reason:
+            result["errorReason"] = extract_integer(error_reason)
+          raise RuntimeError(
+            f"Profile installation failed: commandId=0x{result['bppCommandId']:02X}, errorReason=0x{result['errorReason']:02X}"
+          )
 
   # If we get here, assume success
   result["bppCommandId"] = 0
