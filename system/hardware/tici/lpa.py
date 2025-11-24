@@ -324,16 +324,8 @@ def enable_profile(client: AtClient, iccid: str) -> None:
 
   # Find the status in the response
   # The response should contain status information
-  a0_content = find_tag(root, 0xA0)
-  if a0_content is not None and len(a0_content) > 0:
-    status = a0_content[0]
-    if status != 0x80:
-      raise RuntimeError(f"EnableProfile failed with status 0x{status:02X}")
-  # If no A0 tag, check if root itself indicates success (empty or status byte)
-  elif len(root) > 0:
-    status = root[0] if root else 0xFF
-    if status != 0x80:
-      raise RuntimeError(f"EnableProfile failed with status 0x{status:02X}")
+  a0_content = find_tag(root, 0x80)
+  print("a0_content:", a0_content)
 
 
 def disable_profile(client: AtClient, iccid: str) -> None:
@@ -353,16 +345,8 @@ def disable_profile(client: AtClient, iccid: str) -> None:
 
   # Find the status in the response
   # The response should contain status information
-  a0_content = find_tag(root, 0xA0)
-  if a0_content is not None and len(a0_content) > 0:
-    status = a0_content[0]
-    if status != 0x80:
-      raise RuntimeError(f"DisableProfile failed with status 0x{status:02X}")
-  # If no A0 tag, check if root itself indicates success (empty or status byte)
-  elif len(root) > 0:
-    status = root[0] if root else 0xFF
-    if status != 0x80:
-      raise RuntimeError(f"DisableProfile failed with status 0x{status:02X}")
+  a0_content = find_tag(root, 0x80)
+  print("a0_content:", a0_content)
 
 
 def build_cli() -> argparse.ArgumentParser:
