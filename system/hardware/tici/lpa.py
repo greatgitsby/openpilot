@@ -461,37 +461,31 @@ def decode_notification_metadata_list(data: bytes) -> list[dict]:
   """Parse NotificationMetadataList TLV structure from ListNotificationResponse.
 
   Response structure: BF28 [length] A0 [length] [NotificationMetadataList or listNotificationsResultError]
-  NotificationMetadataList contains individual NotificationMetadata entries.
+  NotificationMetadataList is a SEQUENCE OF NotificationMetadata.
+  According to SGP.22 and lpac reference implementation.
   """
   root = find_tag(data, 0xBF28)
   if root is None:
     raise RuntimeError("Missing ListNotificationResponse (0xBF28)")
 
-  # Check for error first (tag 0x80)
+  # Check for error first (tag 0x80) - listNotificationsResultError
   error_data = find_tag(root, 0x80)
   if error_data is not None:
     error_code = error_data[0] if len(error_data) > 0 else 0
     raise RuntimeError(f"ListNotifications failed with error code: 0x{error_code:02X}")
 
   # Find NotificationMetadataList (tag A0)
+  # NotificationMetadataList is a SEQUENCE OF NotificationMetadata
   metadata_list_data = find_tag(root, 0xA0)
   if metadata_list_data is None:
     # No notifications available
     return []
 
   notifications: list[dict] = []
-  # Parse individual NotificationMetadata entries from the list
-  # NotificationMetadata entries are typically tagged with 0xE5 or similar
-  for tag, value in iter_tlv(metadata_list_data):
-    if tag == 0xE5:  # NotificationMetadata tag
-      notification = decode_notification_metadata(value)
-      if notification:
-        notifications.append(notification)
-    else:
-      # Some implementations may have notifications directly in the list
-      notification = decode_notification_metadata(value)
-      if notification:
-        notifications.append(notification)
+  for _, value in iter_tlv(metadata_list_data):
+    notification = decode_notification_metadata(value)
+    if notification:
+      notifications.append(notification)
 
   return notifications
 
