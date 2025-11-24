@@ -325,7 +325,10 @@ def enable_profile(client: AtClient, iccid: str) -> None:
   # Find the status in the response
   # The response should contain status information
   a0_content = find_tag(root, 0x80)
-  print("a0_content:", a0_content)
+  if a0_content is None:
+    raise RuntimeError('Missing status in EnableProfileResponse')
+  if a0_content[0] != 0x00:
+    raise RuntimeError(f'EnableProfile failed with status 0x{a0_content[0]:02X}')
 
 
 def disable_profile(client: AtClient, iccid: str) -> None:
@@ -346,7 +349,10 @@ def disable_profile(client: AtClient, iccid: str) -> None:
   # Find the status in the response
   # The response should contain status information
   a0_content = find_tag(root, 0x80)
-  print("a0_content:", a0_content)
+  if a0_content is None:
+    raise RuntimeError('Missing status in DisableProfileResponse')
+  if a0_content[0] != 0x00:
+    raise RuntimeError(f'DisableProfile failed with status 0x{a0_content[0]:02X}')
 
 
 def build_cli() -> argparse.ArgumentParser:
