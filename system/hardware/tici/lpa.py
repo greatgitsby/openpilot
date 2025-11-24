@@ -539,6 +539,22 @@ def list_notifications(client: AtClient, profile_management_operation: Optional[
   return decode_notification_metadata_list(payload)
 
 
+def parse_lpa_activation_code(activation_code: str) -> dict[str, str]:
+  """Parse LPA activation code: LPA:<version>$<smdp-address>$<activation-code>"""
+  if not activation_code.startswith("LPA:"):
+    raise ValueError("Invalid activation code format")
+  parts = activation_code[4:].split("$")
+  if len(parts) != 3:
+    raise ValueError("Invalid activation code format")
+  return parts[0], parts[1], parts[2]
+
+
+def download_profile(client: AtClient, activation_code: str) -> None:
+  """Download eSIM profile using LPA activation code."""
+  version, smdp_address, activation_code = parse_lpa_activation_code(activation_code)
+  print(f"Downloading profile from {smdp_address} with activation code {activation_code}, version {version}", file=sys.stderr)
+
+
 def build_cli() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(description="Minimal AT-only lpac profile list and enable clone")
   parser.add_argument("--device", default=DEFAULT_DEVICE, help=f"Serial device path (default: {DEFAULT_DEVICE})")
@@ -551,6 +567,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--disable", type=str, help="Disable profile by ICCID")
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"), help="Set profile nickname by ICCID")
   parser.add_argument("--list-notifications", action="store_true", help="Retrieve and display notifications from eUICC")
+  parser.add_argument("--download", type=str, metavar="CODE", help="Download profile (LPA:1$smdp.io$CODE)")
   return parser
 
 
@@ -579,6 +596,11 @@ def main() -> None:
     elif args.list_notifications:
       notifications = list_notifications(client)
       print(json.dumps(notifications, indent=2))
+    elif args.download:
+      download_profile(client, args.download)
+      # List profiles after downloading to show updated state
+      profiles = request_profile_info(client)
+      print(json.dumps(profiles, indent=2))
     else:
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
