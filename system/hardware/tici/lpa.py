@@ -17,7 +17,7 @@ except ImportError as exc:  # pragma: no cover - handled at runtime
 
 
 DEFAULT_DEVICE = "/dev/ttyUSB3"
-DEFAULT_BAUD = 115200
+DEFAULT_BAUD = 9600
 DEFAULT_TIMEOUT = 5.0
 ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 ES10X_MSS = 120
