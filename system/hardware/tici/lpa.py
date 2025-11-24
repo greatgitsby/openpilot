@@ -682,11 +682,8 @@ def es10b_get_euicc_challenge_r(client: AtClient) -> str:
 
   Returns base64-encoded challenge response.
   """
-  # Build request: BF26 (GetEUICCChallenge) with empty A0 context tag
-  # Format: BF26 [length] A0 [length] [empty]
-  a0_content = bytes([])
-  a0_tlv = build_tlv(0xA0, a0_content)
-  request = build_tlv(0xBF26, a0_tlv)
+  # Build request: BF26 (GetEUICCChallenge) with empty content
+  request = bytes([0xBF, 0x26, 0x00])
   response = es10x_command(client, request)
   # Response is BF26 containing the challenge data
   challenge_data = find_tag(response, 0xBF26)
@@ -701,11 +698,8 @@ def es10b_get_euicc_info_r(client: AtClient) -> str:
 
   Returns base64-encoded eUICC info response.
   """
-  # Build request: BF27 (GetEUICCInfo) with empty A0 context tag
-  # Format: BF27 [length] A0 [length] [empty]
-  a0_content = bytes([])
-  a0_tlv = build_tlv(0xA0, a0_content)
-  request = build_tlv(0xBF27, a0_tlv)
+  # Build request: BF27 (GetEUICCInfo) with empty content
+  request = bytes([0xBF, 0x27, 0x00])
   response = es10x_command(client, request)
   # Response is BF27 containing eUICC info
   info_data = find_tag(response, 0xBF27)
