@@ -682,10 +682,9 @@ def es10b_get_euicc_challenge_r(client: AtClient) -> str:
 
   Returns base64-encoded challenge response.
   """
-  # Build request: BF2E (GetEUICCChallenge) with empty A0 context
-  # According to SGP.22, the request format is: BF2E [length] A0 [length] [empty]
-  a0_empty = bytes([0xA0, 0x00])  # A0 with length 0
-  request = bytes([0xBF, 0x2E, len(a0_empty)]) + a0_empty
+  # Build request: BF2E (GetEUICCChallenge) with empty content
+  # Format: BF2E 00 (tag + length 0, similar to BF2D00 for GetProfilesInfo)
+  request = bytes([0xBF, 0x2E, 0x00])
   response = es10x_command(client, request)
   # Response is BF2E containing the challenge data
   challenge_data = find_tag(response, 0xBF2E)
@@ -701,10 +700,9 @@ def es10b_get_euicc_info_r(client: AtClient) -> str:
 
   Returns base64-encoded eUICC info response.
   """
-  # Build request: BF27 (GetEUICCInfo) with empty A0 context
-  # According to SGP.22, the request format is: BF27 [length] A0 [length] [empty]
-  a0_empty = bytes([0xA0, 0x00])  # A0 with length 0
-  request = bytes([0xBF, 0x27, len(a0_empty)]) + a0_empty
+  # Build request: BF27 (GetEUICCInfo) with empty content
+  # Format: BF27 00 (tag + length 0, similar to BF2D00 for GetProfilesInfo)
+  request = bytes([0xBF, 0x27, 0x00])
   response = es10x_command(client, request)
   # Response is BF27 containing eUICC info
   info_data = find_tag(response, 0xBF27)
