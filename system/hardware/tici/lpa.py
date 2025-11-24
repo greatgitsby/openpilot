@@ -24,13 +24,6 @@ ES10X_MSS = 120
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
-EVENT_TYPE_LABELS = {
-  0x01: "ProfileInstallationResult",
-  0x02: "ProfileDeletionResult",
-  0x03: "ProfileEnableResult",
-  0x04: "ProfileDisableResult",
-  0x05: "ProfileMetadataChanged",
-}
 
 
 class AtClient:
@@ -434,113 +427,122 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f'SetNickname failed with status 0x{code:02X}')
 
 
-def build_event_download_request() -> bytes:
-  """Build DER-encoded EventDownload request.
+def build_list_notifications_request(profile_management_operation: Optional[int] = None) -> bytes:
+  """Build DER-encoded ListNotifications request.
 
-  Structure: BF3E [length] A0 [length]
-  BF3E = EventDownload tag
-  A0 = Context tag for EventDownloadRequest
-  According to SGP.22 specification, EventDownload retrieves notifications stored on the eUICC.
+  Structure: BF28 [length] A0 [length] [optional profileManagementOperation]
+  BF28 = ListNotifications tag
+  A0 = Context tag for ListNotificationRequest
+  According to SGP.22 specification section 5.7.9, ListNotifications retrieves notifications stored on the eUICC.
+  If profileManagementOperation is omitted, all notifications are returned.
   """
-  # Build TLV structure: BF3E [length] A0 [length]
-  # A0 is the context tag for EventDownloadRequest (empty request to get all events)
+  # Build TLV structure: BF28 [length] A0 [length] [optional profileManagementOperation]
+  # A0 is the context tag for ListNotificationRequest
   a0_content = bytearray()
-  bf3e_content = bytearray([0xA0, len(a0_content)]) + a0_content
-  bf3e_length = len(bf3e_content)
+  if profile_management_operation is not None:
+    # Add profileManagementOperation field (tag 0x83, integer)
+    # Encode as integer (typically 1-4 bytes)
+    op_bytes = profile_management_operation.to_bytes((profile_management_operation.bit_length() + 7) // 8 or 1, "big")
+    a0_content.extend([0x83, len(op_bytes)])
+    a0_content.extend(op_bytes)
+
+  bf28_content = bytearray([0xA0, len(a0_content)]) + a0_content
+  bf28_length = len(bf28_content)
   # Handle length encoding: if length > 127, use multi-byte encoding
-  if bf3e_length <= 127:
-    return bytes([0xBF, 0x3E, bf3e_length]) + bf3e_content
+  if bf28_length <= 127:
+    return bytes([0xBF, 0x28, bf28_length]) + bf28_content
   else:
     # Multi-byte length encoding
-    length_bytes = bf3e_length.to_bytes((bf3e_length.bit_length() + 7) // 8, "big")
-    return bytes([0xBF, 0x3E, 0x80 | len(length_bytes)]) + length_bytes + bf3e_content
+    length_bytes = bf28_length.to_bytes((bf28_length.bit_length() + 7) // 8, "big")
+    return bytes([0xBF, 0x28, 0x80 | len(length_bytes)]) + length_bytes + bf28_content
 
 
-def decode_event_list(data: bytes) -> list[dict]:
-  """Parse EventList TLV structure from EventDownloadResponse.
+def decode_notification_metadata_list(data: bytes) -> list[dict]:
+  """Parse NotificationMetadataList TLV structure from ListNotificationResponse.
 
-  Response structure: BF3E [length] A0 [length] [EventList]
-  EventList contains individual events (tag 0xE4 or similar).
+  Response structure: BF28 [length] A0 [length] [NotificationMetadataList or listNotificationsResultError]
+  NotificationMetadataList contains individual NotificationMetadata entries.
   """
-  root = find_tag(data, 0xBF3E)
+  root = find_tag(data, 0xBF28)
   if root is None:
-    raise RuntimeError("Missing EventDownloadResponse (0xBF3E)")
+    raise RuntimeError("Missing ListNotificationResponse (0xBF28)")
 
-  # Find EventList (tag A0)
-  event_list_data = find_tag(root, 0xA0)
-  if event_list_data is None:
-    # No events available
+  # Check for error first (tag 0x80)
+  error_data = find_tag(root, 0x80)
+  if error_data is not None:
+    error_code = error_data[0] if len(error_data) > 0 else 0
+    raise RuntimeError(f"ListNotifications failed with error code: 0x{error_code:02X}")
+
+  # Find NotificationMetadataList (tag A0)
+  metadata_list_data = find_tag(root, 0xA0)
+  if metadata_list_data is None:
+    # No notifications available
     return []
 
-  events: list[dict] = []
-  # Parse individual events from the list
-  # Events are typically tagged with 0xE4 or similar
-  for tag, value in iter_tlv(event_list_data):
-    if tag == 0xE4:  # Event tag
-      event = decode_event(value)
-      if event:
-        events.append(event)
+  notifications: list[dict] = []
+  # Parse individual NotificationMetadata entries from the list
+  # NotificationMetadata entries are typically tagged with 0xE5 or similar
+  for tag, value in iter_tlv(metadata_list_data):
+    if tag == 0xE5:  # NotificationMetadata tag
+      notification = decode_notification_metadata(value)
+      if notification:
+        notifications.append(notification)
     else:
-      # Some implementations may have events directly in the list
-      event = decode_event(value)
-      if event:
-        events.append(event)
+      # Some implementations may have notifications directly in the list
+      notification = decode_notification_metadata(value)
+      if notification:
+        notifications.append(notification)
 
-  return events
+  return notifications
 
 
-def decode_event(event_data: bytes) -> Optional[dict]:
-  """Parse individual event TLV structure.
+def decode_notification_metadata(metadata_data: bytes) -> Optional[dict]:
+  """Parse individual NotificationMetadata TLV structure.
 
-  Extracts event type, ICCID, status codes, and error information.
-  Event structure contains:
-  - 0x86: EventType (byte)
+  Extracts sequence number, profile management operation, notification address, and ICCID.
+  NotificationMetadata structure contains:
+  - 0x82: seqNumber (integer) - required
+  - 0x83: profileManagementOperation (bitmask) - required
+  - 0x84: notificationAddress (UTF8String) - required
   - 0x5A: ICCID (TBCD) - optional
-  - 0x80: Status/Result code - optional
-  - Other event-specific data
   """
-  event: dict = {
-    "eventType": None,
-    "eventTypeLabel": None,
+  notification: dict = {
+    "seqNumber": None,
+    "profileManagementOperation": None,
+    "notificationAddress": None,
     "iccid": None,
-    "status": None,
-    "error": None,
   }
 
-  for tag, value in iter_tlv(event_data):
-    if tag == 0x86:  # EventType
+  for tag, value in iter_tlv(metadata_data):
+    if tag == 0x82:  # seqNumber
       if len(value) > 0:
-        event_type = value[0]
-        event["eventType"] = event_type
-        event["eventTypeLabel"] = EVENT_TYPE_LABELS.get(event_type, f"Unknown(0x{event_type:02X})")
-    elif tag == 0x5A:  # ICCID
-      event["iccid"] = tbcd_to_string(value)
-    elif tag == 0x80:  # Status/Result code
+        notification["seqNumber"] = int.from_bytes(value, "big")
+    elif tag == 0x83:  # profileManagementOperation
       if len(value) > 0:
-        event["status"] = value[0]
-        # Status 0x00 typically means success
-        if value[0] != 0x00:
-          event["error"] = f"Status code: 0x{value[0]:02X}"
-    elif tag == 0x81:  # Additional error information
-      event["error"] = value.hex().upper()
+        notification["profileManagementOperation"] = int.from_bytes(value, "big")
+    elif tag == 0x84:  # notificationAddress (UTF8String)
+      notification["notificationAddress"] = value.decode("utf-8", errors="ignore")
+    elif tag == 0x5A:  # ICCID (optional)
+      notification["iccid"] = tbcd_to_string(value)
 
-  # Only return event if it has at least an event type
-  if event["eventType"] is not None:
-    return event
+  # Only return notification if it has required fields
+  if notification["seqNumber"] is not None and notification["profileManagementOperation"] is not None and notification["notificationAddress"] is not None:
+    return notification
   return None
 
 
-def event_download(client: AtClient) -> list[dict]:
-  """Retrieve notifications stored on the eUICC via EventDownload command.
+def list_notifications(client: AtClient, profile_management_operation: Optional[int] = None) -> list[dict]:
+  """Retrieve notifications stored on the eUICC via ListNotifications command.
 
-  Sends the ES10x EventDownload command and parses the response.
-  Returns a list of event dictionaries.
+  Sends the ES10x ListNotifications command and parses the response.
+  Returns a list of notification metadata dictionaries.
+  According to SGP.22 specification section 5.7.9.
   """
-  der_request = build_event_download_request()
+  der_request = build_list_notifications_request(profile_management_operation)
   payload = es10x_command(client, der_request)
 
-  # Parse and return the event list
-  return decode_event_list(payload)
+  # Parse and return the notification metadata list
+  return decode_notification_metadata_list(payload)
 
 
 def build_cli() -> argparse.ArgumentParser:
@@ -581,8 +583,8 @@ def main() -> None:
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
     elif args.list_notifications:
-      events = event_download(client)
-      print(json.dumps(events, indent=2))
+      notifications = list_notifications(client)
+      print(json.dumps(notifications, indent=2))
     else:
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
