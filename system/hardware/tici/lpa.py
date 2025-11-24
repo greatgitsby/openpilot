@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 
 import argparse
 import base64
@@ -189,6 +188,26 @@ def tbcd_to_string(raw: bytes) -> str:
   return "".join(digits)
 
 
+def string_to_tbcd(s: str) -> bytes:
+  """Convert a string of digits to TBCD (Telephony Binary Coded Decimal) format.
+
+  TBCD encoding: each byte contains two digits, with the low nibble being the
+  first digit and the high nibble being the second digit. If the string has
+  an odd number of digits, the last byte's high nibble is set to 0xF (filler).
+  """
+  result = bytearray()
+  digits = [int(c) for c in s if c.isdigit()]
+  for i in range(0, len(digits), 2):
+    if i + 1 < len(digits):
+      # Two digits: low nibble = first digit, high nibble = second digit
+      byte_value = digits[i] | (digits[i + 1] << 4)
+    else:
+      # Odd number of digits: low nibble = last digit, high nibble = 0xF
+      byte_value = digits[i] | 0xF0
+    result.append(byte_value)
+  return bytes(result)
+
+
 def decode_profiles(blob: bytes) -> list[dict]:
   root = find_tag(blob, 0xBF2D)
   if root is None:
@@ -243,14 +262,67 @@ def request_profile_info(client: AtClient) -> list[dict]:
   return decode_profiles(payload)
 
 
+def build_enable_profile_request(iccid: str) -> bytes:
+  """Build DER-encoded EnableProfile request with ICCID.
+
+  Structure: BF31 (EnableProfile) containing 5A (ICCID) with TBCD-encoded ICCID value.
+  """
+  iccid_tbcd = string_to_tbcd(iccid)
+  # Build TLV structure: BF31 [length] A0 [length] 5A [iccid_length] [iccid_bytes]
+  # BF31 = EnableProfile tag
+  # A0 = Context tag for EnableProfileRequest
+  # 5A = ICCID tag
+  a0_content = bytearray([0x5A, len(iccid_tbcd)]) + iccid_tbcd
+  bf31_content = bytearray([0xA0, len(a0_content)]) + a0_content
+  bf31_length = len(bf31_content)
+  # Handle length encoding: if length > 127, use multi-byte encoding
+  if bf31_length <= 127:
+    return bytes([0xBF, 0x31, bf31_length]) + bf31_content
+  else:
+    # Multi-byte length encoding (not expected for ICCID, but handle it)
+    length_bytes = bf31_length.to_bytes((bf31_length.bit_length() + 7) // 8, "big")
+    return bytes([0xBF, 0x31, 0x80 | len(length_bytes)]) + length_bytes + bf31_content
+
+
+def enable_profile(client: AtClient, iccid: str) -> None:
+  """Enable an eSIM profile by ICCID.
+
+  Sends the ES10c EnableProfile command and verifies the response.
+  """
+  der_request = build_enable_profile_request(iccid)
+  payload = es10x_command(client, der_request)
+
+  # Parse response: expect BF31 (EnableProfileResponse) with status
+  # Response structure: BF31 [length] A0 [length] [status]
+  # Status 0x00 = success, other values = error
+  # According to the manual, response is BF310000 9000 for success
+  root = find_tag(payload, 0xBF31)
+  if root is None:
+    raise RuntimeError("Missing EnableProfileResponse (0xBF31)")
+
+  # Find the status in the response
+  # The response should contain status information
+  a0_content = find_tag(root, 0xA0)
+  if a0_content is not None and len(a0_content) > 0:
+    status = a0_content[0]
+    if status != 0x00:
+      raise RuntimeError(f"EnableProfile failed with status 0x{status:02X}")
+  # If no A0 tag, check if root itself indicates success (empty or status byte)
+  elif len(root) > 0:
+    status = root[0] if root else 0xFF
+    if status != 0x00:
+      raise RuntimeError(f"EnableProfile failed with status 0x{status:02X}")
+
+
 def build_cli() -> argparse.ArgumentParser:
-  parser = argparse.ArgumentParser(description="Minimal AT-only lpac profile list clone")
+  parser = argparse.ArgumentParser(description="Minimal AT-only lpac profile list and enable clone")
   parser.add_argument("--device", default=DEFAULT_DEVICE, help=f"Serial device path (default: {DEFAULT_DEVICE})")
   parser.add_argument("--baud", type=int, default=DEFAULT_BAUD, help=f"Serial baud rate (default: {DEFAULT_BAUD})")
   parser.add_argument(
     "--timeout", type=float, default=DEFAULT_TIMEOUT, help=f"Serial read timeout in seconds (default: {DEFAULT_TIMEOUT})"
   )
   parser.add_argument("--verbose", action="store_true", help="Print raw AT traffic to stderr")
+  parser.add_argument("--enable", type=str, help="Enable profile by ICCID")
   return parser
 
 
@@ -260,11 +332,16 @@ def main() -> None:
   try:
     client.ensure_capabilities()
     client.open_isdr()
-    profiles = request_profile_info(client)
+    if args.enable:
+      enable_profile(client, args.enable)
+      # List profiles after enabling to show updated state
+      profiles = request_profile_info(client)
+      print(json.dumps(profiles, indent=2))
+    else:
+      profiles = request_profile_info(client)
+      print(json.dumps(profiles, indent=2))
   finally:
     client.close()
-
-  print(json.dumps(profiles, indent=2))
 
 
 if __name__ == "__main__":
