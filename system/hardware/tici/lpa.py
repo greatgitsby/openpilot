@@ -327,12 +327,12 @@ def enable_profile(client: AtClient, iccid: str) -> None:
   a0_content = find_tag(root, 0xA0)
   if a0_content is not None and len(a0_content) > 0:
     status = a0_content[0]
-    if status != 0x00:
+    if status != 0x80:
       raise RuntimeError(f"EnableProfile failed with status 0x{status:02X}")
   # If no A0 tag, check if root itself indicates success (empty or status byte)
   elif len(root) > 0:
     status = root[0] if root else 0xFF
-    if status != 0x00:
+    if status != 0x80:
       raise RuntimeError(f"EnableProfile failed with status 0x{status:02X}")
 
 
