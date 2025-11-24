@@ -363,6 +363,71 @@ def disable_profile(client: AtClient, iccid: str) -> None:
     raise RuntimeError(f'DisableProfile failed with status 0x{code:02X}')
 
 
+def build_set_nickname_request(iccid: str, nickname: str) -> bytes:
+  """Build DER-encoded SetNickname request with ICCID and nickname.
+
+  Structure: BF29 (SetNickname) containing A0 (SetNicknameRequest) with:
+  - 5A (ICCID) with TBCD-encoded ICCID value
+  - 90 (ProfileNickname) with UTF-8 encoded nickname string
+
+  According to SGP.22 specification, nickname is UTF8String with size 0 to 64.
+  """
+  iccid_tbcd = string_to_tbcd(iccid)
+  nickname_bytes = nickname.encode("utf-8")
+
+  # Validate nickname length (0 to 64 bytes per SGP.22)
+  if len(nickname_bytes) > 64:
+    raise ValueError("Profile nickname must be 64 bytes or less (UTF-8 encoded)")
+
+  # Build TLV structure: BF29 [length] A0 [length] 5A [iccid_length] [iccid_bytes] 90 [nickname_length] [nickname_bytes]
+  # BF29 = SetNickname tag
+  # A0 = Context tag for SetNicknameRequest
+  # 5A = ICCID tag
+  # 90 = ProfileNickname tag
+  a0_content = bytearray([0x5A, len(iccid_tbcd)]) + iccid_tbcd
+  a0_content.extend([0x90, len(nickname_bytes)])
+  a0_content.extend(nickname_bytes)
+
+  bf29_content = bytearray([0xA0, len(a0_content)]) + a0_content
+  bf29_length = len(bf29_content)
+
+  # Handle length encoding: if length > 127, use multi-byte encoding
+  if bf29_length <= 127:
+    return bytes([0xBF, 0x29, bf29_length]) + bf29_content
+  else:
+    # Multi-byte length encoding
+    length_bytes = bf29_length.to_bytes((bf29_length.bit_length() + 7) // 8, "big")
+    return bytes([0xBF, 0x29, 0x80 | len(length_bytes)]) + length_bytes + bf29_content
+
+
+def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
+  """Set the nickname for an eSIM profile by ICCID.
+
+  Sends the ES10c SetNickname command and verifies the response.
+  According to SGP.22 specification section 5.7.21.
+  """
+  der_request = build_set_nickname_request(iccid, nickname)
+  payload = es10x_command(client, der_request)
+
+  # Parse response: expect BF29 (SetNicknameResponse) with status
+  # Response structure: BF29 [length] A0 [length] [status]
+  # Status 0x00 = success, other values = error
+  root = find_tag(payload, 0xBF29)
+  if root is None:
+    raise RuntimeError("Missing SetNicknameResponse (0xBF29)")
+
+  # Find the status in the response
+  # The response should contain status information
+  a0_content = find_tag(root, 0x80)
+  if a0_content is None:
+    raise RuntimeError('Missing status in SetNicknameResponse')
+  code = a0_content[0]
+  if code == 0x01:
+    raise RuntimeError(f'profile {iccid} not found')
+  elif code != 0x00:
+    raise RuntimeError(f'SetNickname failed with status 0x{code:02X}')
+
+
 def build_cli() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(description="Minimal AT-only lpac profile list and enable clone")
   parser.add_argument("--device", default=DEFAULT_DEVICE, help=f"Serial device path (default: {DEFAULT_DEVICE})")
@@ -373,6 +438,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--verbose", action="store_true", help="Print raw AT traffic to stderr")
   parser.add_argument("--enable", type=str, help="Enable profile by ICCID")
   parser.add_argument("--disable", type=str, help="Disable profile by ICCID")
+  parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"), help="Set profile nickname by ICCID")
   return parser
 
 
@@ -390,6 +456,12 @@ def main() -> None:
     elif args.disable:
       disable_profile(client, args.disable)
       # List profiles after disabling to show updated state
+      profiles = request_profile_info(client)
+      print(json.dumps(profiles, indent=2))
+    elif args.set_nickname:
+      iccid, nickname = args.set_nickname
+      set_profile_nickname(client, iccid, nickname)
+      # List profiles after setting nickname to show updated state
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
     else:
