@@ -16,18 +16,7 @@ except ImportError as exc:  # pragma: no cover - handled at runtime
   raise SystemExit(1) from exc
 
 
-WARNING_BANNER = (
-  "\n".join(
-    [
-      "WARNING: AT driver is for demo purposes only.",
-      'WARNING: AT driver strictly complies with "ETSI TS 127 007" specification.',
-      "WARNING: Some operations (e.g: download, delete, etc.), may fail due to insufficient response time.",
-    ]
-  )
-  + "\n"
-)
-
-DEFAULT_DEVICE = "/dev/ttyUSB0"
+DEFAULT_DEVICE = "/dev/ttyUSB3"
 DEFAULT_BAUD = 115200
 DEFAULT_TIMEOUT = 5.0
 ISDR_AID = "A0000005591010FFFFFFFF8900001000"
@@ -36,10 +25,6 @@ ES10X_MSS = 120
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
-
-
-def print_warning() -> None:
-  sys.stderr.write(WARNING_BANNER)
 
 
 class AtClient:
@@ -271,7 +256,6 @@ def build_cli() -> argparse.ArgumentParser:
 
 def main() -> None:
   args = build_cli().parse_args()
-  print_warning()
   client = AtClient(args.device, args.baud, args.timeout, args.verbose)
   try:
     client.ensure_capabilities()
@@ -280,15 +264,7 @@ def main() -> None:
   finally:
     client.close()
 
-  payload = {
-    "type": "lpa",
-    "payload": {
-      "code": 0,
-      "message": "success",
-      "data": profiles,
-    },
-  }
-  print(json.dumps(payload, indent=2))
+  print(json.dumps(profiles, indent=2))
 
 
 if __name__ == "__main__":
