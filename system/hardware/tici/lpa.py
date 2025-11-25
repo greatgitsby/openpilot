@@ -748,6 +748,10 @@ def es9p_authenticate_client_r(smdp_address: str, transaction_id: str, b64_authe
   headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
   payload = {"transactionId": transaction_id, "authenticateServerResponse": b64_authenticate_server_response}
 
+  print(url)
+  print(headers)
+  print(payload)
+
   resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
   resp.raise_for_status()
   data = resp.json()
