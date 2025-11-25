@@ -384,13 +384,20 @@ def hex_to_gsmbcd(hex_str: str) -> bytes:
 
 
 def encode_tlv(tag: int, value: bytes) -> bytes:
-  """Encode TLV with proper DER length encoding."""
+  """Encode TLV with proper DER length encoding. Handles both single and two-byte tags."""
   value_len = len(value)
+
+  # Handle two-byte tags (tags > 255, e.g., 0xBF2B, 0xBF30)
+  if tag > 255:
+    tag_bytes = bytes([(tag >> 8) & 0xFF, tag & 0xFF])
+  else:
+    tag_bytes = bytes([tag])
+
   if value_len <= 127:
-    return bytes([tag, value_len]) + value
+    return tag_bytes + bytes([value_len]) + value
   else:
     length_bytes = value_len.to_bytes((value_len.bit_length() + 7) // 8, "big")
-    return bytes([tag, 0x80 | len(length_bytes)]) + length_bytes + value
+    return tag_bytes + bytes([0x80 | len(length_bytes)]) + length_bytes + value
 
 
 def build_authenticate_server_request(
