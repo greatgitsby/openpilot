@@ -40,8 +40,6 @@ TAG_DISABLE_PROFILE = 0xBF32
 TAG_BPP = 0xBF36
 TAG_PROFILE_INSTALL_RESULT = 0xBF37
 TAG_AUTH_SERVER = 0xBF38
-TAG_EUICC_PACKAGE = 0xBF52
-
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
@@ -359,31 +357,6 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
 
 
-def set_profile_fallback(client: AtClient, iccid: str) -> None:
-  # setFallbackAttribute: [8] SEQUENCE {iccid} wrapped in BF52 (IpaEuiccDataRequest)
-  # 0xA8 = context tag [8] (0x80 | 0x20 | 0x08)
-  set_fallback_cmd = encode_tlv(0xA8, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-  response = es10x_command(client, encode_tlv(TAG_EUICC_PACKAGE, set_fallback_cmd))
-  root = find_tag(response, TAG_EUICC_PACKAGE)
-  if root is None:
-    if len(response) == 1:
-      status_code = response[0]
-    else:
-      raise RuntimeError("Invalid EuiccPackageResult")
-  else:
-    # Look for setFallbackAttributeResult [13] (0xAD)
-    for tag, value in iter_tlv(root):
-      if tag == 0xAD and len(value) > 0:
-        status_code = int.from_bytes(value, "big")
-        break
-    else:
-      status_code = root[0] if len(root) > 0 else 127
-  if status_code == 0:
-    return
-  errors = {1: "not found", 2: "not allowed", 3: "profile currently enabled", 127: "undefined error"}
-  raise RuntimeError(f"SetFallbackAttribute failed: {errors.get(status_code, f'status 0x{status_code:02X}')}")
-
-
 def list_notifications(client: AtClient) -> list[dict]:
   response = es10x_command(client, encode_tlv(TAG_LIST_NOTIFICATION, b""))
   root = find_tag(response, TAG_LIST_NOTIFICATION)
@@ -672,7 +645,6 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--enable", type=str)
   parser.add_argument("--disable", type=str)
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"))
-  parser.add_argument("--set-fallback", type=str, metavar="ICCID")
   parser.add_argument("--list-notifications", action="store_true")
   parser.add_argument("--process-notifications", action="store_true")
   parser.add_argument("--download", type=str, metavar="CODE")
@@ -693,9 +665,6 @@ def main() -> None:
       print(json.dumps(request_profile_info(client), indent=2))
     elif args.set_nickname:
       set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
-      print(json.dumps(request_profile_info(client), indent=2))
-    elif args.set_fallback:
-      set_profile_fallback(client, args.set_fallback)
       print(json.dumps(request_profile_info(client), indent=2))
     elif args.list_notifications:
       print(json.dumps(list_notifications(client), indent=2))
