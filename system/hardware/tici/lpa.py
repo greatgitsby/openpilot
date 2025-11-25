@@ -3,6 +3,7 @@
 import argparse
 import base64
 import binascii
+import hashlib
 import json
 import sys
 from collections.abc import Generator
@@ -175,6 +176,45 @@ def find_tag(data: bytes, target: int) -> Optional[bytes]:
   for tag, value in iter_tlv(data):
     if tag == target:
       return value
+  return None
+
+
+def find_tag_with_position(data: bytes, target: int) -> Optional[tuple[bytes, int, int]]:
+  """Find tag and return (value, start_pos, end_pos)."""
+  idx = 0
+  length = len(data)
+  while idx < length:
+    start_pos = idx
+    tag = data[idx]
+    idx += 1
+    if tag & 0x1F == 0x1F:
+      tag_value = tag
+      while idx < length:
+        next_byte = data[idx]
+        idx += 1
+        tag_value = (tag_value << 8) | next_byte
+        if not (next_byte & 0x80):
+          break
+    else:
+      tag_value = tag
+
+    if idx >= length:
+      break
+    size = data[idx]
+    idx += 1
+    if size & 0x80:
+      num_bytes = size & 0x7F
+      if idx + num_bytes > length:
+        break
+      size = int.from_bytes(data[idx : idx + num_bytes], "big")
+      idx += num_bytes
+    if idx + size > length:
+      break
+    value = data[idx : idx + size]
+    end_pos = idx + size
+    idx += size
+    if tag_value == target:
+      return value, start_pos, end_pos
   return None
 
 
@@ -403,6 +443,127 @@ def es10b_authenticate_server_r(
     raise RuntimeError("Invalid AuthenticateServerResponse: expected tag 0xBF38")
 
   return base64.b64encode(response).decode("ascii")
+
+
+def es10b_prepare_download_r(
+  client: AtClient,
+  b64_smdp_signed2: str,
+  b64_smdp_signature2: str,
+  b64_smdp_certificate: str,
+  confirmation_code: Optional[str] = None,
+) -> str:
+  """Prepare download using PrepareDownloadRequest (tag 0xBF21).
+
+  Returns base64-encoded PrepareDownloadResponse.
+  """
+  # Decode base64 inputs
+  smdp_signed2 = base64.b64decode(b64_smdp_signed2)
+  smdp_signature2 = base64.b64decode(b64_smdp_signature2)
+  smdp_certificate = base64.b64decode(b64_smdp_certificate)
+
+  # Find inner structures (they should already have their tags)
+  smdp_signed2_root = find_tag(smdp_signed2, 0x30)
+  if smdp_signed2_root is None:
+    raise RuntimeError("Invalid smdpSigned2: missing 0x30 tag")
+
+  # Extract transactionId and ccRequiredFlag from smdpSigned2
+  transaction_id = find_tag(smdp_signed2_root, 0x80)
+  if transaction_id is None:
+    raise RuntimeError("Invalid smdpSigned2: missing transactionId (0x80)")
+
+  cc_required_flag = find_tag(smdp_signed2_root, 0x01)
+  if cc_required_flag is None:
+    raise RuntimeError("Invalid smdpSigned2: missing ccRequiredFlag (0x01)")
+
+  cc_required = int.from_bytes(cc_required_flag, "big") != 0
+
+  # Build request: BF21 [smdpSigned2] [smdpSignature2] [hashCc?] [smdpCertificate]
+  request_content = bytearray()
+  request_content.extend(smdp_signed2)
+  request_content.extend(smdp_signature2)
+
+  if cc_required:
+    if not confirmation_code:
+      raise RuntimeError("Confirmation code required but not provided")
+
+    # Compute hashCc: SHA256(SHA256(confirmationCode) + transactionId)
+    hash1 = hashlib.sha256(confirmation_code.encode("utf-8")).digest()
+    hash2 = hashlib.sha256(hash1 + transaction_id).digest()
+    request_content.extend(encode_tlv(0x04, hash2))
+
+  request_content.extend(smdp_certificate)
+
+  # Build BF21 tag with length
+  request_length = len(request_content)
+  if request_length <= 127:
+    request = bytes([0xBF, 0x21, request_length]) + request_content
+  else:
+    length_bytes = request_length.to_bytes((request_length.bit_length() + 7) // 8, "big")
+    request = bytes([0xBF, 0x21, 0x80 | len(length_bytes)]) + length_bytes + request_content
+
+  response = es10x_command(client, request)
+
+  if not response.startswith(bytes([0xBF, 0x21])):
+    raise RuntimeError("Invalid PrepareDownloadResponse: expected tag 0xBF21")
+
+  return base64.b64encode(response).decode("ascii")
+
+
+def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_package: str) -> dict:
+  """Load bound profile package onto eUICC.
+
+  Returns a dictionary with:
+    - seqNumber: Sequence number from notification metadata
+    - success: True if installation succeeded
+    - bppCommandId: BPP command ID if error occurred
+    - errorReason: Error reason if error occurred
+  """
+  bpp = base64.b64decode(b64_bound_profile_package)
+
+  # Verify it starts with 0xBF36 (BoundProfilePackage)
+  if not bpp.startswith(bytes([0xBF, 0x36])):
+    raise RuntimeError("Invalid BoundProfilePackage: expected tag 0xBF36")
+
+  # Send the entire bound profile package
+  # The eUICC will process it internally
+  response = es10x_command(client, bpp)
+
+  # Parse response (tag 0xBF37 = ProfileInstallationResult)
+  result = {"seqNumber": 0, "success": False, "bppCommandId": None, "errorReason": None}
+
+  if response and len(response) > 0:
+    root = find_tag(response, 0xBF37)
+    if root:
+      # Find ProfileInstallationResultData (0xBF27)
+      result_data = find_tag(root, 0xBF27)
+      if result_data:
+        # Find NotificationMetadata (0xBF2F)
+        notif_meta = find_tag(result_data, 0xBF2F)
+        if notif_meta:
+          seq_num = find_tag(notif_meta, 0x80)
+          if seq_num:
+            result["seqNumber"] = int.from_bytes(seq_num, "big")
+
+        # Find finalResult (0xA2)
+        final_result = find_tag(result_data, 0xA2)
+        if final_result:
+          # Check if it's SuccessResult (0xA0) or ErrorResult (0xA1)
+          for tag, value in iter_tlv(final_result):
+            if tag == 0xA0:
+              result["success"] = True
+            elif tag == 0xA1:
+              # ErrorResult: extract bppCommandId (0x80) and errorReason (0x81)
+              bpp_cmd_id = find_tag(value, 0x80)
+              if bpp_cmd_id:
+                result["bppCommandId"] = int.from_bytes(bpp_cmd_id, "big")
+              error_reason = find_tag(value, 0x81)
+              if error_reason:
+                result["errorReason"] = int.from_bytes(error_reason, "big")
+
+  if not result["success"] and result["errorReason"] is not None:
+    raise RuntimeError(f"Profile installation failed: bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']}")
+
+  return result
 
 
 def build_enable_profile_request(iccid: str) -> bytes:
@@ -756,6 +917,29 @@ def es9p_authenticate_client_r(smdp_address: str, transaction_id: str, b64_authe
   }
 
 
+def es9p_get_bound_profile_package_r(smdp_address: str, transaction_id: str, b64_prepare_download_response: str) -> str:
+  """Get bound profile package from SM-DP+ server."""
+  url = f"https://{smdp_address}/gsma/rsp2/es9plus/getBoundProfilePackage"
+  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
+  payload = {"transactionId": transaction_id, "prepareDownloadResponse": b64_prepare_download_response}
+
+  resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
+  resp.raise_for_status()
+  data = resp.json()
+
+  # Check for errors in response header
+  if "header" in data and "functionExecutionStatus" in data["header"]:
+    status = data["header"]["functionExecutionStatus"]
+    if status.get("status") == "Failed":
+      status_data = status.get("statusCodeData", {})
+      reason = status_data.get("reasonCode", "unknown")
+      subject = status_data.get("subjectCode", "unknown")
+      message = status_data.get("message", "unknown")
+      raise RuntimeError(f"GetBoundProfilePackage failed: {reason}/{subject} - {message}")
+
+  return base64_trim(data.get("boundProfilePackage", ""))
+
+
 def es8p_metadata_parse(b64_metadata: str) -> dict:
   """Parse profileMetadata (StoreMetadataRequest, tag 0xBF25) from base64 string.
 
@@ -833,6 +1017,28 @@ def download_profile(client: AtClient, activation_code: str) -> None:
 
   metadata = es8p_metadata_parse(client_result["profileMetadata"])
   print(f'Downloading profile: {metadata["iccid"]} - {metadata["serviceProviderName"]} - {metadata["profileName"]}')
+
+  # Prepare download on eUICC
+  b64_prepare_download_response = es10b_prepare_download_r(
+    client,
+    client_result["smdpSigned2"],
+    client_result["smdpSignature2"],
+    client_result["smdpCertificate"],
+  )
+
+  # Get bound profile package from SM-DP+
+  b64_bound_profile_package = es9p_get_bound_profile_package_r(
+    smdp_address,
+    auth_result["transactionId"],
+    b64_prepare_download_response,
+  )
+
+  # Load bound profile package onto eUICC
+  install_result = es10b_load_bound_profile_package_r(client, b64_bound_profile_package)
+  if install_result["success"]:
+    print(f"Profile installed successfully (seqNumber: {install_result['seqNumber']})")
+  else:
+    raise RuntimeError(f"Profile installation failed: {install_result}")
 
 
 def build_cli() -> argparse.ArgumentParser:
