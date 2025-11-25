@@ -734,7 +734,7 @@ def es9p_initiate_authentication_r(smdp_address: str, b64_euicc_challenge: str, 
       raise RuntimeError(f"Authentication failed: {reason}/{subject} - {message}")
 
   return {
-    "transactionId": data["transactionId"],
+    "transactionId": base64_trim(data.get("transactionId", "")),
     "serverSigned1": base64_trim(data.get("serverSigned1", "")),
     "serverSignature1": base64_trim(data.get("serverSignature1", "")),
     "euiccCiPKIdToBeUsed": base64_trim(data.get("euiccCiPKIdToBeUsed", "")),
@@ -801,8 +801,26 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   print(f"Server authenticated, eUICC transaction ID: {transaction_id_bytes.hex()}", file=sys.stderr)
 
   # Authenticate client with SM-DP+
-  http_transaction_id = auth_result["transactionId"]
-  client_result = es9p_authenticate_client_r(smdp_address, http_transaction_id, b64_authenticate_server_response)
+  # Extract transaction ID from authenticateServerResponse - this is what the eUICC signed
+  auth_resp_data = base64.b64decode(b64_authenticate_server_response)
+  auth_resp_root = find_tag(auth_resp_data, 0xBF38)
+  if auth_resp_root:
+    auth_resp_content = find_tag(auth_resp_root, 0x30)
+    if auth_resp_content:
+      resp_transaction_id = find_tag(auth_resp_content, 0x80)
+      if resp_transaction_id:
+        # Use the transaction ID from the authenticateServerResponse (base64 encoded)
+        transaction_id_b64 = base64.b64encode(resp_transaction_id).decode("ascii")
+        print(f"Using transaction ID from authenticateServerResponse: {transaction_id_b64}", file=sys.stderr)
+        client_result = es9p_authenticate_client_r(smdp_address, transaction_id_b64, b64_authenticate_server_response)
+      else:
+        # Fallback to HTTP transaction ID
+        print("Could not extract transaction ID from response, using HTTP one", file=sys.stderr)
+        client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
+    else:
+      client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
+  else:
+    client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
   print(f"Client authenticated, profile metadata: {len(client_result['profileMetadata'])} bytes", file=sys.stderr)
 
 
