@@ -459,6 +459,19 @@ def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
   return challenge, info_resp
 
 
+def es10c_get_eid(client: AtClient) -> str:
+  # GetEuiccInfo2 (BF22) returns detailed eUICC info including EID
+  response = es10x_command(client, bytes.fromhex("BF2200"))
+  root = find_tag(response, 0xBF22)
+  if root is None:
+    raise RuntimeError("Missing GetEuiccInfo2Response")
+  # EID is in tag 0x5A within BF22
+  eid_bytes = find_tag(root, TAG_ICCID)
+  if eid_bytes is None:
+    raise RuntimeError("Missing EID in GetEuiccInfo2Response")
+  return eid_bytes.hex().upper()
+
+
 def build_authenticate_server_request(server_signed1: bytes, server_signature1: bytes, euicc_ci_pk_id: bytes, server_certificate: bytes) -> bytes:
   # TAC (Type Allocation Code) - device identifier
   tac = bytes([0x35, 0x29, 0x06, 0x11])
@@ -606,6 +619,11 @@ def parse_lpa_activation_code(activation_code: str) -> tuple[str, str, str]:
 
 def download_profile(client: AtClient, activation_code: str) -> None:
   _, smdp, matching_id = parse_lpa_activation_code(activation_code)
+
+  # Get and display EID for debugging
+  eid = es10c_get_eid(client)
+  print(f"Device EID: {eid}", file=sys.stderr)
+
   challenge, euicc_info = es10b_get_euicc_challenge_and_info(client)
   b64_chal = base64.b64encode(challenge).decode("ascii")
   b64_info = base64.b64encode(euicc_info).decode("ascii")
@@ -640,6 +658,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
   parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
   parser.add_argument("--verbose", action="store_true")
+  parser.add_argument("--eid", action="store_true", help="Print the eUICC EID")
   parser.add_argument("--enable", type=str)
   parser.add_argument("--disable", type=str)
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"))
@@ -655,7 +674,9 @@ def main() -> None:
   try:
     client.ensure_capabilities()
     client.open_isdr()
-    if args.enable:
+    if args.eid:
+      print(es10c_get_eid(client))
+    elif args.enable:
       enable_profile(client, args.enable)
       print(json.dumps(request_profile_info(client), indent=2))
     elif args.disable:
