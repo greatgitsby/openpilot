@@ -343,11 +343,17 @@ def build_authenticate_server_request(
     device_capabilities.extend(imei_bytes)
 
   # Build deviceInfo (A1): 80 [tac] A1 [deviceCapabilities]
+  # Reference shows: n_tac.value = imei (but uses default TAC bytes if no IMEI)
+  # The TAC is always 4 bytes: [0x35, 0x29, 0x06, 0x11]
   tac = bytes([0x35, 0x29, 0x06, 0x11])  # Default TAC
   device_info = bytearray([0x80, len(tac)]) + tac
+  # deviceCapabilities (A1) is optional - only include if IMEI is provided
   if device_capabilities:
     device_info.extend([0xA1, len(device_capabilities)])
     device_info.extend(device_capabilities)
+  else:
+    # If no deviceCapabilities, deviceInfo should still have the TAC
+    pass
 
   # Build CtxParams1 (A0): optional 80 [matchingId] A1 [deviceInfo]
   ctx_params = bytearray()
@@ -412,12 +418,29 @@ def es10b_authenticate_server_r(
 
   # Build and send request
   request = build_authenticate_server_request(server_signed1, server_signature1, euicc_ci_pk_id, server_certificate, matching_id, imei)
+  print(f"AuthenticateServerRequest length: {len(request)} bytes", file=sys.stderr)
+  print(f"Request starts with: {request[:10].hex()}", file=sys.stderr)
   response = es10x_command(client, request)
+  print(f"Raw response length: {len(response)} bytes", file=sys.stderr)
+  print(f"Raw response hex: {response.hex()}", file=sys.stderr)
 
   # Return transaction_id and base64 encoded response
   # Response should be AuthenticateServerResponse (tag 0xBF38)
   if not response.startswith(bytes([0xBF, 0x38])):
     raise RuntimeError(f"Invalid AuthenticateServerResponse: expected tag 0xBF38, got {response[:4].hex() if len(response) >= 4 else 'too short'}")
+
+  # Check if response seems too short (might be an error response)
+  if len(response) < 50:
+    print(f"WARNING: AuthenticateServerResponse is very short ({len(response)} bytes): {response.hex()}", file=sys.stderr)
+    # Try to parse as error response
+    root = find_tag(response, 0xBF38)
+    if root:
+      # Check for error indicators
+      error_tag = find_tag(root, 0x02)
+      if error_tag:
+        error_code = error_tag[0] if len(error_tag) > 0 else 0
+        raise RuntimeError(f"eUICC returned error in AuthenticateServerResponse: 0x{error_code:02X}")
+
   b64_response = base64.b64encode(response).decode("ascii")
   print(f"AuthenticateServerResponse length: {len(response)} bytes", file=sys.stderr)
   return transaction_id, b64_response
