@@ -260,6 +260,54 @@ def request_profile_info(client: AtClient) -> list[dict]:
   return decode_profiles(es10x_command(client, bytes.fromhex("BF2D00")))
 
 
+def es10b_get_euicc_challenge_r(client: AtClient) -> bytes:
+  """Get eUICC challenge using GetEuiccDataRequest (tag 0xBF2E)."""
+  # Empty request: tag + length 00
+  request = bytes([0xBF, 0x2E, 0x00])
+  response = es10x_command(client, request)
+
+  # Parse response: BF2E [length] A0 [length] 80 [16] [challenge]
+  root = find_tag(response, 0xBF2E)
+  if root is None:
+    raise RuntimeError("Missing GetEuiccDataResponse (0xBF2E)")
+
+  # Extract challenge (tag 0x80) - may be directly in root or wrapped in A0
+  content = find_tag(root, 0xA0) or root
+  challenge = find_tag(content, 0x80)
+  if challenge is None:
+    raise RuntimeError("Missing challenge in response")
+
+  return challenge
+
+
+def es10b_get_euicc_info_r(client: AtClient) -> bytes:
+  """Get eUICC info using GetEuiccInfo1Request (tag 0xBF20)."""
+  # Empty request: just the tag
+  request = bytes([0xBF, 0x20, 0x00])
+  response = es10x_command(client, request)
+
+  # Parse response: BF20 [length] [euiccInfo1]
+  root = find_tag(response, 0xBF20)
+  if root is None:
+    raise RuntimeError("Missing GetEuiccInfo1Response (0xBF20)")
+
+  return root
+
+
+def es10b_get_euicc_challenge_and_info(client: AtClient) -> dict:
+  """Get eUICC challenge and info.
+
+  Returns a dictionary with 'challenge' (base64) and 'euicc_info' (base64).
+  """
+  challenge = es10b_get_euicc_challenge_r(client)
+  euicc_info = es10b_get_euicc_info_r(client)
+
+  return {
+    "challenge": base64.b64encode(challenge).decode("ascii"),
+    "euicc_info": base64.b64encode(euicc_info).decode("ascii"),
+  }
+
+
 def build_enable_profile_request(iccid: str) -> bytes:
   """Build DER-encoded EnableProfile request with ICCID.
 
@@ -553,6 +601,9 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   """Download eSIM profile using LPA activation code."""
   version, smdp_address, activation_code = parse_lpa_activation_code(activation_code)
   print(f"Downloading profile from {smdp_address} with activation code {activation_code}, version {version}", file=sys.stderr)
+  challenge, euicc_info = es10b_get_euicc_challenge_and_info(client)
+  print(f"Challenge: {challenge}", file=sys.stderr)
+  print(f"EUICC Info: {euicc_info}", file=sys.stderr)
 
 
 def build_cli() -> argparse.ArgumentParser:
