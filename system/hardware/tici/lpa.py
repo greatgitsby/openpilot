@@ -776,7 +776,7 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
 
   b64_profile_metadata = client_result["profileMetadata"]
-  profile_metadata = base64.b64decode(b64_profile_metadata)
+  profile_metadata = base64.b64decode(b64_profile_metadata).decode("utf-8")
   print(json.dumps(profile_metadata, indent=2))
 
 
