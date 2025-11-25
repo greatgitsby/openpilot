@@ -303,6 +303,109 @@ def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
   return challenge, euicc_info
 
 
+def hex_to_gsmbcd(hex_str: str) -> bytes:
+  """Convert hex string to GSM BCD format (like euicc_hexutil_gsmbcd2bin)."""
+  result = bytearray()
+  for i in range(0, len(hex_str), 2):
+    if i + 1 < len(hex_str):
+      byte_val = int(hex_str[i : i + 2], 16)
+      result.append(byte_val)
+    else:
+      result.append(int(hex_str[i], 16) | 0xF0)
+  return bytes(result)
+
+
+def build_authenticate_server_request(
+  server_signed1: bytes, server_signature1: bytes, euicc_ci_pk_id: bytes, server_certificate: bytes,
+  matching_id: Optional[str] = None, imei: Optional[str] = None
+) -> bytes:
+  """Build DER-encoded AuthenticateServer request (tag 0xBF38)."""
+  # Structure: BF38 [length] 30 [serverSigned1] 5F37 [serverSignature1] 04 [euiccCiPKId] 30 [serverCertificate] A0 [CtxParams1]
+  # CtxParams1 (A0) contains: optional 80 [matchingId] A1 [deviceInfo]
+  # deviceInfo (A1) contains: 80 [tac] A1 [deviceCapabilities]
+  # deviceCapabilities (A1) contains: optional 82 [imei]
+
+  # Build deviceCapabilities (A1): optional 82 [imei]
+  device_capabilities = bytearray()
+  if imei:
+    imei_bytes = hex_to_gsmbcd(imei)
+    device_capabilities.extend([0x82, len(imei_bytes)])
+    device_capabilities.extend(imei_bytes)
+
+  # Build deviceInfo (A1): 80 [tac] A1 [deviceCapabilities]
+  tac = bytes([0x35, 0x29, 0x06, 0x11])  # Default TAC
+  device_info = bytearray([0x80, len(tac)]) + tac
+  if device_capabilities:
+    device_info.extend([0xA1, len(device_capabilities)])
+    device_info.extend(device_capabilities)
+
+  # Build CtxParams1 (A0): optional 80 [matchingId] A1 [deviceInfo]
+  ctx_params = bytearray()
+  if matching_id:
+    matching_id_bytes = matching_id.encode("utf-8")
+    ctx_params.extend([0x80, len(matching_id_bytes)])
+    ctx_params.extend(matching_id_bytes)
+  ctx_params.extend([0xA1, len(device_info)])
+  ctx_params.extend(device_info)
+
+  # Build main request: 30 [serverSigned1] 5F37 [serverSignature1] 04 [euiccCiPKId] 30 [serverCertificate] A0 [CtxParams1]
+  request_content = bytearray()
+  request_content.extend([0x30, len(server_signed1)])
+  request_content.extend(server_signed1)
+  request_content.extend([0x5F, 0x37, len(server_signature1)])
+  request_content.extend(server_signature1)
+  request_content.extend([0x04, len(euicc_ci_pk_id)])
+  request_content.extend(euicc_ci_pk_id)
+  request_content.extend([0x30, len(server_certificate)])
+  request_content.extend(server_certificate)
+  request_content.extend([0xA0, len(ctx_params)])
+  request_content.extend(ctx_params)
+
+  # Build BF38 tag with length
+  request_length = len(request_content)
+  if request_length <= 127:
+    return bytes([0xBF, 0x38, request_length]) + request_content
+  else:
+    length_bytes = request_length.to_bytes((request_length.bit_length() + 7) // 8, "big")
+    return bytes([0xBF, 0x38, 0x80 | len(length_bytes)]) + length_bytes + request_content
+
+
+def es10b_authenticate_server_r(
+  client: AtClient,
+  b64_server_signed1: str,
+  b64_server_signature1: str,
+  b64_euicc_ci_pk_id: str,
+  b64_server_certificate: str,
+  matching_id: Optional[str] = None,
+  imei: Optional[str] = None,
+) -> tuple[bytes, str]:
+  """Authenticate server using AuthenticateServerRequest (tag 0xBF38).
+
+  Returns tuple of (transaction_id, b64_authenticate_server_response).
+  """
+  # Decode base64 inputs
+  server_signed1 = base64.b64decode(b64_server_signed1)
+  server_signature1 = base64.b64decode(b64_server_signature1)
+  euicc_ci_pk_id = base64.b64decode(b64_euicc_ci_pk_id)
+  server_certificate = base64.b64decode(b64_server_certificate)
+
+  # Extract transactionId from serverSigned1 (tag 0x30, contains 0x80 [transactionId])
+  server_signed1_root = find_tag(server_signed1, 0x30)
+  if server_signed1_root is None:
+    raise RuntimeError("Invalid serverSigned1: missing 0x30 tag")
+  transaction_id = find_tag(server_signed1_root, 0x80)
+  if transaction_id is None:
+    raise RuntimeError("Invalid serverSigned1: missing transactionId (0x80)")
+
+  # Build and send request
+  request = build_authenticate_server_request(server_signed1, server_signature1, euicc_ci_pk_id, server_certificate, matching_id, imei)
+  response = es10x_command(client, request)
+
+  # Return transaction_id and base64 encoded response
+  b64_response = base64.b64encode(response).decode("ascii")
+  return transaction_id, b64_response
+
+
 def build_enable_profile_request(iccid: str) -> bytes:
   """Build DER-encoded EnableProfile request with ICCID.
 
@@ -639,6 +742,18 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   # Initiate authentication with SM-DP+
   auth_result = es9p_initiate_authentication_r(smdp_address, b64_challenge, b64_euicc_info)
   print(f"Transaction ID: {auth_result['transactionId']}", file=sys.stderr)
+
+  # Authenticate server on eUICC
+  transaction_id, b64_authenticate_server_response = es10b_authenticate_server_r(
+    client,
+    auth_result["serverSigned1"],
+    auth_result["serverSignature1"],
+    auth_result["euiccCiPKIdToBeUsed"],
+    auth_result["serverCertificate"],
+    matching_id=None,  # TODO: extract from activation_code if needed
+    imei=None,  # TODO: get IMEI if needed
+  )
+  print(f"Server authenticated, transaction ID: {transaction_id.hex()}", file=sys.stderr)
 
 
 def build_cli() -> argparse.ArgumentParser:
