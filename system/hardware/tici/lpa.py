@@ -415,7 +415,11 @@ def es10b_authenticate_server_r(
   response = es10x_command(client, request)
 
   # Return transaction_id and base64 encoded response
+  # Response should be AuthenticateServerResponse (tag 0xBF38)
+  if not response.startswith(bytes([0xBF, 0x38])):
+    raise RuntimeError(f"Invalid AuthenticateServerResponse: expected tag 0xBF38, got {response[:4].hex() if len(response) >= 4 else 'too short'}")
   b64_response = base64.b64encode(response).decode("ascii")
+  print(f"AuthenticateServerResponse length: {len(response)} bytes", file=sys.stderr)
   return transaction_id, b64_response
 
 
@@ -748,10 +752,6 @@ def es9p_authenticate_client_r(smdp_address: str, transaction_id: str, b64_authe
   headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
   payload = {"transactionId": transaction_id, "authenticateServerResponse": b64_authenticate_server_response}
 
-  print(url)
-  print(headers)
-  print(payload)
-
   resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
   resp.raise_for_status()
   data = resp.json()
@@ -801,26 +801,15 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   print(f"Server authenticated, eUICC transaction ID: {transaction_id_bytes.hex()}", file=sys.stderr)
 
   # Authenticate client with SM-DP+
-  # Extract transaction ID from authenticateServerResponse - this is what the eUICC signed
-  auth_resp_data = base64.b64decode(b64_authenticate_server_response)
-  auth_resp_root = find_tag(auth_resp_data, 0xBF38)
-  if auth_resp_root:
-    auth_resp_content = find_tag(auth_resp_root, 0x30)
-    if auth_resp_content:
-      resp_transaction_id = find_tag(auth_resp_content, 0x80)
-      if resp_transaction_id:
-        # Use the transaction ID from the authenticateServerResponse (base64 encoded)
-        transaction_id_b64 = base64.b64encode(resp_transaction_id).decode("ascii")
-        print(f"Using transaction ID from authenticateServerResponse: {transaction_id_b64}", file=sys.stderr)
-        client_result = es9p_authenticate_client_r(smdp_address, transaction_id_b64, b64_authenticate_server_response)
-      else:
-        # Fallback to HTTP transaction ID
-        print("Could not extract transaction ID from response, using HTTP one", file=sys.stderr)
-        client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
-    else:
-      client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
-  else:
-    client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
+  # Use the HTTP transaction ID from initiateAuthentication response (as string, not base64)
+  http_transaction_id = auth_result["transactionId"]
+  print(f"Using HTTP transaction ID: {http_transaction_id}", file=sys.stderr)
+  print(f"AuthenticateServerResponse length: {len(b64_authenticate_server_response)} chars (base64)", file=sys.stderr)
+  resp_data = base64.b64decode(b64_authenticate_server_response)
+  print(f"AuthenticateServerResponse decoded length: {len(resp_data)} bytes", file=sys.stderr)
+  if len(resp_data) < 20:
+    print(f"WARNING: AuthenticateServerResponse seems too short: {resp_data.hex()}", file=sys.stderr)
+  client_result = es9p_authenticate_client_r(smdp_address, http_transaction_id, b64_authenticate_server_response)
   print(f"Client authenticated, profile metadata: {len(client_result['profileMetadata'])} bytes", file=sys.stderr)
 
 
