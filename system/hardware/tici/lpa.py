@@ -509,6 +509,43 @@ def es10b_prepare_download_r(
   return base64.b64encode(response).decode("ascii")
 
 
+def parse_tlv_with_positions(data: bytes, start_idx: int = 0) -> Generator[tuple[int, bytes, int, int], None, None]:
+  """Parse TLV and yield (tag, value, start_pos, end_pos)."""
+  idx = start_idx
+  length = len(data)
+  while idx < length:
+    start_pos = idx
+    tag = data[idx]
+    idx += 1
+    if tag & 0x1F == 0x1F:
+      tag_value = tag
+      while idx < length:
+        next_byte = data[idx]
+        idx += 1
+        tag_value = (tag_value << 8) | next_byte
+        if not (next_byte & 0x80):
+          break
+    else:
+      tag_value = tag
+
+    if idx >= length:
+      break
+    size = data[idx]
+    idx += 1
+    if size & 0x80:
+      num_bytes = size & 0x7F
+      if idx + num_bytes > length:
+        break
+      size = int.from_bytes(data[idx : idx + num_bytes], "big")
+      idx += num_bytes
+    if idx + size > length:
+      break
+    value = data[idx : idx + size]
+    end_pos = idx + size
+    idx += size
+    yield tag_value, value, start_pos, end_pos
+
+
 def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_package: str) -> dict:
   """Load bound profile package onto eUICC.
 
@@ -524,41 +561,129 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
   if not bpp.startswith(bytes([0xBF, 0x36])):
     raise RuntimeError("Invalid BoundProfilePackage: expected tag 0xBF36")
 
-  # Send the entire bound profile package
-  # The eUICC will process it internally
-  response = es10x_command(client, bpp)
+  # Parse the structure to extract chunks
+  chunks = []
+  bpp_root_value = None
+  bpp_root_start = 0
 
-  # Parse response (tag 0xBF37 = ProfileInstallationResult)
+  # Find BF36 root
+  for tag, value, start, _end in parse_tlv_with_positions(bpp):
+    if tag == 0xBF36:
+      bpp_root_value = value
+      bpp_root_start = start
+      break
+
+  if bpp_root_value is None:
+    raise RuntimeError("Invalid BoundProfilePackage: missing 0xBF36 tag")
+
+  # Chunk 1: From start of BF36 to end of BF23
+  bf23_end = bpp_root_start
+  for tag, _value, _start, end in parse_tlv_with_positions(bpp_root_value):
+    if tag == 0xBF23:
+      # Calculate position relative to bpp
+      bf23_end = bpp_root_start + end
+      break
+  if bf23_end > bpp_root_start:
+    chunk1 = bpp[bpp_root_start : bf23_end]
+    chunks.append(chunk1)
+
+  # Chunk 2: 0xA0 tag
+  for tag, _value, start, end in parse_tlv_with_positions(bpp_root_value):
+    if tag == 0xA0:
+      chunk2 = bpp[bpp_root_start + start : bpp_root_start + end]
+      chunks.append(chunk2)
+      break
+
+  # Chunk 3: Part of 0xA1 (up to value start)
+  # Chunk 4: Children of 0xA1
+  for tag, value, start, end in parse_tlv_with_positions(bpp_root_value):
+    if tag == 0xA1:
+      # Find where value starts (after tag and length)
+      a1_data = bpp_root_value[start:end]
+      tag_len = 1
+      if a1_data[0] & 0x1F == 0x1F:
+        tag_len = 2
+      length_byte = a1_data[tag_len]
+      if length_byte & 0x80:
+        length_len = 1 + (length_byte & 0x7F)
+      else:
+        length_len = 1
+      value_start_offset = tag_len + length_len
+      chunk3 = bpp[bpp_root_start + start : bpp_root_start + start + value_start_offset]
+      chunks.append(chunk3)
+
+      # Children of 0xA1
+      for child_tag, child_value in iter_tlv(value):
+        child_chunk = encode_tlv(child_tag, child_value)
+        chunks.append(child_chunk)
+      break
+
+  # Chunk 5: Optional 0xA2
+  for tag, _value, start, end in parse_tlv_with_positions(bpp_root_value):
+    if tag == 0xA2:
+      chunk5 = bpp[bpp_root_start + start : bpp_root_start + end]
+      chunks.append(chunk5)
+      break
+
+  # Chunk 6: Part of 0xA3 (up to value start)
+  # Chunk 7: Children of 0xA3
+  for tag, value, start, end in parse_tlv_with_positions(bpp_root_value):
+    if tag == 0xA3:
+      # Find where value starts
+      a3_data = bpp_root_value[start:end]
+      tag_len = 1
+      if a3_data[0] & 0x1F == 0x1F:
+        tag_len = 2
+      length_byte = a3_data[tag_len]
+      if length_byte & 0x80:
+        length_len = 1 + (length_byte & 0x7F)
+      else:
+        length_len = 1
+      value_start_offset = tag_len + length_len
+      chunk6 = bpp[bpp_root_start + start : bpp_root_start + start + value_start_offset]
+      chunks.append(chunk6)
+
+      # Children of 0xA3
+      for child_tag, child_value in iter_tlv(value):
+        child_chunk = encode_tlv(child_tag, child_value)
+        chunks.append(child_chunk)
+      break
+
+  # Send chunks and parse responses
   result = {"seqNumber": 0, "success": False, "bppCommandId": None, "errorReason": None}
 
-  if response and len(response) > 0:
-    root = find_tag(response, 0xBF37)
-    if root:
-      # Find ProfileInstallationResultData (0xBF27)
-      result_data = find_tag(root, 0xBF27)
-      if result_data:
-        # Find NotificationMetadata (0xBF2F)
-        notif_meta = find_tag(result_data, 0xBF2F)
-        if notif_meta:
-          seq_num = find_tag(notif_meta, 0x80)
-          if seq_num:
-            result["seqNumber"] = int.from_bytes(seq_num, "big")
+  for chunk in chunks:
+    response = es10x_command(client, chunk)
 
-        # Find finalResult (0xA2)
-        final_result = find_tag(result_data, 0xA2)
-        if final_result:
-          # Check if it's SuccessResult (0xA0) or ErrorResult (0xA1)
-          for tag, value in iter_tlv(final_result):
-            if tag == 0xA0:
-              result["success"] = True
-            elif tag == 0xA1:
-              # ErrorResult: extract bppCommandId (0x80) and errorReason (0x81)
-              bpp_cmd_id = find_tag(value, 0x80)
-              if bpp_cmd_id:
-                result["bppCommandId"] = int.from_bytes(bpp_cmd_id, "big")
-              error_reason = find_tag(value, 0x81)
-              if error_reason:
-                result["errorReason"] = int.from_bytes(error_reason, "big")
+    # Parse response if present (tag 0xBF37 = ProfileInstallationResult)
+    if response and len(response) > 0:
+      root = find_tag(response, 0xBF37)
+      if root:
+        # Find ProfileInstallationResultData (0xBF27)
+        result_data = find_tag(root, 0xBF27)
+        if result_data:
+          # Find NotificationMetadata (0xBF2F)
+          notif_meta = find_tag(result_data, 0xBF2F)
+          if notif_meta:
+            seq_num = find_tag(notif_meta, 0x80)
+            if seq_num:
+              result["seqNumber"] = int.from_bytes(seq_num, "big")
+
+          # Find finalResult (0xA2)
+          final_result = find_tag(result_data, 0xA2)
+          if final_result:
+            # Check if it's SuccessResult (0xA0) or ErrorResult (0xA1)
+            for tag, value in iter_tlv(final_result):
+              if tag == 0xA0:
+                result["success"] = True
+              elif tag == 0xA1:
+                # ErrorResult: extract bppCommandId (0x80) and errorReason (0x81)
+                bpp_cmd_id = find_tag(value, 0x80)
+                if bpp_cmd_id:
+                  result["bppCommandId"] = int.from_bytes(bpp_cmd_id, "big")
+                error_reason = find_tag(value, 0x81)
+                if error_reason:
+                  result["errorReason"] = int.from_bytes(error_reason, "big")
 
   if not result["success"] and result["errorReason"] is not None:
     raise RuntimeError(f"Profile installation failed: bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']}")
