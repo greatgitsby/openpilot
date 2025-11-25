@@ -268,14 +268,13 @@ def es10b_get_euicc_challenge_r(client: AtClient) -> bytes:
   request = bytes([0xBF, 0x2E, 0x00])
   response = es10x_command(client, request)
 
-  # Parse response: BF2E [length] A0 [length] 80 [16] [challenge]
+  # Parse response: BF2E [length] 80 [16] [challenge]
+  # Reference finds 0xBF2E, then finds 0x80 inside it
   root = find_tag(response, 0xBF2E)
   if root is None:
     raise RuntimeError("Missing GetEuiccDataResponse (0xBF2E)")
 
-  # Extract challenge (tag 0x80) - may be directly in root or wrapped in A0
-  content = find_tag(root, 0xA0) or root
-  challenge = find_tag(content, 0x80)
+  challenge = find_tag(root, 0x80)
   if challenge is None:
     raise RuntimeError("Missing challenge in response")
 
@@ -284,16 +283,16 @@ def es10b_get_euicc_challenge_r(client: AtClient) -> bytes:
 
 def es10b_get_euicc_info_r(client: AtClient) -> bytes:
   """Get eUICC info using GetEuiccInfo1Request (tag 0xBF20)."""
-  # Empty request: just the tag
+  # Empty request: tag + length 00
   request = bytes([0xBF, 0x20, 0x00])
   response = es10x_command(client, request)
 
-  # Parse response: BF20 [length] [euiccInfo1]
-  root = find_tag(response, 0xBF20)
-  if root is None:
+  # Response should start with BF20 tag - return entire response including tag
+  # Reference uses tmpnode.self.ptr and tmpnode.self.length which includes the tag
+  if not response.startswith(bytes([0xBF, 0x20])):
     raise RuntimeError("Missing GetEuiccInfo1Response (0xBF20)")
 
-  return root
+  return response
 
 
 def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
@@ -604,10 +603,19 @@ def es9p_initiate_authentication_r(smdp_address: str, b64_euicc_challenge: str, 
   headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
   payload = {"smdpAddress": smdp_address, "euiccChallenge": b64_euicc_challenge, "euiccInfo1": b64_euicc_info_1}
 
-  # TODO: verify? lpac doesn't
   resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
   resp.raise_for_status()
   data = resp.json()
+
+  # Check for errors in response header
+  if "header" in data and "functionExecutionStatus" in data["header"]:
+    status = data["header"]["functionExecutionStatus"]
+    if status.get("status") == "Failed":
+      status_data = status.get("statusCodeData", {})
+      reason = status_data.get("reasonCode", "unknown")
+      subject = status_data.get("subjectCode", "unknown")
+      message = status_data.get("message", "unknown")
+      raise RuntimeError(f"Authentication failed: {reason}/{subject} - {message}")
 
   return {
     "transactionId": data["transactionId"],
