@@ -402,7 +402,7 @@ def es10b_authenticate_server_r(
   if not response.startswith(bytes([0xBF, 0x38])):
     raise RuntimeError("Invalid AuthenticateServerResponse: expected tag 0xBF38")
 
-  return transaction_id, base64.b64encode(response).decode("ascii")
+  return base64.b64encode(response).decode("ascii")
 
 
 def build_enable_profile_request(iccid: str) -> bytes:
@@ -766,14 +766,18 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   b64_euicc_info = base64.b64encode(euicc_info).decode("ascii")
 
   auth_result = es9p_initiate_authentication_r(smdp_address, b64_challenge, b64_euicc_info)
-  _, b64_authenticate_server_response = es10b_authenticate_server_r(
+  b64_authenticate_server_response = es10b_authenticate_server_r(
     client,
     auth_result["serverSigned1"],
     auth_result["serverSignature1"],
     auth_result["euiccCiPKIdToBeUsed"],
     auth_result["serverCertificate"],
   )
-  es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
+  client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
+
+  b64_profile_metadata = client_result["profileMetadata"]
+  profile_metadata = base64.b64decode(b64_profile_metadata)
+  print(json.dumps(profile_metadata, indent=2))
 
 
 def build_cli() -> argparse.ArgumentParser:
