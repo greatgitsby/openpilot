@@ -321,6 +321,34 @@ def es10b_get_euicc_challenge_r(client: AtClient) -> bytes:
   return challenge
 
 
+def es10b_remove_notification_from_list(client: AtClient, seq_number: int) -> None:
+  """Remove notification from list using NotificationSentRequest (tag 0xBF30).
+
+  Sends the ES10b NotificationSent command to mark a notification as processed.
+  """
+  # Build request: BF30 [length] 80 [seqNumber]
+  seq_bytes = seq_number.to_bytes((seq_number.bit_length() + 7) // 8 or 1, "big")
+  seq_tlv = encode_tlv(0x80, seq_bytes)
+
+  # Build BF30 request
+  request = encode_tlv(0xBF30, seq_tlv)
+
+  response = es10x_command(client, request)
+
+  # Parse response: BF30 [length] 80 [status]
+  root = find_tag(response, 0xBF30)
+  if root is None:
+    raise RuntimeError("Invalid NotificationSentResponse: missing 0xBF30 tag")
+
+  status = find_tag(root, 0x80)
+  if status is None:
+    raise RuntimeError("Invalid NotificationSentResponse: missing status (0x80)")
+
+  status_code = int.from_bytes(status, "big")
+  if status_code != 0:
+    raise RuntimeError(f"RemoveNotificationFromList failed with status: 0x{status_code:02X}")
+
+
 def es10b_get_euicc_info_r(client: AtClient) -> bytes:
   """Get eUICC info using GetEuiccInfo1Request (tag 0xBF20)."""
   # Empty request: tag + length 00
@@ -982,6 +1010,27 @@ def list_notifications(client: AtClient) -> list[dict]:
   return decode_notification_metadata_list(payload)
 
 
+def es9p_handle_notification_r(smdp_address: str, b64_pending_notification: str) -> None:
+  """Handle notification by sending it to SM-DP+ server."""
+  url = f"https://{smdp_address}/gsma/rsp2/es9plus/handleNotification"
+  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
+  payload = {"pendingNotification": b64_pending_notification}
+
+  resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
+  resp.raise_for_status()
+  data = resp.json()
+
+  # Check for errors in response header
+  if "header" in data and "functionExecutionStatus" in data["header"]:
+    status = data["header"]["functionExecutionStatus"]
+    if status.get("status") == "Failed":
+      status_data = status.get("statusCodeData", {})
+      reason = status_data.get("reasonCode", "unknown")
+      subject = status_data.get("subjectCode", "unknown")
+      message = status_data.get("message", "unknown")
+      raise RuntimeError(f"HandleNotification failed: {reason}/{subject} - {message}")
+
+
 def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
   """Retrieve a specific notification by sequence number using RetrieveNotificationsListRequest (tag 0xBF2B).
 
@@ -1040,6 +1089,35 @@ def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
     "notificationAddress": notification_address.decode("utf-8", errors="ignore"),
     "b64_PendingNotification": b64_pending_notif,
   }
+
+
+def process_notifications(client: AtClient) -> None:
+  """Process all notifications: retrieve, send to SM-DP+, and remove from eUICC."""
+  notifications = list_notifications(client)
+
+  if not notifications:
+    print("No notifications to process", file=sys.stderr)
+    return
+
+  print(f"Found {len(notifications)} notification(s) to process", file=sys.stderr)
+
+  for notification in notifications:
+    seq_number = notification["seqNumber"]
+    smdp_address = notification["notificationAddress"]
+
+    if not seq_number or not smdp_address:
+      print(f"Skipping invalid notification: {notification}", file=sys.stderr)
+      continue
+
+    print(f"Processing notification seqNumber={seq_number}, address={smdp_address}", file=sys.stderr)
+
+    try:
+      notif_data = retrieve_notifications_list(client, seq_number)
+      es9p_handle_notification_r(smdp_address, notif_data["b64_PendingNotification"])
+      es10b_remove_notification_from_list(client, seq_number)
+      print(f"Notification {seq_number} processed successfully", file=sys.stderr)
+    except Exception as e:
+      print(f"Failed to process notification {seq_number}: {e}", file=sys.stderr)
 
 
 def parse_lpa_activation_code(activation_code: str) -> dict[str, str]:
@@ -1250,6 +1328,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--disable", type=str, help="Disable profile by ICCID")
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"), help="Set profile nickname by ICCID")
   parser.add_argument("--list-notifications", action="store_true", help="Retrieve and display notifications from eUICC")
+  parser.add_argument("--process-notifications", action="store_true", help="Process all notifications: send to SM-DP+ and remove from eUICC")
   parser.add_argument("--download", type=str, metavar="CODE", help="Download profile (LPA:1$smdp.io$CODE)")
   return parser
 
@@ -1279,6 +1358,8 @@ def main() -> None:
     elif args.list_notifications:
       notifications = list_notifications(client)
       print(json.dumps(notifications, indent=2))
+    elif args.process_notifications:
+      process_notifications(client)
     elif args.download:
       download_profile(client, args.download)
       # List profiles after downloading to show updated state
