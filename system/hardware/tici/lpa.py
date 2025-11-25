@@ -742,6 +742,34 @@ def es9p_initiate_authentication_r(smdp_address: str, b64_euicc_challenge: str, 
   }
 
 
+def es9p_authenticate_client_r(smdp_address: str, transaction_id: str, b64_authenticate_server_response: str) -> dict:
+  """Authenticate client with SM-DP+ server."""
+  url = f"https://{smdp_address}/gsma/rsp2/es9plus/authenticateClient"
+  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
+  payload = {"transactionId": transaction_id, "authenticateServerResponse": b64_authenticate_server_response}
+
+  resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
+  resp.raise_for_status()
+  data = resp.json()
+
+  # Check for errors in response header
+  if "header" in data and "functionExecutionStatus" in data["header"]:
+    status = data["header"]["functionExecutionStatus"]
+    if status.get("status") == "Failed":
+      status_data = status.get("statusCodeData", {})
+      reason = status_data.get("reasonCode", "unknown")
+      subject = status_data.get("subjectCode", "unknown")
+      message = status_data.get("message", "unknown")
+      raise RuntimeError(f"Authentication failed: {reason}/{subject} - {message}")
+
+  return {
+    "profileMetadata": base64_trim(data.get("profileMetadata", "")),
+    "smdpSigned2": base64_trim(data.get("smdpSigned2", "")),
+    "smdpSignature2": base64_trim(data.get("smdpSignature2", "")),
+    "smdpCertificate": base64_trim(data.get("smdpCertificate", "")),
+  }
+
+
 def download_profile(client: AtClient, activation_code: str) -> None:
   """Download eSIM profile using LPA activation code."""
   version, smdp_address, activation_code = parse_lpa_activation_code(activation_code)
@@ -757,7 +785,7 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   print(f"Transaction ID: {auth_result['transactionId']}", file=sys.stderr)
 
   # Authenticate server on eUICC
-  transaction_id, b64_authenticate_server_response = es10b_authenticate_server_r(
+  transaction_id_bytes, b64_authenticate_server_response = es10b_authenticate_server_r(
     client,
     auth_result["serverSigned1"],
     auth_result["serverSignature1"],
@@ -766,7 +794,12 @@ def download_profile(client: AtClient, activation_code: str) -> None:
     matching_id=None,  # TODO: extract from activation_code if needed
     imei=None,  # TODO: get IMEI if needed
   )
-  print(f"Server authenticated, transaction ID: {transaction_id.hex()}", file=sys.stderr)
+  print(f"Server authenticated, transaction ID: {transaction_id_bytes.hex()}", file=sys.stderr)
+
+  # Authenticate client with SM-DP+
+  transaction_id_str = base64.b64encode(transaction_id_bytes).decode("ascii")
+  client_result = es9p_authenticate_client_r(smdp_address, transaction_id_str, b64_authenticate_server_response)
+  print(f"Client authenticated, profile metadata: {len(client_result['profileMetadata'])} bytes", file=sys.stderr)
 
 
 def build_cli() -> argparse.ArgumentParser:
