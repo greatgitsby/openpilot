@@ -832,7 +832,7 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
 
   metadata = es8p_metadata_parse(client_result["profileMetadata"])
-  print(json.dumps(metadata, indent=2))
+  print(f'Downloading profile: {metadata["iccid"]} - {metadata["serviceProviderName"]} - {metadata["profileName"]}')
 
 
 def build_cli() -> argparse.ArgumentParser:
