@@ -604,7 +604,8 @@ def es9p_initiate_authentication_r(smdp_address: str, b64_euicc_challenge: str, 
   headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
   payload = {"smdpAddress": smdp_address, "euiccChallenge": b64_euicc_challenge, "euiccInfo1": b64_euicc_info_1}
 
-  resp = requests.post(url, json=payload, headers=headers, timeout=30)
+  # TODO: verify? lpac doesn't
+  resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
   resp.raise_for_status()
   data = resp.json()
 
