@@ -315,6 +315,16 @@ def hex_to_gsmbcd(hex_str: str) -> bytes:
   return bytes(result)
 
 
+def encode_tlv(tag: int, value: bytes) -> bytes:
+  """Encode TLV with proper DER length encoding."""
+  value_len = len(value)
+  if value_len <= 127:
+    return bytes([tag, value_len]) + value
+  else:
+    length_bytes = value_len.to_bytes((value_len.bit_length() + 7) // 8, "big")
+    return bytes([tag, 0x80 | len(length_bytes)]) + length_bytes + value
+
+
 def build_authenticate_server_request(
   server_signed1: bytes, server_signature1: bytes, euicc_ci_pk_id: bytes, server_certificate: bytes,
   matching_id: Optional[str] = None, imei: Optional[str] = None
@@ -350,16 +360,19 @@ def build_authenticate_server_request(
 
   # Build main request: 30 [serverSigned1] 5F37 [serverSignature1] 04 [euiccCiPKId] 30 [serverCertificate] A0 [CtxParams1]
   request_content = bytearray()
-  request_content.extend([0x30, len(server_signed1)])
-  request_content.extend(server_signed1)
-  request_content.extend([0x5F, 0x37, len(server_signature1)])
+  request_content.extend(encode_tlv(0x30, server_signed1))
+  # 0x5F37 is a two-byte tag: 5F 37 [length] [value]
+  sig_len = len(server_signature1)
+  if sig_len <= 127:
+    request_content.extend([0x5F, 0x37, sig_len])
+  else:
+    length_bytes = sig_len.to_bytes((sig_len.bit_length() + 7) // 8, "big")
+    request_content.extend([0x5F, 0x37, 0x80 | len(length_bytes)])
+    request_content.extend(length_bytes)
   request_content.extend(server_signature1)
-  request_content.extend([0x04, len(euicc_ci_pk_id)])
-  request_content.extend(euicc_ci_pk_id)
-  request_content.extend([0x30, len(server_certificate)])
-  request_content.extend(server_certificate)
-  request_content.extend([0xA0, len(ctx_params)])
-  request_content.extend(ctx_params)
+  request_content.extend(encode_tlv(0x04, euicc_ci_pk_id))
+  request_content.extend(encode_tlv(0x30, server_certificate))
+  request_content.extend(encode_tlv(0xA0, ctx_params))
 
   # Build BF38 tag with length
   request_length = len(request_content)
