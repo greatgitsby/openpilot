@@ -330,31 +330,20 @@ def build_authenticate_server_request(
   matching_id: Optional[str] = None, imei: Optional[str] = None
 ) -> bytes:
   """Build DER-encoded AuthenticateServer request (tag 0xBF38)."""
-  # Structure: BF38 [length] 30 [serverSigned1] 5F37 [serverSignature1] 04 [euiccCiPKId] 30 [serverCertificate] A0 [CtxParams1]
-  # CtxParams1 (A0) contains: optional 80 [matchingId] A1 [deviceInfo]
-  # deviceInfo (A1) contains: 80 [tac] A1 [deviceCapabilities]
-  # deviceCapabilities (A1) contains: optional 82 [imei]
-
-  # Build deviceCapabilities (A1): optional 82 [imei]
   device_capabilities = bytearray()
   if imei:
     imei_bytes = hex_to_gsmbcd(imei)
     device_capabilities.extend([0x82, len(imei_bytes)])
     device_capabilities.extend(imei_bytes)
 
-  # Build deviceInfo (A1): 80 [tac] A1 [deviceCapabilities]
-  # Reference shows deviceCapabilities (A1) is always present, even if empty
-  tac = bytes([0x35, 0x29, 0x06, 0x11])  # Default TAC
+  tac = bytes([0x35, 0x29, 0x06, 0x11])
   device_info = bytearray([0x80, len(tac)]) + tac
-  # deviceCapabilities (A1) is always present
   if device_capabilities:
     device_info.extend([0xA1, len(device_capabilities)])
     device_info.extend(device_capabilities)
   else:
-    # Empty deviceCapabilities (A1) - just tag and length 0
     device_info.extend([0xA1, 0x00])
 
-  # Build CtxParams1 (A0): optional 80 [matchingId] A1 [deviceInfo]
   ctx_params = bytearray()
   if matching_id:
     matching_id_bytes = matching_id.encode("utf-8")
@@ -363,38 +352,12 @@ def build_authenticate_server_request(
   ctx_params.extend([0xA1, len(device_info)])
   ctx_params.extend(device_info)
 
-  # Build main request: 30 [serverSigned1] 5F37 [serverSignature1] 04 [euiccCiPKId] 30 [serverCertificate] A0 [CtxParams1]
-  # The decoded bytes are already DER-encoded structures with their tags
+  # Build main request: decoded bytes are already DER-encoded with their tags
   request_content = bytearray()
-  # Check if structures already have their tags, or if we need to add them
-  # serverSigned1 should start with 0x30
-  if not server_signed1.startswith(bytes([0x30])):
-    request_content.extend(encode_tlv(0x30, server_signed1))
-  else:
-    request_content.extend(server_signed1)
-  # serverSignature1 should start with 0x5F37
-  if not server_signature1.startswith(bytes([0x5F, 0x37])):
-    sig_len = len(server_signature1)
-    if sig_len <= 127:
-      request_content.extend([0x5F, 0x37, sig_len])
-    else:
-      length_bytes = sig_len.to_bytes((sig_len.bit_length() + 7) // 8, "big")
-      request_content.extend([0x5F, 0x37, 0x80 | len(length_bytes)])
-      request_content.extend(length_bytes)
-    request_content.extend(server_signature1)
-  else:
-    request_content.extend(server_signature1)
-  # euiccCiPKId should start with 0x04
-  if not euicc_ci_pk_id.startswith(bytes([0x04])):
-    request_content.extend(encode_tlv(0x04, euicc_ci_pk_id))
-  else:
-    request_content.extend(euicc_ci_pk_id)
-  # serverCertificate should start with 0x30
-  if not server_certificate.startswith(bytes([0x30])):
-    request_content.extend(encode_tlv(0x30, server_certificate))
-  else:
-    request_content.extend(server_certificate)
-  # CtxParams1 needs to be encoded
+  request_content.extend(server_signed1)
+  request_content.extend(server_signature1)
+  request_content.extend(euicc_ci_pk_id)
+  request_content.extend(server_certificate)
   request_content.extend(encode_tlv(0xA0, ctx_params))
 
   # Build BF38 tag with length
@@ -433,39 +396,13 @@ def es10b_authenticate_server_r(
   if transaction_id is None:
     raise RuntimeError("Invalid serverSigned1: missing transactionId (0x80)")
 
-  # Build and send request
   request = build_authenticate_server_request(server_signed1, server_signature1, euicc_ci_pk_id, server_certificate, matching_id, imei)
-  print(f"AuthenticateServerRequest length: {len(request)} bytes", file=sys.stderr)
-  print(f"Request starts with: {request[:10].hex()}", file=sys.stderr)
   response = es10x_command(client, request)
-  print(f"Raw response length: {len(response)} bytes", file=sys.stderr)
-  print(f"Raw response hex: {response.hex()}", file=sys.stderr)
 
-  # Return transaction_id and base64 encoded response
-  # Response should be AuthenticateServerResponse (tag 0xBF38)
   if not response.startswith(bytes([0xBF, 0x38])):
-    raise RuntimeError(f"Invalid AuthenticateServerResponse: expected tag 0xBF38, got {response[:4].hex() if len(response) >= 4 else 'too short'}")
+    raise RuntimeError("Invalid AuthenticateServerResponse: expected tag 0xBF38")
 
-  # Check if response seems too short (might be an error response)
-  if len(response) < 50:
-    print(f"ERROR: AuthenticateServerResponse is very short ({len(response)} bytes): {response.hex()}", file=sys.stderr)
-    # Parse the response to see what error it contains
-    root = find_tag(response, 0xBF38)
-    if root:
-      print(f"Response content: {root.hex()}", file=sys.stderr)
-      # The response structure: A1 [content] where content has 80 00 [empty transactionId] and 02 01 7F [error code]
-      # Check for error code tag 0x02
-      for tag, value in iter_tlv(root):
-        if tag == 0x02 and len(value) > 0:
-          error_code = value[0]
-          raise RuntimeError(f"eUICC returned error code 0x{error_code:02X} in AuthenticateServerResponse - request rejected")
-        elif tag == 0x80 and len(value) == 0:
-          print("WARNING: Empty transactionId in response", file=sys.stderr)
-    raise RuntimeError(f"AuthenticateServerResponse too short ({len(response)} bytes) - eUICC rejected the request. Response: {response.hex()}")
-
-  b64_response = base64.b64encode(response).decode("ascii")
-  print(f"AuthenticateServerResponse length: {len(response)} bytes", file=sys.stderr)
-  return transaction_id, b64_response
+  return transaction_id, base64.b64encode(response).decode("ascii")
 
 
 def build_enable_profile_request(iccid: str) -> bytes:
@@ -822,40 +759,21 @@ def es9p_authenticate_client_r(smdp_address: str, transaction_id: str, b64_authe
 def download_profile(client: AtClient, activation_code: str) -> None:
   """Download eSIM profile using LPA activation code."""
   version, smdp_address, activation_code = parse_lpa_activation_code(activation_code)
-  print(f"Downloading profile from {smdp_address} with activation code {activation_code}, version {version}", file=sys.stderr)
 
   # Get eUICC challenge and info
   challenge, euicc_info = es10b_get_euicc_challenge_and_info(client)
   b64_challenge = base64.b64encode(challenge).decode("ascii")
   b64_euicc_info = base64.b64encode(euicc_info).decode("ascii")
 
-  # Initiate authentication with SM-DP+
   auth_result = es9p_initiate_authentication_r(smdp_address, b64_challenge, b64_euicc_info)
-  print(f"Transaction ID: {auth_result['transactionId']}", file=sys.stderr)
-
-  # Authenticate server on eUICC
-  transaction_id_bytes, b64_authenticate_server_response = es10b_authenticate_server_r(
+  _, b64_authenticate_server_response = es10b_authenticate_server_r(
     client,
     auth_result["serverSigned1"],
     auth_result["serverSignature1"],
     auth_result["euiccCiPKIdToBeUsed"],
     auth_result["serverCertificate"],
-    matching_id=None,  # TODO: extract from activation_code if needed
-    imei=None,  # TODO: get IMEI if needed
   )
-  print(f"Server authenticated, eUICC transaction ID: {transaction_id_bytes.hex()}", file=sys.stderr)
-
-  # Authenticate client with SM-DP+
-  # Use the HTTP transaction ID from initiateAuthentication response (as string, not base64)
-  http_transaction_id = auth_result["transactionId"]
-  print(f"Using HTTP transaction ID: {http_transaction_id}", file=sys.stderr)
-  print(f"AuthenticateServerResponse length: {len(b64_authenticate_server_response)} chars (base64)", file=sys.stderr)
-  resp_data = base64.b64decode(b64_authenticate_server_response)
-  print(f"AuthenticateServerResponse decoded length: {len(resp_data)} bytes", file=sys.stderr)
-  if len(resp_data) < 20:
-    print(f"WARNING: AuthenticateServerResponse seems too short: {resp_data.hex()}", file=sys.stderr)
-  client_result = es9p_authenticate_client_r(smdp_address, http_transaction_id, b64_authenticate_server_response)
-  print(f"Client authenticated, profile metadata: {len(client_result['profileMetadata'])} bytes", file=sys.stderr)
+  es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
 
 
 def build_cli() -> argparse.ArgumentParser:
