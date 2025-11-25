@@ -1112,6 +1112,7 @@ def decode_notification_metadata(metadata_data: bytes) -> Optional[dict]:
       # Reference checks value[1] for the operation type
       if len(value) >= 2:
         op_value = value[1]
+        print("op_value", op_value)
         # Map operation values (from reference)
         if op_value in (1, 2, 3, 4):  # INSTALL, ENABLE, DISABLE, DELETE
           notification["profileManagementOperation"] = op_value
