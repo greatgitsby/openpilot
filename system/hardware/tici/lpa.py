@@ -736,6 +736,73 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
   return result
 
 
+def es10b_load_euicc_package_r(client: AtClient, b64_euicc_package: str) -> dict:
+  """Load eUICC Package via ES10b.LoadEuiccPackage.
+
+  According to SGP.32, this function executes a eUICC Package containing PSMOs or eCOs.
+  The package should be a signed EuiccPackageRequest, but for basic implementation
+  we'll try sending the IpaEuiccDataRequest structure directly.
+
+  Returns a dictionary with:
+    - success: True if operation succeeded
+    - statusCode: Status code from SetFallbackAttributeResult
+    - errorMessage: Error message if operation failed
+  """
+  euicc_package = base64.b64decode(b64_euicc_package)
+
+  # Try sending the package directly via es10x_command
+  # Note: Full implementation would require proper EuiccPackageRequest with signing
+  response = es10x_command(client, euicc_package)
+
+  result = {"success": False, "statusCode": None, "errorMessage": None}
+
+  # Parse response: EuiccPackageResult contains setFallbackAttributeResult
+  # Response structure: BF52 [length] [result data]
+  # The result should contain setFallbackAttributeResult [13] with status code
+  root = find_tag(response, 0xBF52)
+  if root is None:
+    # Try to find result in response directly
+    # Look for setFallbackAttributeResult tag [13] (0xAD = 0x80 | 0x20 | 0x0D)
+    # Or look for integer result directly
+    if len(response) > 0:
+      # Try to find status code - it might be a simple integer
+      if len(response) == 1:
+        status_code = response[0]
+        result["statusCode"] = status_code
+        if status_code == 0:
+          result["success"] = True
+        else:
+          result["errorMessage"] = f"SetFallbackAttribute failed with status 0x{status_code:02X}"
+        return result
+    raise RuntimeError("Invalid EuiccPackageResult: missing 0xBF52 tag or result data")
+
+  # Parse the result data - look for setFallbackAttributeResult [13]
+  # The result might be directly in root or nested
+  for tag, value in iter_tlv(root):
+    if tag == 0xAD:  # setFallbackAttributeResult [13] (0xAD = 0x80 | 0x20 | 0x0D)
+      # The value should contain the status code
+      if len(value) > 0:
+        status_code = int.from_bytes(value, "big")
+        result["statusCode"] = status_code
+        if status_code == 0:
+          result["success"] = True
+        else:
+          result["errorMessage"] = f"SetFallbackAttribute failed with status 0x{status_code:02X}"
+        return result
+
+  # If we can't find the result tag, try to parse as direct integer
+  if len(root) > 0:
+    status_code = root[0] if len(root) == 1 else int.from_bytes(root[:1], "big")
+    result["statusCode"] = status_code
+    if status_code == 0:
+      result["success"] = True
+    else:
+      result["errorMessage"] = f"SetFallbackAttribute failed with status 0x{status_code:02X}"
+    return result
+
+  raise RuntimeError("Invalid EuiccPackageResult: could not parse setFallbackAttributeResult")
+
+
 def build_enable_profile_request(iccid: str) -> bytes:
   """Build DER-encoded EnableProfile request with ICCID.
 
@@ -901,6 +968,64 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f'profile {iccid} not found')
   elif code != 0x00:
     raise RuntimeError(f'SetNickname failed with status 0x{code:02X}')
+
+
+def build_set_fallback_attribute_request(iccid: str) -> bytes:
+  """Build setFallbackAttribute command structure.
+
+  Structure: [8] SEQUENCE {iccid [APPLICATION 26] Iccid}
+  According to SGP.32 specification, tag [8] represents setFallbackAttribute.
+  ICCID is encoded as APPLICATION 26 (tag 0x5A) in TBCD format.
+  """
+  iccid_tbcd = string_to_tbcd(iccid)
+  # Build TLV structure: [8] [length] 5A [iccid_length] [iccid_bytes]
+  # [8] = setFallbackAttribute tag (context-specific, constructed)
+  # 5A = ICCID tag (APPLICATION 26)
+  iccid_tlv = bytearray([0x5A, len(iccid_tbcd)]) + iccid_tbcd
+  # Encode as context-specific constructed tag [8] (0xA8 = 0x80 | 0x20 | 0x08)
+  # 0x80 = context-specific class, 0x20 = constructed, 0x08 = tag number 8
+  return encode_tlv(0xA8, bytes(iccid_tlv))
+
+
+def build_euicc_package_for_set_fallback(iccid: str) -> bytes:
+  """Build minimal eUICC Package (IpaEuiccDataRequest) for setFallbackAttribute.
+
+  Structure: BF52 [length] [setFallbackAttribute command]
+  According to SGP.32, IpaEuiccDataRequest has tag 0xBF52.
+  This builds a minimal structure - full implementation would require signing.
+  """
+  set_fallback_cmd = build_set_fallback_attribute_request(iccid)
+  # Build BF52 (IpaEuiccDataRequest) containing the setFallbackAttribute command
+  return encode_tlv(0xBF52, set_fallback_cmd)
+
+
+def set_profile_fallback(client: AtClient, iccid: str) -> None:
+  """Set the fallback attribute for an eSIM profile by ICCID.
+
+  Sends the ES10b LoadEuiccPackage command with setFallbackAttribute PSMO.
+  According to SGP.32 specification section 3.4.6.
+  """
+  # Build the eUICC Package with setFallbackAttribute command
+  euicc_package = build_euicc_package_for_set_fallback(iccid)
+  b64_euicc_package = base64.b64encode(euicc_package).decode("ascii")
+
+  # Load the eUICC Package
+  result = es10b_load_euicc_package_r(client, b64_euicc_package)
+
+  # Handle SetFallbackAttributeResult status codes
+  if not result["success"]:
+    status_code = result["statusCode"]
+    if status_code == 1:
+      raise RuntimeError(f'profile {iccid} not found')
+    elif status_code == 2:
+      raise RuntimeError(f'fallback not allowed for profile {iccid}')
+    elif status_code == 3:
+      raise RuntimeError('fallback profile is currently enabled, cannot set fallback attribute')
+    elif status_code == 127:
+      raise RuntimeError('SetFallbackAttribute failed with undefined error')
+    else:
+      error_msg = result.get("errorMessage", f"SetFallbackAttribute failed with status 0x{status_code:02X}")
+      raise RuntimeError(error_msg)
 
 
 def build_list_notifications_request() -> bytes:
@@ -1340,6 +1465,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--enable", type=str, help="Enable profile by ICCID")
   parser.add_argument("--disable", type=str, help="Disable profile by ICCID")
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"), help="Set profile nickname by ICCID")
+  parser.add_argument("--set-fallback", type=str, metavar="ICCID", help="Set fallback attribute for profile by ICCID")
   parser.add_argument("--list-notifications", action="store_true", help="Retrieve and display notifications from eUICC")
   parser.add_argument("--process-notifications", action="store_true", help="Process all notifications: send to SM-DP+ and remove from eUICC")
   parser.add_argument("--download", type=str, metavar="CODE", help="Download profile (LPA:1$smdp.io$CODE)")
@@ -1366,6 +1492,11 @@ def main() -> None:
       iccid, nickname = args.set_nickname
       set_profile_nickname(client, iccid, nickname)
       # List profiles after setting nickname to show updated state
+      profiles = request_profile_info(client)
+      print(json.dumps(profiles, indent=2))
+    elif args.set_fallback:
+      set_profile_fallback(client, args.set_fallback)
+      # List profiles after setting fallback to show updated state
       profiles = request_profile_info(client)
       print(json.dumps(profiles, indent=2))
     elif args.list_notifications:
