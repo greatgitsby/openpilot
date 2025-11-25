@@ -1025,17 +1025,23 @@ def es9p_handle_notification_r(smdp_address: str, b64_pending_notification: str)
 
   resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
   resp.raise_for_status()
-  data = resp.json()
 
-  # Check for errors in response header
-  if "header" in data and "functionExecutionStatus" in data["header"]:
-    status = data["header"]["functionExecutionStatus"]
-    if status.get("status") == "Failed":
-      status_data = status.get("statusCodeData", {})
-      reason = status_data.get("reasonCode", "unknown")
-      subject = status_data.get("subjectCode", "unknown")
-      message = status_data.get("message", "unknown")
-      raise RuntimeError(f"HandleNotification failed: {reason}/{subject} - {message}")
+  # Server may return empty response or JSON - handle both
+  if resp.content:
+    try:
+      data = resp.json()
+      # Check for errors in response header
+      if "header" in data and "functionExecutionStatus" in data["header"]:
+        status = data["header"]["functionExecutionStatus"]
+        if status.get("status") == "Failed":
+          status_data = status.get("statusCodeData", {})
+          reason = status_data.get("reasonCode", "unknown")
+          subject = status_data.get("subjectCode", "unknown")
+          message = status_data.get("message", "unknown")
+          raise RuntimeError(f"HandleNotification failed: {reason}/{subject} - {message}")
+    except ValueError:
+      # Not JSON, but that's okay - empty response is valid
+      pass
 
 
 def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
