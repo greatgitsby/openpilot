@@ -5,17 +5,13 @@ import base64
 import binascii
 import hashlib
 import json
+import requests
+import serial
 import sys
+
 from collections.abc import Generator
 from typing import Optional
 
-import requests  # type: ignore
-
-try:
-  import serial  # type: ignore
-except ImportError as exc:
-  sys.stderr.write("pyserial is required (`pip install pyserial`)\n")
-  raise SystemExit(1) from exc
 
 DEFAULT_DEVICE = "/dev/ttyUSB3"
 DEFAULT_BAUD = 9600
