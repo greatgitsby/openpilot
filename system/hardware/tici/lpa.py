@@ -8,6 +8,8 @@ import sys
 from collections.abc import Generator
 from typing import Optional
 
+import requests  # type: ignore
+
 try:
   import serial  # type: ignore
 except ImportError as exc:  # pragma: no cover - handled at runtime
@@ -591,13 +593,43 @@ def parse_lpa_activation_code(activation_code: str) -> dict[str, str]:
   return parts[0], parts[1], parts[2]
 
 
+def base64_trim(s: str) -> str:
+  """Remove whitespace from base64 string."""
+  return "".join(c for c in s if c not in "\n\r \t")
+
+
+def es9p_initiate_authentication_r(smdp_address: str, b64_euicc_challenge: str, b64_euicc_info_1: str) -> dict:
+  """Initiate authentication with SM-DP+ server."""
+  url = f"https://{smdp_address}/gsma/rsp2/es9plus/initiateAuthentication"
+  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
+  payload = {"smdpAddress": smdp_address, "euiccChallenge": b64_euicc_challenge, "euiccInfo1": b64_euicc_info_1}
+
+  resp = requests.post(url, json=payload, headers=headers, timeout=30)
+  resp.raise_for_status()
+  data = resp.json()
+
+  return {
+    "transactionId": data["transactionId"],
+    "serverSigned1": base64_trim(data.get("serverSigned1", "")),
+    "serverSignature1": base64_trim(data.get("serverSignature1", "")),
+    "euiccCiPKIdToBeUsed": base64_trim(data.get("euiccCiPKIdToBeUsed", "")),
+    "serverCertificate": base64_trim(data.get("serverCertificate", "")),
+  }
+
+
 def download_profile(client: AtClient, activation_code: str) -> None:
   """Download eSIM profile using LPA activation code."""
   version, smdp_address, activation_code = parse_lpa_activation_code(activation_code)
   print(f"Downloading profile from {smdp_address} with activation code {activation_code}, version {version}", file=sys.stderr)
+
+  # Get eUICC challenge and info
   challenge, euicc_info = es10b_get_euicc_challenge_and_info(client)
-  print(f"Challenge: {challenge}", file=sys.stderr)
-  print(f"EUICC Info: {euicc_info}", file=sys.stderr)
+  b64_challenge = base64.b64encode(challenge).decode("ascii")
+  b64_euicc_info = base64.b64encode(euicc_info).decode("ascii")
+
+  # Initiate authentication with SM-DP+
+  auth_result = es9p_initiate_authentication_r(smdp_address, b64_challenge, b64_euicc_info)
+  print(f"Transaction ID: {auth_result['transactionId']}", file=sys.stderr)
 
 
 def build_cli() -> argparse.ArgumentParser:
