@@ -364,19 +364,37 @@ def build_authenticate_server_request(
   ctx_params.extend(device_info)
 
   # Build main request: 30 [serverSigned1] 5F37 [serverSignature1] 04 [euiccCiPKId] 30 [serverCertificate] A0 [CtxParams1]
+  # The decoded bytes are already DER-encoded structures with their tags
   request_content = bytearray()
-  request_content.extend(encode_tlv(0x30, server_signed1))
-  # 0x5F37 is a two-byte tag: 5F 37 [length] [value]
-  sig_len = len(server_signature1)
-  if sig_len <= 127:
-    request_content.extend([0x5F, 0x37, sig_len])
+  # Check if structures already have their tags, or if we need to add them
+  # serverSigned1 should start with 0x30
+  if not server_signed1.startswith(bytes([0x30])):
+    request_content.extend(encode_tlv(0x30, server_signed1))
   else:
-    length_bytes = sig_len.to_bytes((sig_len.bit_length() + 7) // 8, "big")
-    request_content.extend([0x5F, 0x37, 0x80 | len(length_bytes)])
-    request_content.extend(length_bytes)
-  request_content.extend(server_signature1)
-  request_content.extend(encode_tlv(0x04, euicc_ci_pk_id))
-  request_content.extend(encode_tlv(0x30, server_certificate))
+    request_content.extend(server_signed1)
+  # serverSignature1 should start with 0x5F37
+  if not server_signature1.startswith(bytes([0x5F, 0x37])):
+    sig_len = len(server_signature1)
+    if sig_len <= 127:
+      request_content.extend([0x5F, 0x37, sig_len])
+    else:
+      length_bytes = sig_len.to_bytes((sig_len.bit_length() + 7) // 8, "big")
+      request_content.extend([0x5F, 0x37, 0x80 | len(length_bytes)])
+      request_content.extend(length_bytes)
+    request_content.extend(server_signature1)
+  else:
+    request_content.extend(server_signature1)
+  # euiccCiPKId should start with 0x04
+  if not euicc_ci_pk_id.startswith(bytes([0x04])):
+    request_content.extend(encode_tlv(0x04, euicc_ci_pk_id))
+  else:
+    request_content.extend(euicc_ci_pk_id)
+  # serverCertificate should start with 0x30
+  if not server_certificate.startswith(bytes([0x30])):
+    request_content.extend(encode_tlv(0x30, server_certificate))
+  else:
+    request_content.extend(server_certificate)
+  # CtxParams1 needs to be encoded
   request_content.extend(encode_tlv(0xA0, ctx_params))
 
   # Build BF38 tag with length
@@ -430,15 +448,20 @@ def es10b_authenticate_server_r(
 
   # Check if response seems too short (might be an error response)
   if len(response) < 50:
-    print(f"WARNING: AuthenticateServerResponse is very short ({len(response)} bytes): {response.hex()}", file=sys.stderr)
-    # Try to parse as error response
+    print(f"ERROR: AuthenticateServerResponse is very short ({len(response)} bytes): {response.hex()}", file=sys.stderr)
+    # Parse the response to see what error it contains
     root = find_tag(response, 0xBF38)
     if root:
-      # Check for error indicators
-      error_tag = find_tag(root, 0x02)
-      if error_tag:
-        error_code = error_tag[0] if len(error_tag) > 0 else 0
-        raise RuntimeError(f"eUICC returned error in AuthenticateServerResponse: 0x{error_code:02X}")
+      print(f"Response content: {root.hex()}", file=sys.stderr)
+      # The response structure: A1 [content] where content has 80 00 [empty transactionId] and 02 01 7F [error code]
+      # Check for error code tag 0x02
+      for tag, value in iter_tlv(root):
+        if tag == 0x02 and len(value) > 0:
+          error_code = value[0]
+          raise RuntimeError(f"eUICC returned error code 0x{error_code:02X} in AuthenticateServerResponse - request rejected")
+        elif tag == 0x80 and len(value) == 0:
+          print("WARNING: Empty transactionId in response", file=sys.stderr)
+    raise RuntimeError(f"AuthenticateServerResponse too short ({len(response)} bytes) - eUICC rejected the request. Response: {response.hex()}")
 
   b64_response = base64.b64encode(response).decode("ascii")
   print(f"AuthenticateServerResponse length: {len(response)} bytes", file=sys.stderr)
