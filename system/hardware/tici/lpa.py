@@ -868,77 +868,73 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f'SetNickname failed with status 0x{code:02X}')
 
 
-def build_list_notifications_request(profile_management_operation: Optional[int] = None) -> bytes:
-  """Build DER-encoded ListNotifications request.
+def build_list_notifications_request() -> bytes:
+  """Build DER-encoded ListNotificationRequest (tag 0xBF28).
 
-  Structure: BF28 [length] A0 [length] [optional profileManagementOperation]
-  BF28 = ListNotifications tag
-  A0 = Context tag for ListNotificationRequest
-  According to SGP.22 specification section 5.7.9, ListNotifications retrieves notifications stored on the eUICC.
-  If profileManagementOperation is omitted, all notifications are returned.
+  Structure: BF28 [length] (empty - no content)
+  According to lpac reference, the request is just the tag with length 0.
   """
-  # Build TLV structure: BF28 [length] A0 [length] [optional profileManagementOperation]
-  # A0 is the context tag for ListNotificationRequest
-  a0_content = bytearray()
-  if profile_management_operation is not None:
-    # Add profileManagementOperation field (tag 0x83, integer)
-    # Encode as integer (typically 1-4 bytes)
-    op_bytes = profile_management_operation.to_bytes((profile_management_operation.bit_length() + 7) // 8 or 1, "big")
-    a0_content.extend([0x83, len(op_bytes)])
-    a0_content.extend(op_bytes)
+  # Empty request: just tag BF28 with length 0
+  return bytes([0xBF, 0x28, 0x00])
 
-  bf28_content = bytearray([0xA0, len(a0_content)]) + a0_content
-  bf28_length = len(bf28_content)
-  # Handle length encoding: if length > 127, use multi-byte encoding
-  if bf28_length <= 127:
-    return bytes([0xBF, 0x28, bf28_length]) + bf28_content
-  else:
-    # Multi-byte length encoding
-    length_bytes = bf28_length.to_bytes((bf28_length.bit_length() + 7) // 8, "big")
-    return bytes([0xBF, 0x28, 0x80 | len(length_bytes)]) + length_bytes + bf28_content
+
+def build_retrieve_notifications_list_request(seq_number: int) -> bytes:
+  """Build DER-encoded RetrieveNotificationsListRequest (tag 0xBF2B).
+
+  Structure: BF2B [length] A0 [length] 80 [seqNumber]
+  BF2B = RetrieveNotificationsListRequest tag
+  A0 = searchCriteria
+  80 = seqNumber
+  """
+  # Encode seqNumber
+  seq_bytes = seq_number.to_bytes((seq_number.bit_length() + 7) // 8 or 1, "big")
+  seq_tlv = encode_tlv(0x80, seq_bytes)
+
+  # Build A0 (searchCriteria) containing seqNumber
+  a0_content = seq_tlv
+  a0_tlv = encode_tlv(0xA0, a0_content)
+
+  # Build BF2B request
+  request = encode_tlv(0xBF2B, a0_tlv)
+  return request
 
 
 def decode_notification_metadata_list(data: bytes) -> list[dict]:
-  """Parse NotificationMetadataList TLV structure from ListNotificationResponse.
+  """Parse NotificationMetadataList from ListNotificationResponse (tag 0xBF28).
 
-  Response structure: BF28 [length] A0 [length] [NotificationMetadataList or listNotificationsResultError]
-  NotificationMetadataList is a SEQUENCE OF NotificationMetadata.
-  According to SGP.22 and lpac reference implementation.
+  Response structure: BF28 [length] A0 [length] [NotificationMetadataList]
+  NotificationMetadataList is a SEQUENCE OF NotificationMetadata (tag 0xBF2F).
+  According to lpac reference implementation.
   """
   root = find_tag(data, 0xBF28)
   if root is None:
     raise RuntimeError("Missing ListNotificationResponse (0xBF28)")
 
-  # Check for error first (tag 0x80) - listNotificationsResultError
-  error_data = find_tag(root, 0x80)
-  if error_data is not None:
-    error_code = error_data[0] if len(error_data) > 0 else 0
-    raise RuntimeError(f"ListNotifications failed with error code: 0x{error_code:02X}")
-
   # Find NotificationMetadataList (tag A0)
-  # NotificationMetadataList is a SEQUENCE OF NotificationMetadata
   metadata_list_data = find_tag(root, 0xA0)
   if metadata_list_data is None:
     # No notifications available
     return []
 
   notifications: list[dict] = []
-  for _, value in iter_tlv(metadata_list_data):
-    notification = decode_notification_metadata(value)
-    if notification:
-      notifications.append(notification)
+  # Iterate through NotificationMetadata items (tag 0xBF2F)
+  for tag, value in iter_tlv(metadata_list_data):
+    if tag == 0xBF2F:
+      notification = decode_notification_metadata(value)
+      if notification:
+        notifications.append(notification)
 
   return notifications
 
 
 def decode_notification_metadata(metadata_data: bytes) -> Optional[dict]:
-  """Parse individual NotificationMetadata TLV structure.
+  """Parse individual NotificationMetadata TLV structure (tag 0xBF2F).
 
   Extracts sequence number, profile management operation, notification address, and ICCID.
   NotificationMetadata structure contains:
-  - 0x82: seqNumber (integer) - required
-  - 0x83: profileManagementOperation (bitmask) - required
-  - 0x84: notificationAddress (UTF8String) - required
+  - 0x80: seqNumber (integer) - required
+  - 0x81: profileManagementOperation (bitstring) - required (checks value[1])
+  - 0x0C: notificationAddress (UTF8String) - required
   - 0x5A: ICCID (TBCD) - optional
   """
   notification: dict = {
@@ -949,15 +945,21 @@ def decode_notification_metadata(metadata_data: bytes) -> Optional[dict]:
   }
 
   for tag, value in iter_tlv(metadata_data):
-    if tag == 0x82:  # seqNumber
+    if tag == 0x80:  # seqNumber
       if len(value) > 0:
         notification["seqNumber"] = int.from_bytes(value, "big")
-    elif tag == 0x83:  # profileManagementOperation
-      if len(value) > 0:
-        notification["profileManagementOperation"] = int.from_bytes(value, "big")
-    elif tag == 0x84:  # notificationAddress (UTF8String)
+    elif tag == 0x81:  # profileManagementOperation (bitstring)
+      # Reference checks value[1] for the operation type
+      if len(value) >= 2:
+        op_value = value[1]
+        # Map operation values (from reference)
+        if op_value in (1, 2, 3, 4):  # INSTALL, ENABLE, DISABLE, DELETE
+          notification["profileManagementOperation"] = op_value
+        else:
+          notification["profileManagementOperation"] = 255  # UNDEFINED
+    elif tag == 0x0C:  # notificationAddress (UTF8String)
       notification["notificationAddress"] = value.decode("utf-8", errors="ignore")
-    elif tag == 0x5A:  # ICCID (optional)
+    elif tag == 0x5A:  # ICCID (optional, TBCD format)
       notification["iccid"] = tbcd_to_string(value)
 
   # Only return notification if it has required fields
@@ -966,18 +968,78 @@ def decode_notification_metadata(metadata_data: bytes) -> Optional[dict]:
   return None
 
 
-def list_notifications(client: AtClient, profile_management_operation: Optional[int] = None) -> list[dict]:
-  """Retrieve notifications stored on the eUICC via ListNotifications command.
+def list_notifications(client: AtClient) -> list[dict]:
+  """Retrieve notifications stored on the eUICC via ListNotificationRequest (tag 0xBF28).
 
-  Sends the ES10x ListNotifications command and parses the response.
+  Sends the ES10b ListNotification command and parses the response.
   Returns a list of notification metadata dictionaries.
-  According to SGP.22 specification section 5.7.9.
+  According to lpac reference implementation.
   """
-  der_request = build_list_notifications_request(profile_management_operation)
+  der_request = build_list_notifications_request()
   payload = es10x_command(client, der_request)
 
   # Parse and return the notification metadata list
   return decode_notification_metadata_list(payload)
+
+
+def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
+  """Retrieve a specific notification by sequence number using RetrieveNotificationsListRequest (tag 0xBF2B).
+
+  Returns a dictionary with:
+    - notificationAddress: Notification address (URL)
+    - b64_PendingNotification: Base64-encoded pending notification
+  """
+  der_request = build_retrieve_notifications_list_request(seq_number)
+  response = es10x_command(client, der_request)
+
+  # Parse response: BF2B [length] A0 [length] [PendingNotification]
+  root = find_tag(response, 0xBF2B)
+  if root is None:
+    raise RuntimeError("Invalid RetrieveNotificationsListResponse: missing 0xBF2B tag")
+
+  a0_content = find_tag(root, 0xA0)
+  if a0_content is None:
+    raise RuntimeError("Invalid RetrieveNotificationsListResponse: missing 0xA0 tag")
+
+  # Find PendingNotification (can be 0xBF37 or 0x30)
+  pending_notif = None
+  pending_notif_tag = None
+  for tag, value in iter_tlv(a0_content):
+    if tag == 0xBF37 or tag == 0x30:
+      pending_notif = value
+      pending_notif_tag = tag
+      break
+
+  if pending_notif is None:
+    raise RuntimeError("Invalid RetrieveNotificationsListResponse: missing PendingNotification")
+
+  # Find NotificationMetadata (0xBF2F)
+  notif_meta = None
+  if pending_notif_tag == 0xBF37:
+    # profileInstallationResult: find BF27, then BF2F
+    result_data = find_tag(pending_notif, 0xBF27)
+    if result_data:
+      notif_meta = find_tag(result_data, 0xBF2F)
+  elif pending_notif_tag == 0x30:
+    # otherSignedNotification: find BF2F directly
+    notif_meta = find_tag(pending_notif, 0xBF2F)
+
+  if notif_meta is None:
+    raise RuntimeError("Invalid RetrieveNotificationsListResponse: missing NotificationMetadata")
+
+  # Extract notificationAddress (0x0C)
+  notification_address = find_tag(notif_meta, 0x0C)
+  if notification_address is None:
+    raise RuntimeError("Invalid NotificationMetadata: missing notificationAddress (0x0C)")
+
+  # Get the full PendingNotification bytes (need to find it in the response)
+  # For now, we'll encode the value we found
+  b64_pending_notif = base64.b64encode(pending_notif).decode("ascii")
+
+  return {
+    "notificationAddress": notification_address.decode("utf-8", errors="ignore"),
+    "b64_PendingNotification": b64_pending_notif,
+  }
 
 
 def parse_lpa_activation_code(activation_code: str) -> dict[str, str]:
