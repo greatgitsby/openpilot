@@ -1109,15 +1109,20 @@ def decode_notification_metadata(metadata_data: bytes) -> Optional[dict]:
       if len(value) > 0:
         notification["seqNumber"] = int.from_bytes(value, "big")
     elif tag == 0x81:  # profileManagementOperation (bitstring)
-      # Reference checks value[1] for the operation type
       if len(value) >= 2:
-        op_value = value[1]
-        print("op_value", op_value)
-        # Map operation values (from reference)
-        if op_value in (1, 2, 3, 4):  # INSTALL, ENABLE, DISABLE, DELETE
-          notification["profileManagementOperation"] = op_value
+        bit_data = value[1]
+        if bit_data & 0x80:  # Bit 0 set = INSTALL
+          notification["profileManagementOperation"] = 0x80
+        elif bit_data & 0x40:  # Bit 1 set = ENABLE
+          notification["profileManagementOperation"] = 0x40
+        elif bit_data & 0x20:  # Bit 2 set = DISABLE
+          notification["profileManagementOperation"] = 0x20
+        elif bit_data & 0x10:  # Bit 3 set = DELETE
+          notification["profileManagementOperation"] = 0x10
         else:
-          notification["profileManagementOperation"] = 255  # UNDEFINED
+          notification["profileManagementOperation"] = 0xFF  # UNDEFINED
+      else:
+        notification["profileManagementOperation"] = 0xFF  # UNDEFINED
     elif tag == 0x0C:  # notificationAddress (UTF8String)
       notification["notificationAddress"] = value.decode("utf-8", errors="ignore")
     elif tag == 0x5A:  # ICCID (optional, TBCD format)
