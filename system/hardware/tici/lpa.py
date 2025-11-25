@@ -294,18 +294,12 @@ def es10b_get_euicc_info_r(client: AtClient) -> bytes:
   return root
 
 
-def es10b_get_euicc_challenge_and_info(client: AtClient) -> dict:
-  """Get eUICC challenge and info.
-
-  Returns a dictionary with 'challenge' (base64) and 'euicc_info' (base64).
-  """
+def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
+  """Get eUICC challenge and info."""
   challenge = es10b_get_euicc_challenge_r(client)
   euicc_info = es10b_get_euicc_info_r(client)
 
-  return {
-    "challenge": base64.b64encode(challenge).decode("ascii"),
-    "euicc_info": base64.b64encode(euicc_info).decode("ascii"),
-  }
+  return challenge, euicc_info
 
 
 def build_enable_profile_request(iccid: str) -> bytes:
