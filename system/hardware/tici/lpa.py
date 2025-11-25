@@ -756,6 +756,62 @@ def es9p_authenticate_client_r(smdp_address: str, transaction_id: str, b64_authe
   }
 
 
+def es8p_metadata_parse(b64_metadata: str) -> dict:
+  """Parse profileMetadata (StoreMetadataRequest, tag 0xBF25) from base64 string.
+
+  Returns a dictionary with parsed metadata fields:
+    - iccid: ICCID string
+    - serviceProviderName: Service provider name
+    - profileName: Profile name
+    - iconType: Icon type ("jpeg", "png", "unknown", or None)
+    - icon: Base64-encoded icon data
+    - profileClass: Profile class ("test", "provisioning", "operational", "unknown", or None)
+  """
+  metadata = base64.b64decode(b64_metadata)
+
+  # Find the 0xBF25 tag (StoreMetadataRequest)
+  root = find_tag(metadata, 0xBF25)
+  if root is None:
+    raise RuntimeError("Invalid profileMetadata: missing 0xBF25 tag")
+
+  result = {
+    "iccid": None,
+    "serviceProviderName": None,
+    "profileName": None,
+    "iconType": None,
+    "icon": None,
+    "profileClass": None,
+  }
+
+  # Iterate through TLV items
+  for tag, value in iter_tlv(root):
+    if tag == 0x5A:
+      # ICCID in GSM BCD format
+      result["iccid"] = tbcd_to_string(value)
+    elif tag == 0x91:
+      # Service provider name
+      result["serviceProviderName"] = value.decode("utf-8", errors="ignore") or None
+    elif tag == 0x92:
+      # Profile name
+      result["profileName"] = value.decode("utf-8", errors="ignore") or None
+    elif tag == 0x93:
+      # Icon type
+      icon_type = int.from_bytes(value, "big")
+      result["iconType"] = ICON_LABELS.get(icon_type, "unknown")
+    elif tag == 0x94:
+      # Icon (base64 encode)
+      result["icon"] = base64.b64encode(value).decode("ascii")
+    elif tag == 0x95:
+      # Profile class
+      pclass = int.from_bytes(value, "big")
+      result["profileClass"] = CLASS_LABELS.get(pclass, "unknown")
+    elif tag in (0xB6, 0xB7, 0x99):
+      # Unhandled tags, skip
+      pass
+
+  return result
+
+
 def download_profile(client: AtClient, activation_code: str) -> None:
   """Download eSIM profile using LPA activation code."""
   version, smdp_address, activation_code = parse_lpa_activation_code(activation_code)
@@ -775,8 +831,8 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   )
   client_result = es9p_authenticate_client_r(smdp_address, auth_result["transactionId"], b64_authenticate_server_response)
 
-  b64_profile_metadata = client_result["profileMetadata"]
-  print(b64_profile_metadata)
+  metadata = es8p_metadata_parse(client_result["profileMetadata"])
+  print(json.dumps(metadata, indent=2))
 
 
 def build_cli() -> argparse.ArgumentParser:
