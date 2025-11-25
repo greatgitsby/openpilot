@@ -343,17 +343,16 @@ def build_authenticate_server_request(
     device_capabilities.extend(imei_bytes)
 
   # Build deviceInfo (A1): 80 [tac] A1 [deviceCapabilities]
-  # Reference shows: n_tac.value = imei (but uses default TAC bytes if no IMEI)
-  # The TAC is always 4 bytes: [0x35, 0x29, 0x06, 0x11]
+  # Reference shows deviceCapabilities (A1) is always present, even if empty
   tac = bytes([0x35, 0x29, 0x06, 0x11])  # Default TAC
   device_info = bytearray([0x80, len(tac)]) + tac
-  # deviceCapabilities (A1) is optional - only include if IMEI is provided
+  # deviceCapabilities (A1) is always present
   if device_capabilities:
     device_info.extend([0xA1, len(device_capabilities)])
     device_info.extend(device_capabilities)
   else:
-    # If no deviceCapabilities, deviceInfo should still have the TAC
-    pass
+    # Empty deviceCapabilities (A1) - just tag and length 0
+    device_info.extend([0xA1, 0x00])
 
   # Build CtxParams1 (A0): optional 80 [matchingId] A1 [deviceInfo]
   ctx_params = bytearray()
