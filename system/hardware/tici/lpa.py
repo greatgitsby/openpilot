@@ -794,11 +794,11 @@ def download_profile(client: AtClient, activation_code: str) -> None:
     matching_id=None,  # TODO: extract from activation_code if needed
     imei=None,  # TODO: get IMEI if needed
   )
-  print(f"Server authenticated, transaction ID: {transaction_id_bytes.hex()}", file=sys.stderr)
+  print(f"Server authenticated, eUICC transaction ID: {transaction_id_bytes.hex()}", file=sys.stderr)
 
   # Authenticate client with SM-DP+
-  transaction_id_str = base64.b64encode(transaction_id_bytes).decode("ascii")
-  client_result = es9p_authenticate_client_r(smdp_address, transaction_id_str, b64_authenticate_server_response)
+  http_transaction_id = auth_result["transactionId"]
+  client_result = es9p_authenticate_client_r(smdp_address, http_transaction_id, b64_authenticate_server_response)
   print(f"Client authenticated, profile metadata: {len(client_result['profileMetadata'])} bytes", file=sys.stderr)
 
 
