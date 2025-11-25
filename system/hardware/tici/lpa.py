@@ -565,12 +565,22 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
   chunks = []
   bpp_root_value = None
   bpp_root_start = 0
+  bpp_value_start = 0  # Position where BF36 value starts (after tag and length)
 
   # Find BF36 root
-  for tag, value, start, _end in parse_tlv_with_positions(bpp):
+  for tag, value, start, end in parse_tlv_with_positions(bpp):
     if tag == 0xBF36:
       bpp_root_value = value
       bpp_root_start = start
+      # Calculate where the value starts (after tag and length)
+      bf36_data = bpp[start:end]
+      tag_len = 2  # BF36 is a two-byte tag
+      length_byte = bf36_data[tag_len]
+      if length_byte & 0x80:
+        length_len = 1 + (length_byte & 0x7F)
+      else:
+        length_len = 1
+      bpp_value_start = start + tag_len + length_len
       break
 
   if bpp_root_value is None:
@@ -580,8 +590,8 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
   bf23_end = bpp_root_start
   for tag, _value, _start, end in parse_tlv_with_positions(bpp_root_value):
     if tag == 0xBF23:
-      # Calculate position relative to bpp
-      bf23_end = bpp_root_start + end
+      # Calculate absolute position: value_start + relative_end
+      bf23_end = bpp_value_start + end
       break
   if bf23_end > bpp_root_start:
     chunk1 = bpp[bpp_root_start : bf23_end]
@@ -590,7 +600,7 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
   # Chunk 2: 0xA0 tag
   for tag, _value, start, end in parse_tlv_with_positions(bpp_root_value):
     if tag == 0xA0:
-      chunk2 = bpp[bpp_root_start + start : bpp_root_start + end]
+      chunk2 = bpp[bpp_value_start + start : bpp_value_start + end]
       chunks.append(chunk2)
       break
 
@@ -609,7 +619,7 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
       else:
         length_len = 1
       value_start_offset = tag_len + length_len
-      chunk3 = bpp[bpp_root_start + start : bpp_root_start + start + value_start_offset]
+      chunk3 = bpp[bpp_value_start + start : bpp_value_start + start + value_start_offset]
       chunks.append(chunk3)
 
       # Children of 0xA1
@@ -621,7 +631,7 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
   # Chunk 5: Optional 0xA2
   for tag, _value, start, end in parse_tlv_with_positions(bpp_root_value):
     if tag == 0xA2:
-      chunk5 = bpp[bpp_root_start + start : bpp_root_start + end]
+      chunk5 = bpp[bpp_value_start + start : bpp_value_start + end]
       chunks.append(chunk5)
       break
 
@@ -640,7 +650,7 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bound_profile_packa
       else:
         length_len = 1
       value_start_offset = tag_len + length_len
-      chunk6 = bpp[bpp_root_start + start : bpp_root_start + start + value_start_offset]
+      chunk6 = bpp[bpp_value_start + start : bpp_value_start + start + value_start_offset]
       chunks.append(chunk6)
 
       # Children of 0xA3
