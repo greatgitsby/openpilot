@@ -605,13 +605,15 @@ def parse_lpa_activation_code(activation_code: str) -> tuple[str, str, str]:
 
 
 def download_profile(client: AtClient, activation_code: str) -> None:
-  _, smdp, _ = parse_lpa_activation_code(activation_code)
+  _, smdp, matching_id = parse_lpa_activation_code(activation_code)
   challenge, euicc_info = es10b_get_euicc_challenge_and_info(client)
   b64_chal = base64.b64encode(challenge).decode("ascii")
   b64_info = base64.b64encode(euicc_info).decode("ascii")
 
-  auth = es9p_request(smdp, "initiateAuthentication",
-                      {"smdpAddress": smdp, "euiccChallenge": b64_chal, "euiccInfo1": b64_info}, "Authentication")
+  payload = {"smdpAddress": smdp, "euiccChallenge": b64_chal, "euiccInfo1": b64_info}
+  if matching_id:
+    payload["matchingId"] = matching_id
+  auth = es9p_request(smdp, "initiateAuthentication", payload, "Authentication")
   b64_auth_resp = es10b_authenticate_server_r(
     client, base64_trim(auth.get("serverSigned1", "")), base64_trim(auth.get("serverSignature1", "")),
     base64_trim(auth.get("euiccCiPKIdToBeUsed", "")), base64_trim(auth.get("serverCertificate", "")))
