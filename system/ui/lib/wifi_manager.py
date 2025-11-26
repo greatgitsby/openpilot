@@ -136,8 +136,10 @@ class WifiManager:
       self._router_main = DBusRouter(open_dbus_connection_threading(bus="SYSTEM"))  # used by scanner / general method calls
       self._conn_monitor = open_dbus_connection_blocking(bus="SYSTEM")  # used by state monitor thread
       self._nm = DBusAddress(NM_PATH, bus_name=NM, interface=NM_IFACE)
-    except FileNotFoundError:
-      cloudlog.exception("Failed to connect to system D-Bus")
+    except Exception as e:
+      # systems without dbus will raise a FileNotFoundError, don't log
+      if not isinstance(e, FileNotFoundError):
+        cloudlog.exception("Failed to connect to system D-Bus")
       self._router_main = None
       self._conn_monitor = None
       self._exit = True
@@ -169,9 +171,10 @@ class WifiManager:
     self._disconnected: list[Callable[[], None]] = []
 
     self._lock = threading.Lock()
-    self._scan_thread = threading.Thread(target=self._network_scanner, daemon=True)
-    self._state_thread = threading.Thread(target=self._monitor_state, daemon=True)
-    self._initialize()
+    if self._router_main is not None and self._conn_monitor is not None:
+      self._scan_thread = threading.Thread(target=self._network_scanner, daemon=True)
+      self._state_thread = threading.Thread(target=self._monitor_state, daemon=True)
+      self._initialize()
     atexit.register(self.stop)
 
   def _initialize(self):
