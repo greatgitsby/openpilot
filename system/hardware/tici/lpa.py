@@ -39,6 +39,14 @@ TAG_AUTH_SERVER = 0xBF38
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
+PROFILE_ERROR_CODES = {
+  0x01: "iccidOrAidNotFound",
+  0x02: "profileNotInDisabledState",
+  0x03: "disallowedByPolicy",
+  0x04: "wrongProfileReenabling",
+  0x05: "catBusy",
+  0x06: "undefinedError",
+}
 
 
 class AtClient:
@@ -297,9 +305,12 @@ def request_profile_info(client: AtClient) -> list[dict]:
   return decode_profiles(es10x_command(client, bytes.fromhex("BF2D00")))
 
 
-def enable_profile(client: AtClient, iccid: str) -> None:
-  # Build with A0 wrapper: BF31 [A0 [5A iccid]]
-  content = encode_tlv(0xA0, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
+  # Build with A0 wrapper: BF31 [A0 [5A iccid] [81 refresh_flag]]
+  inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+  if not refresh:
+    inner += encode_tlv(0x81, b'\x00')  # refreshFlag = false
+  content = encode_tlv(0xA0, inner)
   response = es10x_command(client, encode_tlv(TAG_ENABLE_PROFILE, content))
   root = find_tag(response, TAG_ENABLE_PROFILE)
   if root is None:
@@ -308,16 +319,20 @@ def enable_profile(client: AtClient, iccid: str) -> None:
   if status is None:
     raise RuntimeError("Missing status in EnableProfileResponse")
   code = status[0]
-  if code == 0x01:
-    raise RuntimeError(f"profile {iccid} not found")
-  elif code == 0x02:
+  if code == 0x00:
+    return
+  if code == 0x02:
     print(f"profile {iccid} already enabled")
-  elif code != 0x00:
-    raise RuntimeError(f"EnableProfile failed with status 0x{code:02X}")
+    return
+  error_name = PROFILE_ERROR_CODES.get(code, "unknown")
+  raise RuntimeError(f"EnableProfile failed: {error_name} (0x{code:02X})")
 
 
-def disable_profile(client: AtClient, iccid: str) -> None:
-  content = encode_tlv(0xA0, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+def disable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
+  inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+  if not refresh:
+    inner += encode_tlv(0x81, b'\x00')  # refreshFlag = false
+  content = encode_tlv(0xA0, inner)
   response = es10x_command(client, encode_tlv(TAG_DISABLE_PROFILE, content))
   root = find_tag(response, TAG_DISABLE_PROFILE)
   if root is None:
@@ -326,12 +341,13 @@ def disable_profile(client: AtClient, iccid: str) -> None:
   if status is None:
     raise RuntimeError("Missing status in DisableProfileResponse")
   code = status[0]
-  if code == 0x01:
-    raise RuntimeError(f"profile {iccid} not found")
-  elif code == 0x02:
+  if code == 0x00:
+    return
+  if code == 0x02:
     print(f"profile {iccid} already disabled")
-  elif code != 0x00:
-    raise RuntimeError(f"DisableProfile failed with status 0x{code:02X}")
+    return
+  error_name = PROFILE_ERROR_CODES.get(code, "unknown")
+  raise RuntimeError(f"DisableProfile failed: {error_name} (0x{code:02X})")
 
 
 def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
@@ -642,6 +658,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--verbose", action="store_true")
   parser.add_argument("--enable", type=str)
   parser.add_argument("--disable", type=str)
+  parser.add_argument("--no-refresh", action="store_true", help="Skip REFRESH after enable/disable (may help with catBusy errors)")
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"))
   parser.add_argument("--list-notifications", action="store_true")
   parser.add_argument("--process-notifications", action="store_true")
@@ -656,10 +673,10 @@ def main() -> None:
     client.ensure_capabilities()
     client.open_isdr()
     if args.enable:
-      enable_profile(client, args.enable)
+      enable_profile(client, args.enable, refresh=not args.no_refresh)
       print(json.dumps(request_profile_info(client), indent=2))
     elif args.disable:
-      disable_profile(client, args.disable)
+      disable_profile(client, args.disable, refresh=not args.no_refresh)
       print(json.dumps(request_profile_info(client), indent=2))
     elif args.set_nickname:
       set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
