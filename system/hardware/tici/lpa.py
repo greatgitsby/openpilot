@@ -2,7 +2,6 @@
 
 import argparse
 import base64
-import binascii
 import hashlib
 import json
 import requests
@@ -10,7 +9,6 @@ import serial
 import sys
 
 from collections.abc import Generator
-from typing import Optional
 
 
 DEFAULT_DEVICE = "/dev/ttyUSB3"
@@ -36,16 +34,14 @@ TAG_DISABLE_PROFILE = 0xBF32
 TAG_BPP = 0xBF36
 TAG_PROFILE_INSTALL_RESULT = 0xBF37
 TAG_AUTH_SERVER = 0xBF38
+
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
 PROFILE_ERROR_CODES = {
-  0x01: "iccidOrAidNotFound",
-  0x02: "profileNotInDisabledState",
-  0x03: "disallowedByPolicy",
-  0x04: "wrongProfileReenabling",
-  0x05: "catBusy",
-  0x06: "undefinedError",
+  0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
+  0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
+  0x05: "catBusy", 0x06: "undefinedError",
 }
 
 
@@ -53,7 +49,7 @@ class AtClient:
   def __init__(self, device: str, baud: int, timeout: float, verbose: bool) -> None:
     self.ser = serial.Serial(device, baudrate=baud, timeout=timeout)
     self.verbose = verbose
-    self.channel: Optional[str] = None
+    self.channel: str | None = None
     self.ser.reset_input_buffer()
 
   def close(self) -> None:
@@ -96,34 +92,126 @@ class AtClient:
       self.query(f"{command}=?")
 
   def open_isdr(self) -> None:
-    lines = self.query(f'AT+CCHO="{ISDR_AID}"')
-    for line in lines:
-      if line.startswith("+CCHO:"):
-        identifier = line.split(":", 1)[1].strip()
-        if identifier:
-          self.channel = identifier
-          return
+    for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
+      if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
+        self.channel = ch
+        return
     raise RuntimeError("Failed to open ISD-R application")
 
   def send_apdu(self, apdu: bytes) -> tuple[bytes, int, int]:
     if not self.channel:
       raise RuntimeError("Logical channel is not open")
-    payload = binascii.hexlify(apdu).decode("ascii").upper()
-    cmd = f'AT+CGLA={self.channel},{len(apdu) * 2},"{payload}"'
-    lines = self.query(cmd)
-    for line in lines:
+    hex_payload = apdu.hex().upper()
+    for line in self.query(f'AT+CGLA={self.channel},{len(hex_payload)},"{hex_payload}"'):
       if line.startswith("+CGLA:"):
-        _, rest = line.split(":", 1)
-        parts = rest.split(",", 1)
-        if len(parts) != 2:
-          break
-        hex_data = parts[1].strip().strip('"')
-        data = binascii.unhexlify(hex_data)
-        if len(data) < 2:
-          raise RuntimeError("Incomplete APDU response")
-        return data[:-2], data[-2], data[-1]
+        parts = line.split(":", 1)[1].split(",", 1)
+        if len(parts) == 2:
+          data = bytes.fromhex(parts[1].strip().strip('"'))
+          if len(data) >= 2:
+            return data[:-2], data[-2], data[-1]
     raise RuntimeError("Missing +CGLA response")
 
+
+# --- TLV utilities ---
+
+def iter_tlv(data: bytes, with_positions: bool = False) -> Generator:
+  idx, length = 0, len(data)
+  while idx < length:
+    start_pos = idx
+    tag = data[idx]; idx += 1
+    if tag & 0x1F == 0x1F:  # Multi-byte tag
+      tag_value = tag
+      while idx < length:
+        next_byte = data[idx]; idx += 1
+        tag_value = (tag_value << 8) | next_byte
+        if not (next_byte & 0x80):
+          break
+    else:
+      tag_value = tag
+    if idx >= length:
+      break
+    size = data[idx]; idx += 1
+    if size & 0x80:  # Multi-byte length
+      num_bytes = size & 0x7F
+      if idx + num_bytes > length:
+        break
+      size = int.from_bytes(data[idx : idx + num_bytes], "big")
+      idx += num_bytes
+    if idx + size > length:
+      break
+    value = data[idx : idx + size]
+    idx += size
+    yield (tag_value, value, start_pos, idx) if with_positions else (tag_value, value)
+
+
+def find_tag(data: bytes, target: int) -> bytes | None:
+  return next((v for t, v in iter_tlv(data) if t == target), None)
+
+
+def encode_tlv(tag: int, value: bytes) -> bytes:
+  tag_bytes = bytes([(tag >> 8) & 0xFF, tag & 0xFF]) if tag > 255 else bytes([tag])
+  vlen = len(value)
+  if vlen <= 127:
+    return tag_bytes + bytes([vlen]) + value
+  length_bytes = vlen.to_bytes((vlen.bit_length() + 7) // 8, "big")
+  return tag_bytes + bytes([0x80 | len(length_bytes)]) + length_bytes + value
+
+
+def tbcd_to_string(raw: bytes) -> str:
+  return "".join(str(n) for b in raw for n in (b & 0x0F, b >> 4) if n <= 9)
+
+
+def string_to_tbcd(s: str) -> bytes:
+  digits = [int(c) for c in s if c.isdigit()]
+  return bytes(digits[i] | ((digits[i + 1] if i + 1 < len(digits) else 0xF) << 4) for i in range(0, len(digits), 2))
+
+
+def base64_trim(s: str) -> str:
+  return "".join(c for c in s if c not in "\n\r \t")
+
+
+# --- Shared helpers ---
+
+def _int_bytes(n: int) -> bytes:
+  """Encode a positive integer as minimal big-endian bytes (at least 1 byte)."""
+  return n.to_bytes((n.bit_length() + 7) // 8 or 1, "big")
+
+
+def _extract_status(response: bytes, tag: int, name: str) -> int:
+  """Extract the status byte from a tagged ES10x response."""
+  root = find_tag(response, tag)
+  if root is None:
+    raise RuntimeError(f"Missing {name}Response")
+  status = find_tag(root, TAG_STATUS)
+  if status is None:
+    raise RuntimeError(f"Missing status in {name}Response")
+  return status[0]
+
+
+# Profile field decoders: TLV tag -> (field_name, decoder)
+_PROFILE_FIELDS = {
+  TAG_ICCID: ("iccid", lambda v: tbcd_to_string(v)),
+  0x4F: ("isdpAid", lambda v: v.hex().upper()),
+  0x9F70: ("profileState", lambda v: STATE_LABELS.get(int.from_bytes(v, "big"), "unknown")),
+  0x90: ("profileNickname", lambda v: v.decode("utf-8", errors="ignore") or None),
+  0x91: ("serviceProviderName", lambda v: v.decode("utf-8", errors="ignore") or None),
+  0x92: ("profileName", lambda v: v.decode("utf-8", errors="ignore") or None),
+  0x93: ("iconType", lambda v: ICON_LABELS.get(int.from_bytes(v, "big"), "unknown")),
+  0x94: ("icon", lambda v: base64.b64encode(v).decode("ascii")),
+  0x95: ("profileClass", lambda v: CLASS_LABELS.get(int.from_bytes(v, "big"), "unknown")),
+}
+
+
+def _decode_profile_fields(data: bytes) -> dict:
+  """Parse known profile metadata TLV fields into a dict."""
+  result = {}
+  for tag, value in iter_tlv(data):
+    if (field := _PROFILE_FIELDS.get(tag)):
+      result[field[0]] = field[1](value)
+  return result
+
+
+# --- ES10x command transport ---
 
 def es10x_command(client: AtClient, data: bytes) -> bytes:
   response = bytearray()
@@ -132,7 +220,7 @@ def es10x_command(client: AtClient, data: bytes) -> bytes:
   while offset < len(data):
     chunk = data[offset : offset + ES10X_MSS]
     offset += len(chunk)
-    # STORE DATA command: 0x80=CLA, 0xE2=INS, P1=0x91(last)/0x11(more), P2=sequence
+    # STORE DATA: CLA=0x80, INS=0xE2, P1=0x91(last)/0x11(more), P2=sequence
     apdu = bytes([0x80, 0xE2, 0x91 if offset == len(data) else 0x11, sequence & 0xFF, len(chunk)]) + chunk
     segment, sw1, sw2 = client.send_apdu(apdu)
     response.extend(segment)
@@ -148,88 +236,8 @@ def es10x_command(client: AtClient, data: bytes) -> bytes:
   return bytes(response)
 
 
-def iter_tlv(data: bytes, with_positions: bool = False) -> Generator:
-  idx = 0
-  length = len(data)
-  while idx < length:
-    start_pos = idx
-    tag = data[idx]
-    idx += 1
-    if tag & 0x1F == 0x1F:  # Multi-byte tag
-      tag_value = tag
-      while idx < length:
-        next_byte = data[idx]
-        idx += 1
-        tag_value = (tag_value << 8) | next_byte
-        if not (next_byte & 0x80):
-          break
-    else:
-      tag_value = tag
+# --- ES9P HTTP ---
 
-    if idx >= length:
-      break
-    size = data[idx]
-    idx += 1
-    if size & 0x80:  # Multi-byte length
-      num_bytes = size & 0x7F
-      if idx + num_bytes > length:
-        break
-      size = int.from_bytes(data[idx : idx + num_bytes], "big")
-      idx += num_bytes
-    if idx + size > length:
-      break
-    value = data[idx : idx + size]
-    idx += size
-    if with_positions:
-      yield tag_value, value, start_pos, idx
-    else:
-      yield tag_value, value
-
-
-def find_tag(data: bytes, target: int) -> Optional[bytes]:
-  for tag, value in iter_tlv(data):
-    if tag == target:
-      return value
-  return None
-
-
-def encode_tlv(tag: int, value: bytes) -> bytes:
-  tag_bytes = bytes([(tag >> 8) & 0xFF, tag & 0xFF]) if tag > 255 else bytes([tag])
-  value_len = len(value)
-  if value_len <= 127:
-    return tag_bytes + bytes([value_len]) + value
-  length_bytes = value_len.to_bytes((value_len.bit_length() + 7) // 8, "big")
-  return tag_bytes + bytes([0x80 | len(length_bytes)]) + length_bytes + value
-
-
-def tbcd_to_string(raw: bytes) -> str:
-  digits: list[str] = []
-  for byte in raw:
-    low, high = byte & 0x0F, (byte >> 4) & 0x0F
-    if low <= 9:
-      digits.append(str(low))
-    if high <= 9 and high != 0x0F:
-      digits.append(str(high))
-  return "".join(digits)
-
-
-def string_to_tbcd(s: str) -> bytes:
-  # TBCD: each byte = low nibble first digit, high nibble second digit (or 0xF filler)
-  result = bytearray()
-  digits = [int(c) for c in s if c.isdigit()]
-  for i in range(0, len(digits), 2):
-    if i + 1 < len(digits):
-      result.append(digits[i] | (digits[i + 1] << 4))
-    else:
-      result.append(digits[i] | 0xF0)
-  return bytes(result)
-
-
-def base64_trim(s: str) -> str:
-  return "".join(c for c in s if c not in "\n\r \t")
-
-
-# ES9P HTTP helpers
 def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: str = "Request") -> dict:
   url = f"https://{smdp_address}/gsma/rsp2/es9plus/{endpoint}"
   headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
@@ -246,24 +254,7 @@ def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: 
   return data
 
 
-# Generic profile command helpers
-def build_iccid_request(tag: int, iccid: str, extra_tlvs: list[tuple[int, bytes]] = None) -> bytes:
-  content = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
-  for t, v in (extra_tlvs or []):
-    content += encode_tlv(t, v)
-  return encode_tlv(tag, content)
-
-
-def execute_profile_command(client: AtClient, tag: int, iccid: str, extra_tlvs=None, cmd_name: str = "Command") -> int:
-  response = es10x_command(client, build_iccid_request(tag, iccid, extra_tlvs))
-  root = find_tag(response, tag)
-  if root is None:
-    raise RuntimeError(f"Missing {cmd_name} response")
-  status = find_tag(root, TAG_STATUS)
-  if status is None:
-    raise RuntimeError(f"Missing status in {cmd_name} response")
-  return status[0]
-
+# --- Profile operations ---
 
 def decode_profiles(blob: bytes) -> list[dict]:
   root = find_tag(blob, TAG_PROFILE_INFO_LIST)
@@ -272,82 +263,33 @@ def decode_profiles(blob: bytes) -> list[dict]:
   list_ok = find_tag(root, 0xA0)
   if list_ok is None:
     return []
-  profiles: list[dict] = []
-  for tag, value in iter_tlv(list_ok):
-    if tag != 0xE3:
-      continue
-    profile: dict = {"iccid": None, "isdpAid": None, "profileState": None, "profileNickname": None,
-                     "serviceProviderName": None, "profileName": None, "iconType": None, "icon": None, "profileClass": None}
-    for item_tag, item_value in iter_tlv(value):
-      if item_tag == TAG_ICCID:
-        profile["iccid"] = tbcd_to_string(item_value)
-      elif item_tag == 0x4F:
-        profile["isdpAid"] = item_value.hex().upper()
-      elif item_tag == 0x9F70:
-        profile["profileState"] = STATE_LABELS.get(int.from_bytes(item_value, "big"), "unknown")
-      elif item_tag == 0x90:
-        profile["profileNickname"] = item_value.decode("utf-8", errors="ignore") or None
-      elif item_tag == 0x91:
-        profile["serviceProviderName"] = item_value.decode("utf-8", errors="ignore") or None
-      elif item_tag == 0x92:
-        profile["profileName"] = item_value.decode("utf-8", errors="ignore") or None
-      elif item_tag == 0x93:
-        profile["iconType"] = ICON_LABELS.get(int.from_bytes(item_value, "big"), "unknown")
-      elif item_tag == 0x94:
-        profile["icon"] = base64.b64encode(item_value).decode("ascii")
-      elif item_tag == 0x95:
-        profile["profileClass"] = CLASS_LABELS.get(int.from_bytes(item_value, "big"), "unknown")
-    profiles.append(profile)
-  return profiles
+  defaults = {name: None for name, _ in _PROFILE_FIELDS.values()}
+  return [{**defaults, **_decode_profile_fields(value)} for tag, value in iter_tlv(list_ok) if tag == 0xE3]
 
 
 def request_profile_info(client: AtClient) -> list[dict]:
   return decode_profiles(es10x_command(client, bytes.fromhex("BF2D00")))
 
 
-def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
-  # Build with A0 wrapper: BF31 [A0 [5A iccid] [81 refresh_flag]]
+def _toggle_profile(client: AtClient, tag: int, iccid: str, refresh: bool, action: str) -> None:
   inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
   if not refresh:
-    inner += encode_tlv(0x81, b'\x00')  # refreshFlag = false
-  content = encode_tlv(0xA0, inner)
-  response = es10x_command(client, encode_tlv(TAG_ENABLE_PROFILE, content))
-  root = find_tag(response, TAG_ENABLE_PROFILE)
-  if root is None:
-    raise RuntimeError("Missing EnableProfileResponse")
-  status = find_tag(root, TAG_STATUS)
-  if status is None:
-    raise RuntimeError("Missing status in EnableProfileResponse")
-  code = status[0]
+    inner += encode_tlv(0x81, b'\x00')
+  code = _extract_status(es10x_command(client, encode_tlv(tag, encode_tlv(0xA0, inner))), tag, f"{action.capitalize()}Profile")
   if code == 0x00:
     return
   if code == 0x02:
-    print(f"profile {iccid} already enabled")
+    print(f"profile {iccid} already {action}d")
     return
-  error_name = PROFILE_ERROR_CODES.get(code, "unknown")
-  raise RuntimeError(f"EnableProfile failed: {error_name} (0x{code:02X})")
+  raise RuntimeError(f"{action.capitalize()}Profile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+
+
+def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
+  _toggle_profile(client, TAG_ENABLE_PROFILE, iccid, refresh, "enable")
 
 
 def disable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
-  inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
-  if not refresh:
-    inner += encode_tlv(0x81, b'\x00')  # refreshFlag = false
-  content = encode_tlv(0xA0, inner)
-  response = es10x_command(client, encode_tlv(TAG_DISABLE_PROFILE, content))
-  root = find_tag(response, TAG_DISABLE_PROFILE)
-  if root is None:
-    raise RuntimeError("Missing DisableProfileResponse")
-  status = find_tag(root, TAG_STATUS)
-  if status is None:
-    raise RuntimeError("Missing status in DisableProfileResponse")
-  code = status[0]
-  if code == 0x00:
-    return
-  if code == 0x02:
-    print(f"profile {iccid} already disabled")
-    return
-  error_name = PROFILE_ERROR_CODES.get(code, "unknown")
-  raise RuntimeError(f"DisableProfile failed: {error_name} (0x{code:02X})")
+  _toggle_profile(client, TAG_DISABLE_PROFILE, iccid, refresh, "disable")
 
 
 def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
@@ -355,19 +297,14 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
   if len(nickname_bytes) > 64:
     raise ValueError("Profile nickname must be 64 bytes or less")
   content = encode_tlv(TAG_ICCID, string_to_tbcd(iccid)) + encode_tlv(0x90, nickname_bytes)
-  response = es10x_command(client, encode_tlv(TAG_SET_NICKNAME, content))
-  root = find_tag(response, TAG_SET_NICKNAME)
-  if root is None:
-    raise RuntimeError("Missing SetNicknameResponse")
-  status = find_tag(root, TAG_STATUS)
-  if status is None:
-    raise RuntimeError("Missing status in SetNicknameResponse")
-  code = status[0]
+  code = _extract_status(es10x_command(client, encode_tlv(TAG_SET_NICKNAME, content)), TAG_SET_NICKNAME, "SetNickname")
   if code == 0x01:
     raise RuntimeError(f"profile {iccid} not found")
-  elif code != 0x00:
+  if code != 0x00:
     raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
 
+
+# --- Notifications ---
 
 def list_notifications(client: AtClient) -> list[dict]:
   response = es10x_command(client, encode_tlv(TAG_LIST_NOTIFICATION, b""))
@@ -385,10 +322,8 @@ def list_notifications(client: AtClient) -> list[dict]:
     for t, v in iter_tlv(value):
       if t == TAG_STATUS and len(v) > 0:
         notification["seqNumber"] = int.from_bytes(v, "big")
-      elif t == 0x81 and len(v) >= 2:  # profileManagementOperation bitstring
-        bit_data = v[1]
-        # Bit 0=INSTALL(0x80), 1=ENABLE(0x40), 2=DISABLE(0x20), 3=DELETE(0x10)
-        notification["profileManagementOperation"] = next((m for m in [0x80, 0x40, 0x20, 0x10] if bit_data & m), 0xFF)
+      elif t == 0x81 and len(v) >= 2:
+        notification["profileManagementOperation"] = next((m for m in [0x80, 0x40, 0x20, 0x10] if v[1] & m), 0xFF)
       elif t == 0x0C:
         notification["notificationAddress"] = v.decode("utf-8", errors="ignore")
       elif t == TAG_ICCID:
@@ -399,8 +334,7 @@ def list_notifications(client: AtClient) -> list[dict]:
 
 
 def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
-  seq_bytes = seq_number.to_bytes((seq_number.bit_length() + 7) // 8 or 1, "big")
-  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, seq_bytes)))
+  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
   response = es10x_command(client, request)
   root = find_tag(response, TAG_RETRIEVE_NOTIFICATION)
   if root is None:
@@ -415,11 +349,9 @@ def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
       break
   if pending_notif is None:
     raise RuntimeError("Missing PendingNotification")
-  notif_meta = None
   if pending_tag == TAG_PROFILE_INSTALL_RESULT:
     result_data = find_tag(pending_notif, 0xBF27)
-    if result_data:
-      notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA)
+    notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA) if result_data else None
   else:
     notif_meta = find_tag(pending_notif, TAG_NOTIFICATION_METADATA)
   if notif_meta is None:
@@ -431,8 +363,7 @@ def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
 
 
 def es10b_remove_notification_from_list(client: AtClient, seq_number: int) -> None:
-  seq_bytes = seq_number.to_bytes((seq_number.bit_length() + 7) // 8 or 1, "big")
-  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, seq_bytes)))
+  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
   root = find_tag(response, TAG_NOTIFICATION_SENT)
   if root is None:
     raise RuntimeError("Invalid NotificationSentResponse")
@@ -461,6 +392,8 @@ def process_notifications(client: AtClient) -> None:
       print(f"Failed to process notification {seq_number}: {e}", file=sys.stderr)
 
 
+# --- Authentication & Download ---
+
 def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
   challenge_resp = es10x_command(client, encode_tlv(TAG_EUICC_CHALLENGE, b""))
   root = find_tag(challenge_resp, TAG_EUICC_CHALLENGE)
@@ -476,11 +409,9 @@ def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
 
 
 def build_authenticate_server_request(server_signed1: bytes, server_signature1: bytes, euicc_ci_pk_id: bytes, server_certificate: bytes) -> bytes:
-  # TAC (Type Allocation Code) - device identifier
   tac = bytes([0x35, 0x29, 0x06, 0x11])
   device_info = encode_tlv(TAG_STATUS, tac) + encode_tlv(0xA1, b"")
-  ctx_params = encode_tlv(0xA1, device_info)
-  content = server_signed1 + server_signature1 + euicc_ci_pk_id + server_certificate + encode_tlv(0xA0, ctx_params)
+  content = server_signed1 + server_signature1 + euicc_ci_pk_id + server_certificate + encode_tlv(0xA0, encode_tlv(0xA1, device_info))
   return encode_tlv(TAG_AUTH_SERVER, content)
 
 
@@ -493,7 +424,7 @@ def es10b_authenticate_server_r(client: AtClient, b64_signed1: str, b64_sig1: st
   return base64.b64encode(response).decode("ascii")
 
 
-def es10b_prepare_download_r(client: AtClient, b64_signed2: str, b64_sig2: str, b64_cert: str, cc: Optional[str] = None) -> str:
+def es10b_prepare_download_r(client: AtClient, b64_signed2: str, b64_sig2: str, b64_cert: str, cc: str | None = None) -> str:
   smdp_signed2 = base64.b64decode(b64_signed2)
   smdp_signature2 = base64.b64decode(b64_sig2)
   smdp_certificate = base64.b64decode(b64_cert)
@@ -508,8 +439,7 @@ def es10b_prepare_download_r(client: AtClient, b64_signed2: str, b64_sig2: str, 
   if int.from_bytes(cc_required_flag, "big") != 0:
     if not cc:
       raise RuntimeError("Confirmation code required but not provided")
-    hash1 = hashlib.sha256(cc.encode("utf-8")).digest()
-    content += encode_tlv(0x04, hashlib.sha256(hash1 + transaction_id).digest())
+    content += encode_tlv(0x04, hashlib.sha256(hashlib.sha256(cc.encode("utf-8")).digest() + transaction_id).digest())
   content += smdp_certificate
   response = es10x_command(client, encode_tlv(TAG_PREPARE_DOWNLOAD, content))
   if not response.startswith(bytes([0xBF, 0x21])):
@@ -517,42 +447,42 @@ def es10b_prepare_download_r(client: AtClient, b64_signed2: str, b64_sig2: str, 
   return base64.b64encode(response).decode("ascii")
 
 
+def _parse_tlv_header_len(data: bytes) -> int:
+  """Return the combined tag + length header size for a TLV element."""
+  tag_len = 2 if data[0] & 0x1F == 0x1F else 1
+  length_byte = data[tag_len]
+  return tag_len + (1 + (length_byte & 0x7F) if length_byte & 0x80 else 1)
+
+
 def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
   bpp = base64.b64decode(b64_bpp)
   if not bpp.startswith(bytes([0xBF, 0x36])):
     raise RuntimeError("Invalid BoundProfilePackage")
 
-  # Parse BPP structure and extract chunks for sequential sending
   bpp_root_value, bpp_value_start = None, 0
   for tag, value, start, end in iter_tlv(bpp, with_positions=True):
     if tag == TAG_BPP:
       bpp_root_value = value
-      bf36_data = bpp[start:end]
-      tag_len = 2
-      length_byte = bf36_data[tag_len]
-      length_len = 1 + (length_byte & 0x7F) if length_byte & 0x80 else 1
-      bpp_value_start = start + tag_len + length_len
+      bpp_value_start = start + _parse_tlv_header_len(bpp[start:end])
       break
   if bpp_root_value is None:
     raise RuntimeError("Invalid BoundProfilePackage")
 
+  # Build chunks for sequential sending
   chunks = []
   # Chunk 1: BF36 header + BF23 (initialiseSecureChannelResponse)
   for tag, _, _, end in iter_tlv(bpp_root_value, with_positions=True):
     if tag == 0xBF23:
       chunks.append(bpp[0 : bpp_value_start + end])
       break
-  # Extract A0, A1, A2, A3 tags
+  # Extract remaining segments: A0, A1, A2, A3
   for tag, value, start, end in iter_tlv(bpp_root_value, with_positions=True):
     if tag == 0xA0:
       chunks.append(bpp[bpp_value_start + start : bpp_value_start + end])
     elif tag in (0xA1, 0xA3):
       # Send tag+length header, then children separately
-      data = bpp_root_value[start:end]
-      tag_len = 2 if data[0] & 0x1F == 0x1F else 1
-      length_byte = data[tag_len]
-      length_len = 1 + (length_byte & 0x7F) if length_byte & 0x80 else 1
-      chunks.append(bpp[bpp_value_start + start : bpp_value_start + start + tag_len + length_len])
+      hdr_len = _parse_tlv_header_len(bpp_root_value[start:end])
+      chunks.append(bpp[bpp_value_start + start : bpp_value_start + start + hdr_len])
       for child_tag, child_value in iter_tlv(value):
         chunks.append(encode_tlv(child_tag, child_value))
     elif tag == 0xA2:
@@ -564,51 +494,39 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
     if not response:
       continue
     root = find_tag(response, TAG_PROFILE_INSTALL_RESULT)
-    if root:
-      result_data = find_tag(root, 0xBF27)
-      if result_data:
-        notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA)
-        if notif_meta:
-          seq_num = find_tag(notif_meta, TAG_STATUS)
-          if seq_num:
-            result["seqNumber"] = int.from_bytes(seq_num, "big")
-        final_result = find_tag(result_data, 0xA2)
-        if final_result:
-          for tag, value in iter_tlv(final_result):
-            if tag == 0xA0:
-              result["success"] = True
-            elif tag == 0xA1:
-              bpp_cmd = find_tag(value, TAG_STATUS)
-              if bpp_cmd:
-                result["bppCommandId"] = int.from_bytes(bpp_cmd, "big")
-              err = find_tag(value, 0x81)
-              if err:
-                result["errorReason"] = int.from_bytes(err, "big")
+    if not root:
+      continue
+    result_data = find_tag(root, 0xBF27)
+    if not result_data:
+      continue
+    notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA)
+    if notif_meta:
+      seq_num = find_tag(notif_meta, TAG_STATUS)
+      if seq_num:
+        result["seqNumber"] = int.from_bytes(seq_num, "big")
+    final_result = find_tag(result_data, 0xA2)
+    if final_result:
+      for tag, value in iter_tlv(final_result):
+        if tag == 0xA0:
+          result["success"] = True
+        elif tag == 0xA1:
+          bpp_cmd = find_tag(value, TAG_STATUS)
+          if bpp_cmd:
+            result["bppCommandId"] = int.from_bytes(bpp_cmd, "big")
+          err = find_tag(value, 0x81)
+          if err:
+            result["errorReason"] = int.from_bytes(err, "big")
   if not result["success"] and result["errorReason"] is not None:
     raise RuntimeError(f"Profile installation failed: bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']}")
   return result
 
 
 def es8p_metadata_parse(b64_metadata: str) -> dict:
-  metadata = base64.b64decode(b64_metadata)
-  root = find_tag(metadata, 0xBF25)  # StoreMetadataRequest
+  root = find_tag(base64.b64decode(b64_metadata), 0xBF25)
   if root is None:
     raise RuntimeError("Invalid profileMetadata")
-  result = {"iccid": None, "serviceProviderName": None, "profileName": None, "iconType": None, "icon": None, "profileClass": None}
-  for tag, value in iter_tlv(root):
-    if tag == TAG_ICCID:
-      result["iccid"] = tbcd_to_string(value)
-    elif tag == 0x91:
-      result["serviceProviderName"] = value.decode("utf-8", errors="ignore") or None
-    elif tag == 0x92:
-      result["profileName"] = value.decode("utf-8", errors="ignore") or None
-    elif tag == 0x93:
-      result["iconType"] = ICON_LABELS.get(int.from_bytes(value, "big"), "unknown")
-    elif tag == 0x94:
-      result["icon"] = base64.b64encode(value).decode("ascii")
-    elif tag == 0x95:
-      result["profileClass"] = CLASS_LABELS.get(int.from_bytes(value, "big"), "unknown")
-  return result
+  defaults = {"iccid": None, "serviceProviderName": None, "profileName": None, "iconType": None, "icon": None, "profileClass": None}
+  return {**defaults, **_decode_profile_fields(root)}
 
 
 def parse_lpa_activation_code(activation_code: str) -> tuple[str, str, str]:
@@ -650,6 +568,8 @@ def download_profile(client: AtClient, activation_code: str) -> None:
     raise RuntimeError(f"Profile installation failed: {result}")
 
 
+# --- CLI ---
+
 def build_cli() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(description="Minimal AT-only LPA implementation")
   parser.add_argument("--device", default=DEFAULT_DEVICE)
@@ -658,7 +578,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--verbose", action="store_true")
   parser.add_argument("--enable", type=str)
   parser.add_argument("--disable", type=str)
-  parser.add_argument("--no-refresh", action="store_true", help="Skip REFRESH after enable/disable (may help with catBusy errors)")
+  parser.add_argument("--no-refresh", action="store_true", help="Skip REFRESH after enable/disable")
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"))
   parser.add_argument("--list-notifications", action="store_true")
   parser.add_argument("--process-notifications", action="store_true")
@@ -672,23 +592,22 @@ def main() -> None:
   try:
     client.ensure_capabilities()
     client.open_isdr()
+    show_profiles = True
     if args.enable:
       enable_profile(client, args.enable, refresh=not args.no_refresh)
-      print(json.dumps(request_profile_info(client), indent=2))
     elif args.disable:
       disable_profile(client, args.disable, refresh=not args.no_refresh)
-      print(json.dumps(request_profile_info(client), indent=2))
     elif args.set_nickname:
       set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
-      print(json.dumps(request_profile_info(client), indent=2))
     elif args.list_notifications:
       print(json.dumps(list_notifications(client), indent=2))
+      show_profiles = False
     elif args.process_notifications:
       process_notifications(client)
+      show_profiles = False
     elif args.download:
       download_profile(client, args.download)
-      print(json.dumps(request_profile_info(client), indent=2))
-    else:
+    if show_profiles:
       print(json.dumps(request_profile_info(client), indent=2))
   finally:
     client.close()
