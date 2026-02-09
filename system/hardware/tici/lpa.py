@@ -6,6 +6,7 @@ import hashlib
 import json
 import requests
 import serial
+import subprocess
 import sys
 
 from collections.abc import Generator
@@ -588,29 +589,44 @@ def build_cli() -> argparse.ArgumentParser:
 
 def main() -> None:
   args = build_cli().parse_args()
-  client = AtClient(args.device, args.baud, args.timeout, args.verbose)
+
+  # ModemManager grabs the AT port and interferes with APDU transport.
+  # mask prevents D-Bus activation from restarting it while we work.
+  mm_was_active = subprocess.run(
+    ["systemctl", "is-active", "--quiet", "ModemManager"],
+  ).returncode == 0
+  subprocess.run(["sudo", "systemctl", "mask", "--runtime", "ModemManager"], check=True)
+  if mm_was_active:
+    subprocess.run(["sudo", "systemctl", "stop", "ModemManager"], check=True)
+
   try:
-    client.ensure_capabilities()
-    client.open_isdr()
-    show_profiles = True
-    if args.enable:
-      enable_profile(client, args.enable, refresh=not args.no_refresh)
-    elif args.disable:
-      disable_profile(client, args.disable, refresh=not args.no_refresh)
-    elif args.set_nickname:
-      set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
-    elif args.list_notifications:
-      print(json.dumps(list_notifications(client), indent=2))
-      show_profiles = False
-    elif args.process_notifications:
-      process_notifications(client)
-      show_profiles = False
-    elif args.download:
-      download_profile(client, args.download)
-    if show_profiles:
-      print(json.dumps(request_profile_info(client), indent=2))
+    client = AtClient(args.device, args.baud, args.timeout, args.verbose)
+    try:
+      client.ensure_capabilities()
+      client.open_isdr()
+      show_profiles = True
+      if args.enable:
+        enable_profile(client, args.enable, refresh=not args.no_refresh)
+      elif args.disable:
+        disable_profile(client, args.disable, refresh=not args.no_refresh)
+      elif args.set_nickname:
+        set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
+      elif args.list_notifications:
+        print(json.dumps(list_notifications(client), indent=2))
+        show_profiles = False
+      elif args.process_notifications:
+        process_notifications(client)
+        show_profiles = False
+      elif args.download:
+        download_profile(client, args.download)
+      if show_profiles:
+        print(json.dumps(request_profile_info(client), indent=2))
+    finally:
+      client.close()
   finally:
-    client.close()
+    subprocess.run(["sudo", "systemctl", "unmask", "ModemManager"])
+    if mm_was_active:
+      subprocess.run(["sudo", "systemctl", "start", "ModemManager"])
 
 
 if __name__ == "__main__":
