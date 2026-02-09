@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.selfdrive.ui.mici.layouts.settings.network.wifi_ui import WifiUIMici, WifiIcon, normalize_ssid
+from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_ui import EsimUIMici
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigMultiToggle, BigParamControl, BigToggle
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigInputDialog
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -16,6 +17,7 @@ from openpilot.system.ui.lib.wifi_manager import WifiManager, Network, MeteredTy
 class NetworkPanelType(IntEnum):
   NONE = 0
   WIFI = 1
+  ESIM = 2
 
 
 class NetworkLayoutMici(NavWidget):
@@ -78,6 +80,11 @@ class NetworkLayoutMici(NavWidget):
     self._wifi_button = BigButton("wi-fi", "not connected", self._wifi_slash_txt, scroll=True)
     self._wifi_button.set_click_callback(lambda: self._switch_to_panel(NetworkPanelType.WIFI))
 
+    # ******** eSIM ********
+    self._esim_ui = EsimUIMici(back_callback=lambda: self._switch_to_panel(NetworkPanelType.NONE))
+    self._esim_button = BigButton("esim", "3 profiles")
+    self._esim_button.set_click_callback(lambda: self._switch_to_panel(NetworkPanelType.ESIM))
+
     # ******** Advanced settings ********
     # ******** Roaming toggle ********
     self._roaming_btn = BigParamControl("enable roaming", "GsmRoaming", toggle_callback=self._toggle_roaming)
@@ -92,6 +99,7 @@ class NetworkLayoutMici(NavWidget):
     # Main scroller ----------------------------------
     self._scroller = Scroller([
       self._wifi_button,
+      self._esim_button,
       self._network_metered_btn,
       self._tethering_toggle_btn,
       self._tethering_password_btn,
@@ -124,11 +132,13 @@ class NetworkLayoutMici(NavWidget):
     super().show_event()
     self._current_panel = NetworkPanelType.NONE
     self._wifi_ui.show_event()
+    self._esim_ui.show_event()
     self._scroller.show_event()
 
   def hide_event(self):
     super().hide_event()
     self._wifi_ui.hide_event()
+    self._esim_ui.hide_event()
 
   def _toggle_roaming(self, checked: bool):
     self._wifi_manager.update_gsm_settings(checked, ui_state.params.get("GsmApn") or "", ui_state.params.get_bool("GsmMetered"))
@@ -186,6 +196,8 @@ class NetworkLayoutMici(NavWidget):
   def _switch_to_panel(self, panel_type: NetworkPanelType):
     if panel_type == NetworkPanelType.WIFI:
       self._wifi_ui.show_event()
+    elif panel_type == NetworkPanelType.ESIM:
+      self._esim_ui.show_event()
     self._current_panel = panel_type
 
   def _render(self, rect: rl.Rectangle):
@@ -193,5 +205,7 @@ class NetworkLayoutMici(NavWidget):
 
     if self._current_panel == NetworkPanelType.WIFI:
       self._wifi_ui.render(rect)
+    elif self._current_panel == NetworkPanelType.ESIM:
+      self._esim_ui.render(rect)
     else:
       self._scroller.render(rect)
