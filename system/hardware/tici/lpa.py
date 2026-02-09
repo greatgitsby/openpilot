@@ -625,6 +625,7 @@ def main() -> None:
       client.close()
   finally:
     subprocess.run(["sudo", "systemctl", "unmask", "ModemManager"])
+    subprocess.run(["sudo", "systemctl", "daemon-reload"])
     if mm_was_active:
       subprocess.run(["sudo", "systemctl", "start", "ModemManager"])
 
