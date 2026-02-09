@@ -4,12 +4,15 @@ import argparse
 import base64
 import hashlib
 import json
+import logging
 import requests
 import serial
 import subprocess
 import sys
 
 from collections.abc import Generator
+
+log = logging.getLogger("lpa")
 
 
 DEFAULT_DEVICE = "/dev/ttyUSB3"
@@ -48,22 +51,27 @@ PROFILE_ERROR_CODES = {
 
 class AtClient:
   def __init__(self, device: str, baud: int, timeout: float, verbose: bool) -> None:
+    log.debug("opening serial %s baud=%d timeout=%.1f", device, baud, timeout)
     self.ser = serial.Serial(device, baudrate=baud, timeout=timeout)
     self.verbose = verbose
     self.channel: str | None = None
     self.ser.reset_input_buffer()
+    log.debug("serial port opened successfully")
 
   def close(self) -> None:
+    log.debug("closing AT client (channel=%s)", self.channel)
     try:
       if self.channel:
         self.query(f"AT+CCHC={self.channel}")
         self.channel = None
     finally:
       self.ser.close()
+      log.debug("serial port closed")
 
   def send(self, cmd: str) -> None:
     if self.verbose:
       print(f">> {cmd}", file=sys.stderr)
+    log.debug("AT TX >> %s", cmd)
     self.ser.write((cmd + "\r").encode("ascii"))
 
   def expect(self) -> list[str]:
@@ -71,31 +79,40 @@ class AtClient:
     while True:
       raw = self.ser.readline()
       if not raw:
+        log.debug("AT RX timed out after reading %d line(s)", len(lines))
         raise TimeoutError("AT command timed out")
       line = raw.decode(errors="ignore").strip()
       if not line:
         continue
       if self.verbose:
         print(f"<< {line}", file=sys.stderr)
+      log.debug("AT RX << %s", line)
       if line == "OK":
         return lines
       if line == "ERROR":
+        log.debug("AT command returned ERROR, lines so far: %s", lines)
         raise RuntimeError("AT command failed")
       lines.append(line)
 
   def query(self, cmd: str) -> list[str]:
     self.send(cmd)
-    return self.expect()
+    resp = self.expect()
+    log.debug("AT query %r -> %d response line(s)", cmd, len(resp))
+    return resp
 
   def ensure_capabilities(self) -> None:
+    log.debug("checking modem AT capabilities")
     self.query("AT")
     for command in ("AT+CCHO", "AT+CCHC", "AT+CGLA"):
       self.query(f"{command}=?")
+    log.debug("modem capabilities verified")
 
   def open_isdr(self) -> None:
+    log.debug("opening ISD-R channel (AID=%s)", ISDR_AID)
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
+        log.debug("ISD-R channel opened: %s", ch)
         return
     raise RuntimeError("Failed to open ISD-R application")
 
@@ -103,13 +120,16 @@ class AtClient:
     if not self.channel:
       raise RuntimeError("Logical channel is not open")
     hex_payload = apdu.hex().upper()
+    log.debug("APDU >> ch=%s len=%d data=%s", self.channel, len(hex_payload), hex_payload)
     for line in self.query(f'AT+CGLA={self.channel},{len(hex_payload)},"{hex_payload}"'):
       if line.startswith("+CGLA:"):
         parts = line.split(":", 1)[1].split(",", 1)
         if len(parts) == 2:
           data = bytes.fromhex(parts[1].strip().strip('"'))
           if len(data) >= 2:
-            return data[:-2], data[-2], data[-1]
+            payload, sw1, sw2 = data[:-2], data[-2], data[-1]
+            log.debug("APDU << SW=%02X%02X payload(%d bytes)=%s", sw1, sw2, len(payload), payload.hex().upper())
+            return payload, sw1, sw2
     raise RuntimeError("Missing +CGLA response")
 
 
@@ -215,18 +235,24 @@ def _decode_profile_fields(data: bytes) -> dict:
 # --- ES10x command transport ---
 
 def es10x_command(client: AtClient, data: bytes) -> bytes:
+  log.debug("es10x_command: sending %d bytes, tag=0x%s", len(data), data[:2].hex().upper() if len(data) >= 2 else data.hex().upper())
   response = bytearray()
   sequence = 0
   offset = 0
   while offset < len(data):
     chunk = data[offset : offset + ES10X_MSS]
     offset += len(chunk)
+    is_last = offset == len(data)
     # STORE DATA: CLA=0x80, INS=0xE2, P1=0x91(last)/0x11(more), P2=sequence
-    apdu = bytes([0x80, 0xE2, 0x91 if offset == len(data) else 0x11, sequence & 0xFF, len(chunk)]) + chunk
+    apdu = bytes([0x80, 0xE2, 0x91 if is_last else 0x11, sequence & 0xFF, len(chunk)]) + chunk
+    log.debug("  STORE DATA seq=%d %s chunk=%d bytes", sequence, "LAST" if is_last else "MORE", len(chunk))
     segment, sw1, sw2 = client.send_apdu(apdu)
     response.extend(segment)
+    get_response_count = 0
     while True:
       if sw1 == 0x61:  # More data available
+        get_response_count += 1
+        log.debug("  GET RESPONSE #%d (SW2=0x%02X)", get_response_count, sw2)
         segment, sw1, sw2 = client.send_apdu(bytes([0x80, 0xC0, 0x00, 0x00, sw2 or 0]))
         response.extend(segment)
         continue
@@ -234,6 +260,7 @@ def es10x_command(client: AtClient, data: bytes) -> bytes:
         break
       raise RuntimeError(f"APDU failed with SW={sw1:02X}{sw2:02X}")
     sequence += 1
+  log.debug("es10x_command: received %d bytes response", len(response))
   return bytes(response)
 
 
@@ -241,16 +268,21 @@ def es10x_command(client: AtClient, data: bytes) -> bytes:
 
 def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: str = "Request") -> dict:
   url = f"https://{smdp_address}/gsma/rsp2/es9plus/{endpoint}"
+  log.debug("ES9+ POST %s (payload keys: %s)", url, list(payload.keys()))
   headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
   resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
+  log.debug("ES9+ response: HTTP %d, %d bytes", resp.status_code, len(resp.content))
   resp.raise_for_status()
   if not resp.content:
     return {}
   data = resp.json()
+  log.debug("ES9+ response keys: %s", list(data.keys()))
   if "header" in data and "functionExecutionStatus" in data["header"]:
     status = data["header"]["functionExecutionStatus"]
+    log.debug("ES9+ functionExecutionStatus: %s", status.get("status"))
     if status.get("status") == "Failed":
       sd = status.get("statusCodeData", {})
+      log.debug("ES9+ error details: %s", sd)
       raise RuntimeError(f"{error_prefix} failed: {sd.get('reasonCode', 'unknown')}/{sd.get('subjectCode', 'unknown')} - {sd.get('message', 'unknown')}")
   return data
 
@@ -258,25 +290,34 @@ def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: 
 # --- Profile operations ---
 
 def decode_profiles(blob: bytes) -> list[dict]:
+  log.debug("decode_profiles: parsing %d bytes", len(blob))
   root = find_tag(blob, TAG_PROFILE_INFO_LIST)
   if root is None:
     raise RuntimeError("Missing ProfileInfoList")
   list_ok = find_tag(root, 0xA0)
   if list_ok is None:
+    log.debug("decode_profiles: empty profile list")
     return []
   defaults = {name: None for name, _ in _PROFILE_FIELDS.values()}
-  return [{**defaults, **_decode_profile_fields(value)} for tag, value in iter_tlv(list_ok) if tag == 0xE3]
+  profiles = [{**defaults, **_decode_profile_fields(value)} for tag, value in iter_tlv(list_ok) if tag == 0xE3]
+  log.debug("decode_profiles: found %d profile(s)", len(profiles))
+  for p in profiles:
+    log.debug("  profile iccid=%s state=%s name=%s", p.get("iccid"), p.get("profileState"), p.get("profileName"))
+  return profiles
 
 
 def request_profile_info(client: AtClient) -> list[dict]:
+  log.debug("requesting profile info list")
   return decode_profiles(es10x_command(client, bytes.fromhex("BF2D00")))
 
 
 def _toggle_profile(client: AtClient, tag: int, iccid: str, refresh: bool, action: str) -> None:
+  log.debug("%s profile iccid=%s refresh=%s", action, iccid, refresh)
   inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
   if not refresh:
     inner += encode_tlv(0x81, b'\x00')
   code = _extract_status(es10x_command(client, encode_tlv(tag, encode_tlv(0xA0, inner))), tag, f"{action.capitalize()}Profile")
+  log.debug("%s profile result: status=0x%02X", action, code)
   if code == 0x00:
     return
   if code == 0x02:
@@ -294,11 +335,13 @@ def disable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
 
 
 def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
+  log.debug("set nickname iccid=%s nickname=%r", iccid, nickname)
   nickname_bytes = nickname.encode("utf-8")
   if len(nickname_bytes) > 64:
     raise ValueError("Profile nickname must be 64 bytes or less")
   content = encode_tlv(TAG_ICCID, string_to_tbcd(iccid)) + encode_tlv(0x90, nickname_bytes)
   code = _extract_status(es10x_command(client, encode_tlv(TAG_SET_NICKNAME, content)), TAG_SET_NICKNAME, "SetNickname")
+  log.debug("set nickname result: status=0x%02X", code)
   if code == 0x01:
     raise RuntimeError(f"profile {iccid} not found")
   if code != 0x00:
@@ -308,12 +351,14 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
 # --- Notifications ---
 
 def list_notifications(client: AtClient) -> list[dict]:
+  log.debug("listing notifications")
   response = es10x_command(client, encode_tlv(TAG_LIST_NOTIFICATION, b""))
   root = find_tag(response, TAG_LIST_NOTIFICATION)
   if root is None:
     raise RuntimeError("Missing ListNotificationResponse")
   metadata_list = find_tag(root, 0xA0)
   if metadata_list is None:
+    log.debug("no notifications present")
     return []
   notifications: list[dict] = []
   for tag, value in iter_tlv(metadata_list):
@@ -331,10 +376,14 @@ def list_notifications(client: AtClient) -> list[dict]:
         notification["iccid"] = tbcd_to_string(v)
     if notification["seqNumber"] is not None and notification["profileManagementOperation"] is not None and notification["notificationAddress"]:
       notifications.append(notification)
+  log.debug("found %d notification(s)", len(notifications))
+  for n in notifications:
+    log.debug("  seq=%s op=0x%02X addr=%s iccid=%s", n["seqNumber"], n["profileManagementOperation"] or 0, n["notificationAddress"], n["iccid"])
   return notifications
 
 
 def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
+  log.debug("retrieving notification seq=%d", seq_number)
   request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
   response = es10x_command(client, request)
   root = find_tag(response, TAG_RETRIEVE_NOTIFICATION)
@@ -347,6 +396,7 @@ def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
   for tag, value in iter_tlv(a0_content):
     if tag in (TAG_PROFILE_INSTALL_RESULT, 0x30):
       pending_notif, pending_tag = value, tag
+      log.debug("  pending notification tag=0x%04X len=%d", tag, len(value))
       break
   if pending_notif is None:
     raise RuntimeError("Missing PendingNotification")
@@ -360,10 +410,13 @@ def retrieve_notifications_list(client: AtClient, seq_number: int) -> dict:
   addr = find_tag(notif_meta, 0x0C)
   if addr is None:
     raise RuntimeError("Missing notificationAddress")
-  return {"notificationAddress": addr.decode("utf-8", errors="ignore"), "b64_PendingNotification": base64.b64encode(pending_notif).decode("ascii")}
+  decoded_addr = addr.decode("utf-8", errors="ignore")
+  log.debug("  notification address=%s", decoded_addr)
+  return {"notificationAddress": decoded_addr, "b64_PendingNotification": base64.b64encode(pending_notif).decode("ascii")}
 
 
 def es10b_remove_notification_from_list(client: AtClient, seq_number: int) -> None:
+  log.debug("removing notification seq=%d", seq_number)
   response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
   root = find_tag(response, TAG_NOTIFICATION_SENT)
   if root is None:
@@ -371,6 +424,7 @@ def es10b_remove_notification_from_list(client: AtClient, seq_number: int) -> No
   status = find_tag(root, TAG_STATUS)
   if status is None or int.from_bytes(status, "big") != 0:
     raise RuntimeError("RemoveNotificationFromList failed")
+  log.debug("notification seq=%d removed", seq_number)
 
 
 def process_notifications(client: AtClient) -> None:
@@ -390,12 +444,14 @@ def process_notifications(client: AtClient) -> None:
       es10b_remove_notification_from_list(client, seq_number)
       print(f"Notification {seq_number} processed successfully", file=sys.stderr)
     except Exception as e:
+      log.debug("notification %d failed: %s", seq_number, e, exc_info=True)
       print(f"Failed to process notification {seq_number}: {e}", file=sys.stderr)
 
 
 # --- Authentication & Download ---
 
 def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
+  log.debug("getting eUICC challenge")
   challenge_resp = es10x_command(client, encode_tlv(TAG_EUICC_CHALLENGE, b""))
   root = find_tag(challenge_resp, TAG_EUICC_CHALLENGE)
   if root is None:
@@ -403,9 +459,12 @@ def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
   challenge = find_tag(root, TAG_STATUS)
   if challenge is None:
     raise RuntimeError("Missing challenge in response")
+  log.debug("eUICC challenge: %d bytes", len(challenge))
+  log.debug("getting eUICC info")
   info_resp = es10x_command(client, encode_tlv(TAG_EUICC_INFO, b""))
   if not info_resp.startswith(bytes([0xBF, 0x20])):
     raise RuntimeError("Missing GetEuiccInfo1Response")
+  log.debug("eUICC info: %d bytes", len(info_resp))
   return challenge, info_resp
 
 
@@ -417,15 +476,19 @@ def build_authenticate_server_request(server_signed1: bytes, server_signature1: 
 
 
 def es10b_authenticate_server_r(client: AtClient, b64_signed1: str, b64_sig1: str, b64_pk_id: str, b64_cert: str) -> str:
+  log.debug("es10b authenticate server")
   request = build_authenticate_server_request(
     base64.b64decode(b64_signed1), base64.b64decode(b64_sig1), base64.b64decode(b64_pk_id), base64.b64decode(b64_cert))
+  log.debug("  request: %d bytes", len(request))
   response = es10x_command(client, request)
   if not response.startswith(bytes([0xBF, 0x38])):
     raise RuntimeError("Invalid AuthenticateServerResponse")
+  log.debug("  response: %d bytes", len(response))
   return base64.b64encode(response).decode("ascii")
 
 
 def es10b_prepare_download_r(client: AtClient, b64_signed2: str, b64_sig2: str, b64_cert: str, cc: str | None = None) -> str:
+  log.debug("es10b prepare download (cc=%s)", "provided" if cc else "none")
   smdp_signed2 = base64.b64decode(b64_signed2)
   smdp_signature2 = base64.b64decode(b64_sig2)
   smdp_certificate = base64.b64decode(b64_cert)
@@ -436,15 +499,18 @@ def es10b_prepare_download_r(client: AtClient, b64_signed2: str, b64_sig2: str, 
   cc_required_flag = find_tag(smdp_signed2_root, 0x01)
   if transaction_id is None or cc_required_flag is None:
     raise RuntimeError("Invalid smdpSigned2")
+  log.debug("  transaction_id=%s cc_required=%s", transaction_id.hex(), int.from_bytes(cc_required_flag, "big") != 0)
   content = smdp_signed2 + smdp_signature2
   if int.from_bytes(cc_required_flag, "big") != 0:
     if not cc:
       raise RuntimeError("Confirmation code required but not provided")
     content += encode_tlv(0x04, hashlib.sha256(hashlib.sha256(cc.encode("utf-8")).digest() + transaction_id).digest())
   content += smdp_certificate
+  log.debug("  PrepareDownload request: %d bytes", len(content))
   response = es10x_command(client, encode_tlv(TAG_PREPARE_DOWNLOAD, content))
   if not response.startswith(bytes([0xBF, 0x21])):
     raise RuntimeError("Invalid PrepareDownloadResponse")
+  log.debug("  PrepareDownload response: %d bytes", len(response))
   return base64.b64encode(response).decode("ascii")
 
 
@@ -457,6 +523,7 @@ def _parse_tlv_header_len(data: bytes) -> int:
 
 def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
   bpp = base64.b64decode(b64_bpp)
+  log.debug("loading BPP: %d bytes", len(bpp))
   if not bpp.startswith(bytes([0xBF, 0x36])):
     raise RuntimeError("Invalid BoundProfilePackage")
 
@@ -489,14 +556,18 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
     elif tag == 0xA2:
       chunks.append(bpp[bpp_value_start + start : bpp_value_start + end])
 
+  log.debug("BPP split into %d chunk(s)", len(chunks))
   result = {"seqNumber": 0, "success": False, "bppCommandId": None, "errorReason": None}
-  for chunk in chunks:
+  for i, chunk in enumerate(chunks):
+    log.debug("  sending BPP chunk %d/%d (%d bytes, tag=0x%s)", i + 1, len(chunks), len(chunk), chunk[:2].hex().upper() if len(chunk) >= 2 else chunk.hex().upper())
     response = es10x_command(client, chunk)
     if not response:
+      log.debug("  chunk %d: empty response", i + 1)
       continue
     root = find_tag(response, TAG_PROFILE_INSTALL_RESULT)
     if not root:
       continue
+    log.debug("  chunk %d: got ProfileInstallResult", i + 1)
     result_data = find_tag(root, 0xBF27)
     if not result_data:
       continue
@@ -517,6 +588,7 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
           err = find_tag(value, 0x81)
           if err:
             result["errorReason"] = int.from_bytes(err, "big")
+  log.debug("BPP install result: %s", result)
   if not result["success"] and result["errorReason"] is not None:
     raise RuntimeError(f"Profile installation failed: bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']}")
   return result
@@ -541,25 +613,36 @@ def parse_lpa_activation_code(activation_code: str) -> tuple[str, str, str]:
 
 def download_profile(client: AtClient, activation_code: str) -> None:
   _, smdp, matching_id = parse_lpa_activation_code(activation_code)
+  log.debug("download_profile: smdp=%s matching_id=%s", smdp, matching_id or "(none)")
+
+  log.debug("step 1/5: get eUICC challenge and info")
   challenge, euicc_info = es10b_get_euicc_challenge_and_info(client)
   b64_chal = base64.b64encode(challenge).decode("ascii")
   b64_info = base64.b64encode(euicc_info).decode("ascii")
 
+  log.debug("step 2/5: initiate authentication with SM-DP+")
   payload = {"smdpAddress": smdp, "euiccChallenge": b64_chal, "euiccInfo1": b64_info}
   if matching_id:
     payload["matchingId"] = matching_id
   auth = es9p_request(smdp, "initiateAuthentication", payload, "Authentication")
+  log.debug("step 2/5: authenticate server on eUICC")
   b64_auth_resp = es10b_authenticate_server_r(
     client, base64_trim(auth.get("serverSigned1", "")), base64_trim(auth.get("serverSignature1", "")),
     base64_trim(auth.get("euiccCiPKIdToBeUsed", "")), base64_trim(auth.get("serverCertificate", "")))
 
+  log.debug("step 3/5: authenticate client with SM-DP+")
   tx_id = base64_trim(auth.get("transactionId", ""))
+  log.debug("  transactionId=%s", tx_id)
   cli = es9p_request(smdp, "authenticateClient", {"transactionId": tx_id, "authenticateServerResponse": b64_auth_resp}, "Authentication")
   metadata = es8p_metadata_parse(base64_trim(cli.get("profileMetadata", "")))
+  log.debug("  profile metadata: %s", metadata)
   print(f'Downloading profile: {metadata["iccid"]} - {metadata["serviceProviderName"]} - {metadata["profileName"]}')
 
+  log.debug("step 4/5: prepare download")
   b64_prep = es10b_prepare_download_r(
     client, base64_trim(cli.get("smdpSigned2", "")), base64_trim(cli.get("smdpSignature2", "")), base64_trim(cli.get("smdpCertificate", "")))
+
+  log.debug("step 5/5: get and load bound profile package")
   bpp = es9p_request(smdp, "getBoundProfilePackage", {"transactionId": tx_id, "prepareDownloadResponse": b64_prep}, "GetBoundProfilePackage")
 
   result = es10b_load_bound_profile_package_r(client, base64_trim(bpp.get("boundProfilePackage", "")))
@@ -577,6 +660,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
   parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
   parser.add_argument("--verbose", action="store_true")
+  parser.add_argument("--debug", action="store_true", help="Enable detailed debug logging to stderr")
   parser.add_argument("--enable", type=str)
   parser.add_argument("--disable", type=str)
   parser.add_argument("--no-refresh", action="store_true", help="Skip REFRESH after enable/disable")
@@ -590,13 +674,24 @@ def build_cli() -> argparse.ArgumentParser:
 def main() -> None:
   args = build_cli().parse_args()
 
+  logging.basicConfig(
+    level=logging.DEBUG if args.debug else logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stderr,
+  )
+
+  log.debug("parsed cli args: %s", vars(args))
+
   # ModemManager grabs the AT port and interferes with APDU transport.
   # mask prevents D-Bus activation from restarting it while we work.
+  log.debug("checking ModemManager state")
   mm_was_active = subprocess.run(
     ["systemctl", "is-active", "--quiet", "ModemManager"],
   ).returncode == 0
+  log.debug("ModemManager was_active=%s, masking service", mm_was_active)
   subprocess.run(["sudo", "systemctl", "mask", "--runtime", "ModemManager"], check=True)
   if mm_was_active:
+    log.debug("stopping ModemManager")
     subprocess.run(["sudo", "systemctl", "stop", "ModemManager"], check=True)
 
   try:
@@ -606,24 +701,32 @@ def main() -> None:
       client.open_isdr()
       show_profiles = True
       if args.enable:
+        log.debug("action: enable profile %s", args.enable)
         enable_profile(client, args.enable, refresh=not args.no_refresh)
       elif args.disable:
+        log.debug("action: disable profile %s", args.disable)
         disable_profile(client, args.disable, refresh=not args.no_refresh)
       elif args.set_nickname:
+        log.debug("action: set nickname %s -> %r", args.set_nickname[0], args.set_nickname[1])
         set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
       elif args.list_notifications:
+        log.debug("action: list notifications")
         print(json.dumps(list_notifications(client), indent=2))
         show_profiles = False
       elif args.process_notifications:
+        log.debug("action: process notifications")
         process_notifications(client)
         show_profiles = False
       elif args.download:
+        log.debug("action: download profile")
         download_profile(client, args.download)
       if show_profiles:
+        log.debug("listing profiles")
         print(json.dumps(request_profile_info(client), indent=2))
     finally:
       client.close()
   finally:
+    log.debug("restoring ModemManager (was_active=%s)", mm_was_active)
     subprocess.run(["sudo", "systemctl", "unmask", "ModemManager"])
     subprocess.run(["sudo", "systemctl", "daemon-reload"])
     if mm_was_active:
