@@ -7,7 +7,6 @@ import json
 import logging
 import requests
 import serial
-import subprocess
 import sys
 
 from collections.abc import Generator
@@ -15,7 +14,7 @@ from collections.abc import Generator
 log = logging.getLogger("lpa")
 
 
-DEFAULT_DEVICE = "/dev/ttyUSB3"
+DEFAULT_DEVICE = "/dev/ttyUSB2"
 DEFAULT_BAUD = 9600
 DEFAULT_TIMEOUT = 5.0
 ISDR_AID = "A0000005591010FFFFFFFF8900000100"
@@ -38,6 +37,7 @@ TAG_DISABLE_PROFILE = 0xBF32
 TAG_BPP = 0xBF36
 TAG_PROFILE_INSTALL_RESULT = 0xBF37
 TAG_AUTH_SERVER = 0xBF38
+TAG_CANCEL_SESSION = 0xBF41
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
@@ -46,6 +46,28 @@ PROFILE_ERROR_CODES = {
   0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
   0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
   0x05: "catBusy", 0x06: "undefinedError",
+}
+AUTH_SERVER_ERROR_CODES = {
+  0x01: "eUICCVerificationFailed", 0x02: "eUICCCertificateExpired",
+  0x03: "eUICCCertificateRevoked", 0x05: "invalidServerSignature",
+  0x06: "euiccCiPKUnknown", 0x0A: "matchingIdRefused",
+  0x10: "insufficientMemory",
+}
+BPP_COMMAND_NAMES = {
+  0: "initialiseSecureChannel", 1: "configureISDP", 2: "storeMetadata",
+  3: "storeMetadata2", 4: "replaceSessionKeys", 5: "loadProfileElements",
+}
+BPP_ERROR_REASONS = {
+  1: "incorrectInputValues", 2: "invalidSignature", 3: "invalidTransactionId",
+  4: "unsupportedCrtValues", 5: "unsupportedRemoteOperationType",
+  6: "unsupportedProfileClass", 7: "scp03tStructureError", 8: "scp03tSecurityError",
+  9: "iccidAlreadyExistsOnEuicc", 10: "insufficientMemoryForProfile",
+  11: "installInterrupted", 12: "peProcessingError", 13: "dataMismatch",
+  14: "invalidNAA",
+}
+CANCEL_SESSION_REASON = {
+  0: "endUserRejection", 1: "postponed", 2: "timeout",
+  3: "pprNotAllowed", 127: "undefinedReason",
 }
 
 
@@ -468,22 +490,41 @@ def es10b_get_euicc_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
   return challenge, info_resp
 
 
-def build_authenticate_server_request(server_signed1: bytes, server_signature1: bytes, euicc_ci_pk_id: bytes, server_certificate: bytes) -> bytes:
+def build_authenticate_server_request(server_signed1: bytes, server_signature1: bytes, euicc_ci_pk_id: bytes, server_certificate: bytes, matching_id: str | None = None) -> bytes:
   tac = bytes([0x35, 0x29, 0x06, 0x11])
   device_info = encode_tlv(TAG_STATUS, tac) + encode_tlv(0xA1, b"")
-  content = server_signed1 + server_signature1 + euicc_ci_pk_id + server_certificate + encode_tlv(0xA0, encode_tlv(0xA1, device_info))
+  ctx_inner = b""
+  if matching_id:
+    ctx_inner += encode_tlv(TAG_STATUS, matching_id.encode("utf-8"))
+  ctx_inner += encode_tlv(0xA1, device_info)
+  content = server_signed1 + server_signature1 + euicc_ci_pk_id + server_certificate + encode_tlv(0xA0, ctx_inner)
   return encode_tlv(TAG_AUTH_SERVER, content)
 
 
-def es10b_authenticate_server_r(client: AtClient, b64_signed1: str, b64_sig1: str, b64_pk_id: str, b64_cert: str) -> str:
-  log.debug("es10b authenticate server")
+def _check_authenticate_server_response(response: bytes) -> None:
+  """Check AuthenticateServerResponse for eUICC-side errors before forwarding to SM-DP+."""
+  root = find_tag(response, TAG_AUTH_SERVER)
+  if root is None:
+    return
+  # error tag is context [1] primitive = 0xA1 in the response
+  error_tag = find_tag(root, 0xA1)
+  if error_tag is not None:
+    code = int.from_bytes(error_tag, "big") if error_tag else 0
+    desc = AUTH_SERVER_ERROR_CODES.get(code, "unknown")
+    raise RuntimeError(f"AuthenticateServer rejected by eUICC: {desc} (0x{code:02X})")
+
+
+def es10b_authenticate_server_r(client: AtClient, b64_signed1: str, b64_sig1: str, b64_pk_id: str, b64_cert: str, matching_id: str | None = None) -> str:
+  log.debug("es10b authenticate server (matching_id=%s)", matching_id or "(none)")
   request = build_authenticate_server_request(
-    base64.b64decode(b64_signed1), base64.b64decode(b64_sig1), base64.b64decode(b64_pk_id), base64.b64decode(b64_cert))
+    base64.b64decode(b64_signed1), base64.b64decode(b64_sig1), base64.b64decode(b64_pk_id), base64.b64decode(b64_cert),
+    matching_id=matching_id)
   log.debug("  request: %d bytes", len(request))
   response = es10x_command(client, request)
   if not response.startswith(bytes([0xBF, 0x38])):
     raise RuntimeError("Invalid AuthenticateServerResponse")
   log.debug("  response: %d bytes", len(response))
+  _check_authenticate_server_response(response)
   return base64.b64encode(response).decode("ascii")
 
 
@@ -536,27 +577,38 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
   if bpp_root_value is None:
     raise RuntimeError("Invalid BoundProfilePackage")
 
-  # Build chunks for sequential sending
+  # Log BPP structure before splitting
+  log.debug("BPP structure (top-level children of BF36, value_start=%d, value_len=%d):", bpp_value_start, len(bpp_root_value))
+  total_children_bytes = 0
+  for tag, value, start, end in iter_tlv(bpp_root_value, with_positions=True):
+    child_count = sum(1 for _ in iter_tlv(value)) if tag in (0xA0, 0xA1, 0xA2, 0xA3) else 0
+    log.debug("  tag=0x%04X pos=%d..%d len=%d (value=%d) children=%d",
+              tag, start, end, end - start, len(value), child_count)
+    total_children_bytes += end - start
+  log.debug("  total children bytes: %d / %d (value len)", total_children_bytes, len(bpp_root_value))
+  if total_children_bytes != len(bpp_root_value):
+    log.debug("  WARNING: %d bytes unaccounted for in BF36 value!", len(bpp_root_value) - total_children_bytes)
+
   chunks = []
-  # Chunk 1: BF36 header + BF23 (initialiseSecureChannelResponse)
   for tag, _, _, end in iter_tlv(bpp_root_value, with_positions=True):
     if tag == 0xBF23:
       chunks.append(bpp[0 : bpp_value_start + end])
       break
-  # Extract remaining segments: A0, A1, A2, A3
   for tag, value, start, end in iter_tlv(bpp_root_value, with_positions=True):
     if tag == 0xA0:
       chunks.append(bpp[bpp_value_start + start : bpp_value_start + end])
     elif tag in (0xA1, 0xA3):
-      # Send tag+length header, then children separately
       hdr_len = _parse_tlv_header_len(bpp_root_value[start:end])
       chunks.append(bpp[bpp_value_start + start : bpp_value_start + start + hdr_len])
-      for child_tag, child_value in iter_tlv(value):
-        chunks.append(encode_tlv(child_tag, child_value))
+      for _, _, child_start, child_end in iter_tlv(value, with_positions=True):
+        chunks.append(value[child_start:child_end])
     elif tag == 0xA2:
       chunks.append(bpp[bpp_value_start + start : bpp_value_start + end])
 
-  log.debug("BPP split into %d chunk(s)", len(chunks))
+  log.debug("BPP split into %d chunk(s):", len(chunks))
+  for i, chunk in enumerate(chunks):
+    tag_hex = chunk[:2].hex().upper() if len(chunk) >= 2 else chunk.hex().upper()
+    log.debug("  chunk %d: %d bytes, starts with 0x%s", i + 1, len(chunk), tag_hex)
   result = {"seqNumber": 0, "success": False, "bppCommandId": None, "errorReason": None}
   for i, chunk in enumerate(chunks):
     log.debug("  sending BPP chunk %d/%d (%d bytes, tag=0x%s)", i + 1, len(chunks), len(chunk), chunk[:2].hex().upper() if len(chunk) >= 2 else chunk.hex().upper())
@@ -570,7 +622,7 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
     log.debug("  chunk %d: got ProfileInstallResult", i + 1)
     result_data = find_tag(root, 0xBF27)
     if not result_data:
-      continue
+      break
     notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA)
     if notif_meta:
       seq_num = find_tag(notif_meta, TAG_STATUS)
@@ -588,9 +640,12 @@ def es10b_load_bound_profile_package_r(client: AtClient, b64_bpp: str) -> dict:
           err = find_tag(value, 0x81)
           if err:
             result["errorReason"] = int.from_bytes(err, "big")
+    break  # ProfileInstallResult received — eUICC session is finalized
   log.debug("BPP install result: %s", result)
   if not result["success"] and result["errorReason"] is not None:
-    raise RuntimeError(f"Profile installation failed: bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']}")
+    cmd_name = BPP_COMMAND_NAMES.get(result["bppCommandId"], f"unknown({result['bppCommandId']})")
+    err_name = BPP_ERROR_REASONS.get(result["errorReason"], f"unknown({result['errorReason']})")
+    raise RuntimeError(f"Profile installation failed at {cmd_name}: {err_name} (bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']})")
   return result
 
 
@@ -600,6 +655,24 @@ def es8p_metadata_parse(b64_metadata: str) -> dict:
     raise RuntimeError("Invalid profileMetadata")
   defaults = {"iccid": None, "serviceProviderName": None, "profileName": None, "iconType": None, "icon": None, "profileClass": None}
   return {**defaults, **_decode_profile_fields(root)}
+
+
+def es10b_cancel_session(client: AtClient, transaction_id: bytes, reason: int = 127) -> str:
+  log.debug("cancelling session transaction_id=%s reason=%d (%s)", transaction_id.hex(), reason, CANCEL_SESSION_REASON.get(reason, "unknown"))
+  content = encode_tlv(0x80, transaction_id) + encode_tlv(0x81, bytes([reason]))
+  response = es10x_command(client, encode_tlv(TAG_CANCEL_SESSION, content))
+  root = find_tag(response, TAG_CANCEL_SESSION)
+  if root is None:
+    log.debug("cancel session: no response (may already be cleaned up)")
+    return base64.b64encode(response).decode("ascii")
+  # success is tag A0, error is tag 0x81
+  error = find_tag(root, 0x81)
+  if error is not None:
+    log.debug("cancel session eUICC error: %d (non-fatal, session may already be finalized)", int.from_bytes(error, "big"))
+  else:
+    success = find_tag(root, 0xA0)
+    log.debug("cancel session result: %s", "ok" if success is not None else "unknown")
+  return base64.b64encode(response).decode("ascii")
 
 
 def parse_lpa_activation_code(activation_code: str) -> tuple[str, str, str]:
@@ -625,31 +698,51 @@ def download_profile(client: AtClient, activation_code: str) -> None:
   if matching_id:
     payload["matchingId"] = matching_id
   auth = es9p_request(smdp, "initiateAuthentication", payload, "Authentication")
-  log.debug("step 2/5: authenticate server on eUICC")
-  b64_auth_resp = es10b_authenticate_server_r(
-    client, base64_trim(auth.get("serverSigned1", "")), base64_trim(auth.get("serverSignature1", "")),
-    base64_trim(auth.get("euiccCiPKIdToBeUsed", "")), base64_trim(auth.get("serverCertificate", "")))
-
-  log.debug("step 3/5: authenticate client with SM-DP+")
   tx_id = base64_trim(auth.get("transactionId", ""))
+  tx_id_bytes = base64.b64decode(tx_id) if tx_id else b""
   log.debug("  transactionId=%s", tx_id)
-  cli = es9p_request(smdp, "authenticateClient", {"transactionId": tx_id, "authenticateServerResponse": b64_auth_resp}, "Authentication")
-  metadata = es8p_metadata_parse(base64_trim(cli.get("profileMetadata", "")))
-  log.debug("  profile metadata: %s", metadata)
-  print(f'Downloading profile: {metadata["iccid"]} - {metadata["serviceProviderName"]} - {metadata["profileName"]}')
 
-  log.debug("step 4/5: prepare download")
-  b64_prep = es10b_prepare_download_r(
-    client, base64_trim(cli.get("smdpSigned2", "")), base64_trim(cli.get("smdpSignature2", "")), base64_trim(cli.get("smdpCertificate", "")))
+  try:
+    log.debug("step 2/5: authenticate server on eUICC")
+    b64_auth_resp = es10b_authenticate_server_r(
+      client, base64_trim(auth.get("serverSigned1", "")), base64_trim(auth.get("serverSignature1", "")),
+      base64_trim(auth.get("euiccCiPKIdToBeUsed", "")), base64_trim(auth.get("serverCertificate", "")),
+      matching_id=matching_id)
 
-  log.debug("step 5/5: get and load bound profile package")
-  bpp = es9p_request(smdp, "getBoundProfilePackage", {"transactionId": tx_id, "prepareDownloadResponse": b64_prep}, "GetBoundProfilePackage")
+    log.debug("step 3/5: authenticate client with SM-DP+")
+    cli = es9p_request(smdp, "authenticateClient", {"transactionId": tx_id, "authenticateServerResponse": b64_auth_resp}, "Authentication")
+    metadata = es8p_metadata_parse(base64_trim(cli.get("profileMetadata", "")))
+    log.debug("  profile metadata: %s", metadata)
+    print(f'Downloading profile: {metadata["iccid"]} - {metadata["serviceProviderName"]} - {metadata["profileName"]}')
 
-  result = es10b_load_bound_profile_package_r(client, base64_trim(bpp.get("boundProfilePackage", "")))
-  if result["success"]:
-    print(f"Profile installed successfully (seqNumber: {result['seqNumber']})")
-  else:
-    raise RuntimeError(f"Profile installation failed: {result}")
+    log.debug("step 4/5: prepare download")
+    b64_prep = es10b_prepare_download_r(
+      client, base64_trim(cli.get("smdpSigned2", "")), base64_trim(cli.get("smdpSignature2", "")), base64_trim(cli.get("smdpCertificate", "")))
+
+    log.debug("step 5/5: get and load bound profile package")
+    bpp = es9p_request(smdp, "getBoundProfilePackage", {"transactionId": tx_id, "prepareDownloadResponse": b64_prep}, "GetBoundProfilePackage")
+
+    result = es10b_load_bound_profile_package_r(client, base64_trim(bpp.get("boundProfilePackage", "")))
+    if result["success"]:
+      print(f"Profile installed successfully (seqNumber: {result['seqNumber']})")
+    else:
+      raise RuntimeError(f"Profile installation failed: {result}")
+  except Exception:
+    if tx_id_bytes:
+      log.debug("download failed, cancelling eUICC session")
+      b64_cancel_resp = ""
+      try:
+        b64_cancel_resp = es10b_cancel_session(client, tx_id_bytes)
+      except Exception as cancel_err:
+        log.debug("cancel session on eUICC failed (non-fatal): %s", cancel_err)
+      try:
+        es9p_request(smdp, "cancelSession", {
+          "transactionId": tx_id,
+          "cancelSessionResponse": b64_cancel_resp,
+        }, "CancelSession")
+      except Exception as cancel_err:
+        log.debug("ES9+ cancelSession failed (non-fatal): %s", cancel_err)
+    raise
 
 
 # --- CLI ---
@@ -682,55 +775,36 @@ def main() -> None:
 
   log.debug("parsed cli args: %s", vars(args))
 
-  # ModemManager grabs the AT port and interferes with APDU transport.
-  # mask prevents D-Bus activation from restarting it while we work.
-  log.debug("checking ModemManager state")
-  mm_was_active = subprocess.run(
-    ["systemctl", "is-active", "--quiet", "ModemManager"],
-  ).returncode == 0
-  log.debug("ModemManager was_active=%s, masking service", mm_was_active)
-  subprocess.run(["sudo", "systemctl", "mask", "--runtime", "ModemManager"], check=True)
-  if mm_was_active:
-    log.debug("stopping ModemManager")
-    subprocess.run(["sudo", "systemctl", "stop", "ModemManager"], check=True)
-
+  client = AtClient(args.device, args.baud, args.timeout, args.verbose)
   try:
-    client = AtClient(args.device, args.baud, args.timeout, args.verbose)
-    try:
-      client.ensure_capabilities()
-      client.open_isdr()
-      show_profiles = True
-      if args.enable:
-        log.debug("action: enable profile %s", args.enable)
-        enable_profile(client, args.enable, refresh=not args.no_refresh)
-      elif args.disable:
-        log.debug("action: disable profile %s", args.disable)
-        disable_profile(client, args.disable, refresh=not args.no_refresh)
-      elif args.set_nickname:
-        log.debug("action: set nickname %s -> %r", args.set_nickname[0], args.set_nickname[1])
-        set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
-      elif args.list_notifications:
-        log.debug("action: list notifications")
-        print(json.dumps(list_notifications(client), indent=2))
-        show_profiles = False
-      elif args.process_notifications:
-        log.debug("action: process notifications")
-        process_notifications(client)
-        show_profiles = False
-      elif args.download:
-        log.debug("action: download profile")
-        download_profile(client, args.download)
-      if show_profiles:
-        log.debug("listing profiles")
-        print(json.dumps(request_profile_info(client), indent=2))
-    finally:
-      client.close()
+    client.ensure_capabilities()
+    client.open_isdr()
+    show_profiles = True
+    if args.enable:
+      log.debug("action: enable profile %s", args.enable)
+      enable_profile(client, args.enable, refresh=not args.no_refresh)
+    elif args.disable:
+      log.debug("action: disable profile %s", args.disable)
+      disable_profile(client, args.disable, refresh=not args.no_refresh)
+    elif args.set_nickname:
+      log.debug("action: set nickname %s -> %r", args.set_nickname[0], args.set_nickname[1])
+      set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
+    elif args.list_notifications:
+      log.debug("action: list notifications")
+      print(json.dumps(list_notifications(client), indent=2))
+      show_profiles = False
+    elif args.process_notifications:
+      log.debug("action: process notifications")
+      process_notifications(client)
+      show_profiles = False
+    elif args.download:
+      log.debug("action: download profile")
+      download_profile(client, args.download)
+    if show_profiles:
+      log.debug("listing profiles")
+      print(json.dumps(request_profile_info(client), indent=2))
   finally:
-    log.debug("restoring ModemManager (was_active=%s)", mm_was_active)
-    subprocess.run(["sudo", "systemctl", "unmask", "ModemManager"])
-    subprocess.run(["sudo", "systemctl", "daemon-reload"])
-    if mm_was_active:
-      subprocess.run(["sudo", "systemctl", "start", "ModemManager"])
+    client.close()
 
 
 if __name__ == "__main__":
