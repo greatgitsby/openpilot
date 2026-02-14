@@ -34,6 +34,7 @@ TAG_NOTIFICATION_METADATA = 0xBF2F
 TAG_NOTIFICATION_SENT = 0xBF30
 TAG_ENABLE_PROFILE = 0xBF31
 TAG_DISABLE_PROFILE = 0xBF32
+TAG_DELETE_PROFILE = 0xBF33
 TAG_BPP = 0xBF36
 TAG_PROFILE_INSTALL_RESULT = 0xBF37
 TAG_AUTH_SERVER = 0xBF38
@@ -354,6 +355,18 @@ def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
 
 def disable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
   _toggle_profile(client, TAG_DISABLE_PROFILE, iccid, refresh, "disable")
+
+
+def delete_profile(client: AtClient, iccid: str) -> None:
+  inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+  code = _extract_status(
+    es10x_command(client, encode_tlv(TAG_DELETE_PROFILE, encode_tlv(0xA0, inner))),
+    TAG_DELETE_PROFILE, "DeleteProfile"
+  )
+  if code != 0x00:
+    raise RuntimeError(
+      f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})"
+    )
 
 
 def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
@@ -756,6 +769,7 @@ def build_cli() -> argparse.ArgumentParser:
   parser.add_argument("--debug", action="store_true", help="Enable detailed debug logging to stderr")
   parser.add_argument("--enable", type=str)
   parser.add_argument("--disable", type=str)
+  parser.add_argument("--delete", type=str, metavar="ICCID", help="Delete a disabled profile")
   parser.add_argument("--no-refresh", action="store_true", help="Skip REFRESH after enable/disable")
   parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"))
   parser.add_argument("--list-notifications", action="store_true")
@@ -786,6 +800,9 @@ def main() -> None:
     elif args.disable:
       log.debug("action: disable profile %s", args.disable)
       disable_profile(client, args.disable, refresh=not args.no_refresh)
+    elif args.delete:
+      log.debug("action: delete profile %s", args.delete)
+      delete_profile(client, args.delete)
     elif args.set_nickname:
       log.debug("action: set nickname %s -> %r", args.set_nickname[0], args.set_nickname[1])
       set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
