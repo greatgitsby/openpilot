@@ -360,7 +360,7 @@ def disable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
 def delete_profile(client: AtClient, iccid: str) -> None:
   inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
   code = _extract_status(
-    es10x_command(client, encode_tlv(TAG_DELETE_PROFILE, encode_tlv(0xA0, inner))),
+    es10x_command(client, encode_tlv(TAG_DELETE_PROFILE, inner)),
     TAG_DELETE_PROFILE, "DeleteProfile"
   )
   if code != 0x00:
