@@ -10,6 +10,7 @@ import serial
 import sys
 
 from collections.abc import Generator
+from common.time_helpers import system_time_valid
 
 
 DEFAULT_DEVICE = "/dev/ttyUSB2"
@@ -285,9 +286,11 @@ def es10x_command(client: AtClient, data: bytes) -> bytes:
 # --- ES9P HTTP ---
 
 def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: str = "Request") -> dict:
+  if not system_time_valid():
+    raise RuntimeError("System time is not set; TLS certificate validation requires a valid clock")
   url = f"https://{smdp_address}/gsma/rsp2/es9plus/{endpoint}"
   headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.3.0", "Content-Type": "application/json"}
-  resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
+  resp = requests.post(url, json=payload, headers=headers, timeout=30)
   resp.raise_for_status()
   if not resp.content:
     return {}
