@@ -1,12 +1,21 @@
+#!/usr/bin/env python3
+
+import argparse
 import base64
 import hashlib
+import json
+import requests
+import serial
+import sys
 
-from openpilot.system.hardware.tici.at_lpa.tlv import (
-  b64d, b64e, base64_trim, encode_tlv, find_tag, int_bytes, iter_tlv,
-  string_to_tbcd, tbcd_to_string,
-)
-from openpilot.system.hardware.tici.at_lpa.client import AtClient, es10x_command
+from collections.abc import Generator
 
+
+DEFAULT_DEVICE = "/dev/ttyUSB2"
+DEFAULT_BAUD = 9600
+DEFAULT_TIMEOUT = 5.0
+ISDR_AID = "A0000005591010FFFFFFFF8900000100"
+ES10X_MSS = 120
 
 # TLV Tags
 TAG_ICCID = 0x5A
@@ -60,6 +69,146 @@ CANCEL_SESSION_REASON = {
 }
 
 
+def b64e(data: bytes) -> str:
+  return base64.b64encode(data).decode("ascii")
+
+
+def b64d(s: str) -> bytes:
+  return base64.b64decode(base64_trim(s))
+
+
+class AtClient:
+  def __init__(self, device: str, baud: int, timeout: float, verbose: bool) -> None:
+    self.ser = serial.Serial(device, baudrate=baud, timeout=timeout)
+    self.verbose = verbose
+    self.channel: str | None = None
+    self.ser.reset_input_buffer()
+
+  def close(self) -> None:
+    try:
+      if self.channel:
+        self.query(f"AT+CCHC={self.channel}")
+        self.channel = None
+    finally:
+      self.ser.close()
+
+  def send(self, cmd: str) -> None:
+    if self.verbose:
+      print(f">> {cmd}", file=sys.stderr)
+    self.ser.write((cmd + "\r").encode("ascii"))
+
+  def expect(self) -> list[str]:
+    lines: list[str] = []
+    while True:
+      raw = self.ser.readline()
+      if not raw:
+        raise TimeoutError("AT command timed out")
+      line = raw.decode(errors="ignore").strip()
+      if not line:
+        continue
+      if self.verbose:
+        print(f"<< {line}", file=sys.stderr)
+      if line == "OK":
+        return lines
+      if line == "ERROR":
+        raise RuntimeError("AT command failed")
+      lines.append(line)
+
+  def query(self, cmd: str) -> list[str]:
+    self.send(cmd)
+    return self.expect()
+
+  def ensure_capabilities(self) -> None:
+    self.query("AT")
+    for command in ("AT+CCHO", "AT+CCHC", "AT+CGLA"):
+      self.query(f"{command}=?")
+
+  def open_isdr(self) -> None:
+    for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
+      if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
+        self.channel = ch
+        return
+    raise RuntimeError("Failed to open ISD-R application")
+
+  def send_apdu(self, apdu: bytes) -> tuple[bytes, int, int]:
+    if not self.channel:
+      raise RuntimeError("Logical channel is not open")
+    hex_payload = apdu.hex().upper()
+    for line in self.query(f'AT+CGLA={self.channel},{len(hex_payload)},"{hex_payload}"'):
+      if line.startswith("+CGLA:"):
+        parts = line.split(":", 1)[1].split(",", 1)
+        if len(parts) == 2:
+          data = bytes.fromhex(parts[1].strip().strip('"'))
+          if len(data) >= 2:
+            return data[:-2], data[-2], data[-1]
+    raise RuntimeError("Missing +CGLA response")
+
+
+# --- TLV utilities ---
+
+def iter_tlv(data: bytes, with_positions: bool = False) -> Generator:
+  idx, length = 0, len(data)
+  while idx < length:
+    start_pos = idx
+    tag = data[idx]; idx += 1
+    if tag & 0x1F == 0x1F:  # Multi-byte tag
+      tag_value = tag
+      while idx < length:
+        next_byte = data[idx]; idx += 1
+        tag_value = (tag_value << 8) | next_byte
+        if not (next_byte & 0x80):
+          break
+    else:
+      tag_value = tag
+    if idx >= length:
+      break
+    size = data[idx]; idx += 1
+    if size & 0x80:  # Multi-byte length
+      num_bytes = size & 0x7F
+      if idx + num_bytes > length:
+        break
+      size = int.from_bytes(data[idx : idx + num_bytes], "big")
+      idx += num_bytes
+    if idx + size > length:
+      break
+    value = data[idx : idx + size]
+    idx += size
+    yield (tag_value, value, start_pos, idx) if with_positions else (tag_value, value)
+
+
+def find_tag(data: bytes, target: int) -> bytes | None:
+  return next((v for t, v in iter_tlv(data) if t == target), None)
+
+
+def encode_tlv(tag: int, value: bytes) -> bytes:
+  tag_bytes = bytes([(tag >> 8) & 0xFF, tag & 0xFF]) if tag > 255 else bytes([tag])
+  vlen = len(value)
+  if vlen <= 127:
+    return tag_bytes + bytes([vlen]) + value
+  length_bytes = vlen.to_bytes((vlen.bit_length() + 7) // 8, "big")
+  return tag_bytes + bytes([0x80 | len(length_bytes)]) + length_bytes + value
+
+
+def tbcd_to_string(raw: bytes) -> str:
+  return "".join(str(n) for b in raw for n in (b & 0x0F, b >> 4) if n <= 9)
+
+
+def string_to_tbcd(s: str) -> bytes:
+  digits = [int(c) for c in s if c.isdigit()]
+  return bytes(digits[i] | ((digits[i + 1] if i + 1 < len(digits) else 0xF) << 4) for i in range(0, len(digits), 2))
+
+
+def base64_trim(s: str) -> str:
+  return "".join(c for c in s if c not in "\n\r \t")
+
+
+# --- Shared helpers ---
+
+def _int_bytes(n: int) -> bytes:
+  """Encode a positive integer as minimal big-endian bytes (at least 1 byte)."""
+  return n.to_bytes((n.bit_length() + 7) // 8 or 1, "big")
+
+
 def _extract_status(response: bytes, tag: int, name: str) -> int:
   """Extract the status byte from a tagged ES10x response."""
   root = find_tag(response, tag)
@@ -101,6 +250,49 @@ _NOTIF_FIELDS = {
   0x0C: ("notificationAddress", lambda v: v.decode("utf-8", errors="ignore")),
   TAG_ICCID: ("iccid", tbcd_to_string),
 }
+
+
+# --- ES10x command transport ---
+
+def es10x_command(client: AtClient, data: bytes) -> bytes:
+  response = bytearray()
+  sequence = 0
+  offset = 0
+  while offset < len(data):
+    chunk = data[offset : offset + ES10X_MSS]
+    offset += len(chunk)
+    is_last = offset == len(data)
+    apdu = bytes([0x80, 0xE2, 0x91 if is_last else 0x11, sequence & 0xFF, len(chunk)]) + chunk
+    segment, sw1, sw2 = client.send_apdu(apdu)
+    response.extend(segment)
+    while True:
+      if sw1 == 0x61:  # More data available
+        segment, sw1, sw2 = client.send_apdu(bytes([0x80, 0xC0, 0x00, 0x00, sw2 or 0]))
+        response.extend(segment)
+        continue
+      if (sw1 & 0xF0) == 0x90:
+        break
+      raise RuntimeError(f"APDU failed with SW={sw1:02X}{sw2:02X}")
+    sequence += 1
+  return bytes(response)
+
+
+# --- ES9P HTTP ---
+
+def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: str = "Request") -> dict:
+  url = f"https://{smdp_address}/gsma/rsp2/es9plus/{endpoint}"
+  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
+  resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
+  resp.raise_for_status()
+  if not resp.content:
+    return {}
+  data = resp.json()
+  if "header" in data and "functionExecutionStatus" in data["header"]:
+    status = data["header"]["functionExecutionStatus"]
+    if status.get("status") == "Failed":
+      sd = status.get("statusCodeData", {})
+      raise RuntimeError(f"{error_prefix} failed: {sd.get('reasonCode', 'unknown')}/{sd.get('subjectCode', 'unknown')} - {sd.get('message', 'unknown')}")
+  return data
 
 
 # --- Profile operations ---
@@ -185,7 +377,7 @@ def list_notifications(client: AtClient) -> list[dict]:
 
 
 def retrieve_notification(client: AtClient, seq_number: int) -> dict:
-  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
+  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
   response = es10x_command(client, request)
   root = find_tag(response, TAG_RETRIEVE_NOTIFICATION)
   if root is None:
@@ -214,13 +406,33 @@ def retrieve_notification(client: AtClient, seq_number: int) -> dict:
 
 
 def remove_notification(client: AtClient, seq_number: int) -> None:
-  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
+  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
   root = find_tag(response, TAG_NOTIFICATION_SENT)
   if root is None:
     raise RuntimeError("Invalid NotificationSentResponse")
   status = find_tag(root, TAG_STATUS)
   if status is None or int.from_bytes(status, "big") != 0:
     raise RuntimeError("RemoveNotificationFromList failed")
+
+
+def process_notifications(client: AtClient) -> None:
+  notifications = list_notifications(client)
+  if not notifications:
+    print("No notifications to process", file=sys.stderr)
+    return
+  print(f"Found {len(notifications)} notification(s) to process", file=sys.stderr)
+  for notification in notifications:
+    seq_number, smdp_address = notification["seqNumber"], notification["notificationAddress"]
+    if not seq_number or not smdp_address:
+      continue
+    print(f"Processing notification seqNumber={seq_number}, address={smdp_address}", file=sys.stderr)
+    try:
+      notif_data = retrieve_notification(client, seq_number)
+      es9p_request(smdp_address, "handleNotification", {"pendingNotification": notif_data["b64_PendingNotification"]}, "HandleNotification")
+      remove_notification(client, seq_number)
+      print(f"Notification {seq_number} processed successfully", file=sys.stderr)
+    except Exception as e:
+      print(f"Failed to process notification {seq_number}: {e}", file=sys.stderr)
 
 
 # --- Authentication & Download ---
@@ -374,3 +586,110 @@ def cancel_session(client: AtClient, transaction_id: bytes, reason: int = 127) -
   content = encode_tlv(0x80, transaction_id) + encode_tlv(0x81, bytes([reason]))
   response = es10x_command(client, encode_tlv(TAG_CANCEL_SESSION, content))
   return b64e(response)
+
+
+def parse_lpa_activation_code(activation_code: str) -> tuple[str, str, str]:
+  if not activation_code.startswith("LPA:"):
+    raise ValueError("Invalid activation code format")
+  parts = activation_code[4:].split("$")
+  if len(parts) != 3:
+    raise ValueError("Invalid activation code format")
+  return parts[0], parts[1], parts[2]
+
+
+def download_profile(client: AtClient, activation_code: str) -> None:
+  _, smdp, matching_id = parse_lpa_activation_code(activation_code)
+
+  challenge, euicc_info = get_challenge_and_info(client)
+
+  payload = {"smdpAddress": smdp, "euiccChallenge": b64e(challenge), "euiccInfo1": b64e(euicc_info)}
+  if matching_id:
+    payload["matchingId"] = matching_id
+  auth = es9p_request(smdp, "initiateAuthentication", payload, "Authentication")
+  tx_id = base64_trim(auth.get("transactionId", ""))
+  tx_id_bytes = base64.b64decode(tx_id) if tx_id else b""
+
+  try:
+    b64_auth_resp = authenticate_server(
+      client, base64_trim(auth.get("serverSigned1", "")), base64_trim(auth.get("serverSignature1", "")),
+      base64_trim(auth.get("euiccCiPKIdToBeUsed", "")), base64_trim(auth.get("serverCertificate", "")),
+      matching_id=matching_id)
+
+    cli = es9p_request(smdp, "authenticateClient", {"transactionId": tx_id, "authenticateServerResponse": b64_auth_resp}, "Authentication")
+    metadata = parse_metadata(base64_trim(cli.get("profileMetadata", "")))
+    print(f'Downloading profile: {metadata["iccid"]} - {metadata["serviceProviderName"]} - {metadata["profileName"]}')
+
+    b64_prep = prepare_download(
+      client, base64_trim(cli.get("smdpSigned2", "")), base64_trim(cli.get("smdpSignature2", "")), base64_trim(cli.get("smdpCertificate", "")))
+
+    bpp = es9p_request(smdp, "getBoundProfilePackage", {"transactionId": tx_id, "prepareDownloadResponse": b64_prep}, "GetBoundProfilePackage")
+
+    result = load_bpp(client, base64_trim(bpp.get("boundProfilePackage", "")))
+    if result["success"]:
+      print(f"Profile installed successfully (seqNumber: {result['seqNumber']})")
+    else:
+      raise RuntimeError(f"Profile installation failed: {result}")
+  except Exception:
+    if tx_id_bytes:
+      b64_cancel_resp = ""
+      try:
+        b64_cancel_resp = cancel_session(client, tx_id_bytes)
+      except Exception:
+        pass
+      try:
+        es9p_request(smdp, "cancelSession", {
+          "transactionId": tx_id,
+          "cancelSessionResponse": b64_cancel_resp,
+        }, "CancelSession")
+      except Exception:
+        pass
+    raise
+
+
+# --- CLI ---
+
+def main() -> None:
+  parser = argparse.ArgumentParser(description="Minimal AT-only LPA implementation")
+  parser.add_argument("--device", default=DEFAULT_DEVICE)
+  parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+  parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
+  parser.add_argument("--verbose", action="store_true")
+  parser.add_argument("--enable", type=str)
+  parser.add_argument("--disable", type=str)
+  parser.add_argument("--delete", type=str, metavar="ICCID", help="Delete a disabled profile")
+  parser.add_argument("--no-refresh", action="store_true", help="Skip REFRESH after enable/disable")
+  parser.add_argument("--set-nickname", nargs=2, metavar=("ICCID", "NICKNAME"))
+  parser.add_argument("--list-notifications", action="store_true")
+  parser.add_argument("--process-notifications", action="store_true")
+  parser.add_argument("--download", type=str, metavar="CODE")
+  args = parser.parse_args()
+
+  client = AtClient(args.device, args.baud, args.timeout, args.verbose)
+  try:
+    client.ensure_capabilities()
+    client.open_isdr()
+    action_done = False
+    if args.enable:
+      enable_profile(client, args.enable, refresh=not args.no_refresh)
+    elif args.disable:
+      disable_profile(client, args.disable, refresh=not args.no_refresh)
+    elif args.delete:
+      delete_profile(client, args.delete)
+    elif args.set_nickname:
+      set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
+    elif args.list_notifications:
+      print(json.dumps(list_notifications(client), indent=2))
+      action_done = True
+    elif args.process_notifications:
+      process_notifications(client)
+      action_done = True
+    elif args.download:
+      download_profile(client, args.download)
+    if not action_done:
+      print(json.dumps(list_profiles(client), indent=2))
+  finally:
+    client.close()
+
+
+if __name__ == "__main__":
+  main()
