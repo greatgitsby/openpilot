@@ -425,23 +425,16 @@ def remove_notification(client: AtClient, seq_number: int) -> None:
 
 
 def process_notifications(client: AtClient) -> None:
-  notifications = list_notifications(client)
-  if not notifications:
-    print("No notifications to process", file=sys.stderr)
-    return
-  print(f"Found {len(notifications)} notification(s) to process", file=sys.stderr)
-  for notification in notifications:
+  for notification in list_notifications(client):
     seq_number, smdp_address = notification["seqNumber"], notification["notificationAddress"]
     if not seq_number or not smdp_address:
       continue
-    print(f"Processing notification seqNumber={seq_number}, address={smdp_address}", file=sys.stderr)
     try:
       notif_data = retrieve_notification(client, seq_number)
       es9p_request(smdp_address, "handleNotification", {"pendingNotification": notif_data["b64_PendingNotification"]}, "HandleNotification")
       remove_notification(client, seq_number)
-      print(f"Notification {seq_number} processed successfully", file=sys.stderr)
-    except Exception as e:
-      print(f"Failed to process notification {seq_number}: {e}", file=sys.stderr)
+    except Exception:
+      pass
 
 
 # --- Authentication & Download ---
@@ -677,12 +670,16 @@ def main() -> None:
     client.open_isdr()
     if args.enable:
       enable_profile(client, args.enable, refresh=not args.no_refresh)
+      process_notifications(client)
     elif args.disable:
       disable_profile(client, args.disable, refresh=not args.no_refresh)
+      process_notifications(client)
     elif args.delete:
       delete_profile(client, args.delete)
+      process_notifications(client)
     elif args.set_nickname:
       set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
+      process_notifications(client)
     elif args.list_notifications:
       print(json.dumps(list_notifications(client), indent=2))
       return
@@ -691,6 +688,7 @@ def main() -> None:
       return
     elif args.download:
       download_profile(client, args.download)
+      process_notifications(client)
     print(json.dumps(list_profiles(client), indent=2))
   finally:
     client.close()
