@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SGP.22 v2.3: https://www.gsma.com/solutions-and-impact/technologies/esim/wp-content/uploads/2021/07/SGP.22-v2.3.pdf
 
 import argparse
 import base64
@@ -14,6 +15,7 @@ from collections.abc import Generator
 DEFAULT_DEVICE = "/dev/ttyUSB2"
 DEFAULT_BAUD = 9600
 DEFAULT_TIMEOUT = 5.0
+# https://euicc-manual.osmocom.org/docs/lpa/applet-id/
 ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 ES10X_MSS = 120
 
@@ -284,7 +286,7 @@ def es10x_command(client: AtClient, data: bytes) -> bytes:
 
 def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: str = "Request") -> dict:
   url = f"https://{smdp_address}/gsma/rsp2/es9plus/{endpoint}"
-  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.2.2", "Content-Type": "application/json"}
+  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.3.0", "Content-Type": "application/json"}
   resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
   resp.raise_for_status()
   if not resp.content:
