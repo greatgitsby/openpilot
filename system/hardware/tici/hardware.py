@@ -12,7 +12,6 @@ from openpilot.common.utils import sudo_read, sudo_write
 from openpilot.common.gpio import gpio_set, gpio_init, get_irqs_for_action
 from openpilot.system.hardware.base import HardwareBase, LPABase, ThermalConfig, ThermalZone
 from openpilot.system.hardware.tici import iwlist
-from openpilot.system.hardware.tici.at_lpa import AtLPA
 from openpilot.system.hardware.tici.esim import TiciLPA
 from openpilot.system.hardware.tici.pins import GPIO
 from openpilot.system.hardware.tici.amplifier import Amplifier
@@ -201,9 +200,7 @@ class Tici(HardwareBase):
         'data_connected': modem.Get(MM_MODEM, 'State', dbus_interface=DBUS_PROPS, timeout=TIMEOUT) == MM_MODEM_STATE.CONNECTED,
       }
 
-  def get_sim_lpa(self, backend: str = 'lpac') -> LPABase:
-    if backend == 'at':
-      return AtLPA()
+  def get_sim_lpa(self) -> LPABase:
     return TiciLPA()
 
   def get_imei(self, slot):

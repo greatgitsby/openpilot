@@ -117,7 +117,7 @@ class AtLPA(LPABase):
       raise LPAError("cannot delete active profile, switch to another profile first")
     with self._client() as client:
       es10x.delete_profile(client, iccid)
-    self._process_notifications()
+    self.process_notifications()
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
     with self._client() as client:
@@ -127,7 +127,7 @@ class AtLPA(LPABase):
       new_iccid = next((p["iccid"] for p in profiles if p["profileNickname"] == "" or p["profileNickname"] is None), None)
       if new_iccid:
         self.nickname_profile(new_iccid, nickname)
-    self._process_notifications()
+    self.process_notifications()
 
   def nickname_profile(self, iccid: str, nickname: str) -> None:
     self._validate_profile_exists(iccid)
@@ -143,9 +143,21 @@ class AtLPA(LPABase):
       if active:
         es10x.disable_profile(client, active.iccid)
       es10x.enable_profile(client, iccid)
-    self._process_notifications()
+    self.process_notifications()
 
-  def _process_notifications(self) -> None:
+  def enable_profile(self, iccid: str) -> None:
+    self._validate_profile_exists(iccid)
+    with self._client() as client:
+      es10x.enable_profile(client, iccid)
+    self.process_notifications()
+
+  def disable_profile(self, iccid: str) -> None:
+    self._validate_profile_exists(iccid)
+    with self._client() as client:
+      es10x.disable_profile(client, iccid)
+    self.process_notifications()
+
+  def process_notifications(self) -> None:
     with self._client() as client:
       process_notifications(client)
 
