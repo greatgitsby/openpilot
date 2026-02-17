@@ -7,7 +7,7 @@ from openpilot.system.hardware import HARDWARE
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(prog='esim.py', description='manage eSIM profiles on your comma device', epilog='comma.ai')
-  parser.add_argument('--backend', choices=['qmi', 'at'], default='qmi', help='use the specified backend, defaults to qmi')
+  parser.add_argument('--backend', choices=['lpac', 'at'], default='lpac', help='use the specified backend (lpac or at), defaults to lpac')
   parser.add_argument('--switch', metavar='iccid', help='switch to profile')
   parser.add_argument('--delete', metavar='iccid', help='delete profile (warning: this cannot be undone)')
   parser.add_argument('--download', nargs=2, metavar=('qr', 'name'), help='download a profile using QR code (format: LPA:1$rsp.truphone.com$QRF-SPEEDTEST)')
@@ -15,7 +15,7 @@ if __name__ == '__main__':
   args = parser.parse_args()
 
   mutated = False
-  lpa = HARDWARE.get_sim_lpa()
+  lpa = HARDWARE.get_sim_lpa(backend=args.backend)
   if args.switch:
     lpa.switch_profile(args.switch)
     mutated = True

@@ -145,7 +145,7 @@ class HardwareBase(ABC):
       'data_connected': False
     }
 
-  def get_sim_lpa(self) -> LPABase:
+  def get_sim_lpa(self, backend: str = 'lpac') -> LPABase:
     raise NotImplementedError("SIM LPA not available")
 
   def get_network_strength(self, network_type):
