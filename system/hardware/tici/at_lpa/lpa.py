@@ -94,18 +94,24 @@ class AtLPA(LPABase):
     self.timeout = timeout
     self.verbose = verbose
 
-  def _client(self) -> AtClient:
-    return AtClient(self.device, self.baud, self.timeout, self.verbose)
+  def _open_client(self) -> AtClient:
+    client = AtClient(self.device, self.baud, self.timeout, self.verbose)
+    client.ensure_capabilities()
+    client.open_isdr()
+    return client
 
   def list_profiles(self) -> list[Profile]:
-    with self._client() as client:
+    client = self._open_client()
+    try:
       raw = es10x.list_profiles(client)
-    return [Profile(
-      iccid=p["iccid"],
-      nickname=p["profileNickname"] or "",
-      enabled=p["profileState"] == "enabled",
-      provider=p["serviceProviderName"] or "",
-    ) for p in raw]
+      return [Profile(
+        iccid=p["iccid"],
+        nickname=p["profileNickname"] or "",
+        enabled=p["profileState"] == "enabled",
+        provider=p["serviceProviderName"] or "",
+      ) for p in raw]
+    finally:
+      client.close()
 
   def get_active_profile(self) -> Profile | None:
     return next((p for p in self.list_profiles() if p.enabled), None)
@@ -115,14 +121,20 @@ class AtLPA(LPABase):
     active = self.get_active_profile()
     if active is not None and active.iccid == iccid:
       raise LPAError("cannot delete active profile, switch to another profile first")
-    with self._client() as client:
+    client = self._open_client()
+    try:
       es10x.delete_profile(client, iccid)
+    finally:
+      client.close()
     self.process_notifications()
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
-    with self._client() as client:
+    client = self._open_client()
+    try:
       download_profile(client, qr)
       profiles = es10x.list_profiles(client)
+    finally:
+      client.close()
     if nickname:
       new_iccid = next((p["iccid"] for p in profiles if p["profileNickname"] == "" or p["profileNickname"] is None), None)
       if new_iccid:
@@ -131,35 +143,50 @@ class AtLPA(LPABase):
 
   def nickname_profile(self, iccid: str, nickname: str) -> None:
     self._validate_profile_exists(iccid)
-    with self._client() as client:
+    client = self._open_client()
+    try:
       es10x.set_profile_nickname(client, iccid, nickname)
+    finally:
+      client.close()
 
   def switch_profile(self, iccid: str) -> None:
     self._validate_profile_exists(iccid)
     active = self.get_active_profile()
     if active and active.iccid == iccid:
       return
-    with self._client() as client:
+    client = self._open_client()
+    try:
       if active:
         es10x.disable_profile(client, active.iccid)
       es10x.enable_profile(client, iccid)
+    finally:
+      client.close()
     self.process_notifications()
 
   def enable_profile(self, iccid: str) -> None:
     self._validate_profile_exists(iccid)
-    with self._client() as client:
+    client = self._open_client()
+    try:
       es10x.enable_profile(client, iccid)
+    finally:
+      client.close()
     self.process_notifications()
 
   def disable_profile(self, iccid: str) -> None:
     self._validate_profile_exists(iccid)
-    with self._client() as client:
+    client = self._open_client()
+    try:
       es10x.disable_profile(client, iccid)
+    finally:
+      client.close()
     self.process_notifications()
 
   def process_notifications(self) -> None:
-    with self._client() as client:
+    client = self._open_client()
+    try:
       process_notifications(client)
+    finally:
+      client.close()
 
   def _validate_profile_exists(self, iccid: str) -> None:
     if not any(p.iccid == iccid for p in self.list_profiles()):

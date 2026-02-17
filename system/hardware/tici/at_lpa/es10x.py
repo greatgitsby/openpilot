@@ -2,10 +2,10 @@ import base64
 import hashlib
 
 from openpilot.system.hardware.tici.at_lpa.tlv import (
-  b64d, b64e, encode_tlv, find_tag, int_bytes, iter_tlv,
+  b64d, b64e, base64_trim, encode_tlv, find_tag, int_bytes, iter_tlv,
   string_to_tbcd, tbcd_to_string,
 )
-from openpilot.system.hardware.tici.at_lpa.client import AtClient
+from openpilot.system.hardware.tici.at_lpa.client import AtClient, es10x_command
 
 
 # TLV Tags
@@ -54,9 +54,14 @@ BPP_ERROR_REASONS = {
   11: "installInterrupted", 12: "peProcessingError", 13: "dataMismatch",
   14: "invalidNAA",
 }
+CANCEL_SESSION_REASON = {
+  0: "endUserRejection", 1: "postponed", 2: "timeout",
+  3: "pprNotAllowed", 127: "undefinedReason",
+}
 
 
 def _extract_status(response: bytes, tag: int, name: str) -> int:
+  """Extract the status byte from a tagged ES10x response."""
   root = find_tag(response, tag)
   if root is None:
     raise RuntimeError(f"Missing {name}Response")
@@ -81,6 +86,7 @@ _PROFILE_FIELDS = {
 
 
 def _decode_profile_fields(data: bytes) -> dict:
+  """Parse known profile metadata TLV fields into a dict."""
   result = {}
   for tag, value in iter_tlv(data):
     if (field := _PROFILE_FIELDS.get(tag)):
@@ -99,8 +105,7 @@ _NOTIF_FIELDS = {
 
 # --- Profile operations ---
 
-def list_profiles(client: AtClient) -> list[dict]:
-  blob = client.es10x_command(bytes.fromhex("BF2D00"))
+def decode_profiles(blob: bytes) -> list[dict]:
   root = find_tag(blob, TAG_PROFILE_INFO_LIST)
   if root is None:
     raise RuntimeError("Missing ProfileInfoList")
@@ -111,14 +116,19 @@ def list_profiles(client: AtClient) -> list[dict]:
   return [{**defaults, **_decode_profile_fields(value)} for tag, value in iter_tlv(list_ok) if tag == 0xE3]
 
 
+def list_profiles(client: AtClient) -> list[dict]:
+  return decode_profiles(es10x_command(client, bytes.fromhex("BF2D00")))
+
+
 def _profile_op(client: AtClient, tag: int, iccid: str, refresh: bool, action: str) -> None:
-  iccid_tlv = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
   if tag == TAG_DELETE_PROFILE:
-    inner = iccid_tlv
+    inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
   else:
-    inner = iccid_tlv if refresh else iccid_tlv + encode_tlv(0x81, b'\x00')
+    inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+    if not refresh:
+      inner += encode_tlv(0x81, b'\x00')
     inner = encode_tlv(0xA0, inner)
-  code = _extract_status(client.es10x_command(encode_tlv(tag, inner)), tag, f"{action.capitalize()}Profile")
+  code = _extract_status(es10x_command(client, encode_tlv(tag, inner)), tag, f"{action.capitalize()}Profile")
   if code == 0x00:
     return
   if code == 0x02 and tag != TAG_DELETE_PROFILE:
@@ -144,7 +154,7 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
   if len(nickname_bytes) > 64:
     raise ValueError("Profile nickname must be 64 bytes or less")
   content = encode_tlv(TAG_ICCID, string_to_tbcd(iccid)) + encode_tlv(0x90, nickname_bytes)
-  code = _extract_status(client.es10x_command(encode_tlv(TAG_SET_NICKNAME, content)), TAG_SET_NICKNAME, "SetNickname")
+  code = _extract_status(es10x_command(client, encode_tlv(TAG_SET_NICKNAME, content)), TAG_SET_NICKNAME, "SetNickname")
   if code == 0x01:
     raise RuntimeError(f"profile {iccid} not found")
   if code != 0x00:
@@ -154,7 +164,7 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
 # --- Notifications ---
 
 def list_notifications(client: AtClient) -> list[dict]:
-  response = client.es10x_command(encode_tlv(TAG_LIST_NOTIFICATION, b""))
+  response = es10x_command(client, encode_tlv(TAG_LIST_NOTIFICATION, b""))
   root = find_tag(response, TAG_LIST_NOTIFICATION)
   if root is None:
     raise RuntimeError("Missing ListNotificationResponse")
@@ -176,7 +186,7 @@ def list_notifications(client: AtClient) -> list[dict]:
 
 def retrieve_notification(client: AtClient, seq_number: int) -> dict:
   request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
-  response = client.es10x_command(request)
+  response = es10x_command(client, request)
   root = find_tag(response, TAG_RETRIEVE_NOTIFICATION)
   if root is None:
     raise RuntimeError("Invalid RetrieveNotificationsListResponse")
@@ -204,7 +214,7 @@ def retrieve_notification(client: AtClient, seq_number: int) -> dict:
 
 
 def remove_notification(client: AtClient, seq_number: int) -> None:
-  response = client.es10x_command(encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
+  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
   root = find_tag(response, TAG_NOTIFICATION_SENT)
   if root is None:
     raise RuntimeError("Invalid NotificationSentResponse")
@@ -216,20 +226,21 @@ def remove_notification(client: AtClient, seq_number: int) -> None:
 # --- Authentication & Download ---
 
 def get_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
-  challenge_resp = client.es10x_command(encode_tlv(TAG_EUICC_CHALLENGE, b""))
+  challenge_resp = es10x_command(client, encode_tlv(TAG_EUICC_CHALLENGE, b""))
   root = find_tag(challenge_resp, TAG_EUICC_CHALLENGE)
   if root is None:
     raise RuntimeError("Missing GetEuiccDataResponse")
   challenge = find_tag(root, TAG_STATUS)
   if challenge is None:
     raise RuntimeError("Missing challenge in response")
-  info_resp = client.es10x_command(encode_tlv(TAG_EUICC_INFO, b""))
+  info_resp = es10x_command(client, encode_tlv(TAG_EUICC_INFO, b""))
   if not info_resp.startswith(bytes([0xBF, 0x20])):
     raise RuntimeError("Missing GetEuiccInfo1Response")
   return challenge, info_resp
 
 
 def authenticate_server(client: AtClient, b64_signed1: str, b64_sig1: str, b64_pk_id: str, b64_cert: str, matching_id: str | None = None) -> str:
+  # Build request
   tac = bytes([0x35, 0x29, 0x06, 0x11])
   device_info = encode_tlv(TAG_STATUS, tac) + encode_tlv(0xA1, b"")
   ctx_inner = b""
@@ -237,11 +248,13 @@ def authenticate_server(client: AtClient, b64_signed1: str, b64_sig1: str, b64_p
     ctx_inner += encode_tlv(TAG_STATUS, matching_id.encode("utf-8"))
   ctx_inner += encode_tlv(0xA1, device_info)
   content = base64.b64decode(b64_signed1) + base64.b64decode(b64_sig1) + base64.b64decode(b64_pk_id) + base64.b64decode(b64_cert) + encode_tlv(0xA0, ctx_inner)
+  request = encode_tlv(TAG_AUTH_SERVER, content)
 
-  response = client.es10x_command(encode_tlv(TAG_AUTH_SERVER, content))
+  response = es10x_command(client, request)
   if not response.startswith(bytes([0xBF, 0x38])):
     raise RuntimeError("Invalid AuthenticateServerResponse")
 
+  # Check for eUICC-side errors
   root = find_tag(response, TAG_AUTH_SERVER)
   if root is not None:
     error_tag = find_tag(root, 0xA1)
@@ -270,13 +283,14 @@ def prepare_download(client: AtClient, b64_signed2: str, b64_sig2: str, b64_cert
       raise RuntimeError("Confirmation code required but not provided")
     content += encode_tlv(0x04, hashlib.sha256(hashlib.sha256(cc.encode("utf-8")).digest() + transaction_id).digest())
   content += smdp_certificate
-  response = client.es10x_command(encode_tlv(TAG_PREPARE_DOWNLOAD, content))
+  response = es10x_command(client, encode_tlv(TAG_PREPARE_DOWNLOAD, content))
   if not response.startswith(bytes([0xBF, 0x21])):
     raise RuntimeError("Invalid PrepareDownloadResponse")
   return b64e(response)
 
 
 def _parse_tlv_header_len(data: bytes) -> int:
+  """Return the combined tag + length header size for a TLV element."""
   tag_len = 2 if data[0] & 0x1F == 0x1F else 1
   length_byte = data[tag_len]
   return tag_len + (1 + (length_byte & 0x7F) if length_byte & 0x80 else 1)
@@ -314,7 +328,7 @@ def load_bpp(client: AtClient, b64_bpp: str) -> dict:
 
   result = {"seqNumber": 0, "success": False, "bppCommandId": None, "errorReason": None}
   for chunk in chunks:
-    response = client.es10x_command(chunk)
+    response = es10x_command(client, chunk)
     if not response:
       continue
     root = find_tag(response, TAG_PROFILE_INSTALL_RESULT)
@@ -340,7 +354,7 @@ def load_bpp(client: AtClient, b64_bpp: str) -> dict:
           err = find_tag(value, 0x81)
           if err:
             result["errorReason"] = int.from_bytes(err, "big")
-    break
+    break  # ProfileInstallResult received — eUICC session is finalized
   if not result["success"] and result["errorReason"] is not None:
     cmd_name = BPP_COMMAND_NAMES.get(result["bppCommandId"], f"unknown({result['bppCommandId']})")
     err_name = BPP_ERROR_REASONS.get(result["errorReason"], f"unknown({result['errorReason']})")
@@ -358,5 +372,5 @@ def parse_metadata(b64_metadata: str) -> dict:
 
 def cancel_session(client: AtClient, transaction_id: bytes, reason: int = 127) -> str:
   content = encode_tlv(0x80, transaction_id) + encode_tlv(0x81, bytes([reason]))
-  response = client.es10x_command(encode_tlv(TAG_CANCEL_SESSION, content))
+  response = es10x_command(client, encode_tlv(TAG_CANCEL_SESSION, content))
   return b64e(response)
