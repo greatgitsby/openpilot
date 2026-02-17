@@ -16,6 +16,14 @@ class AtClient:
     self.channel: str | None = None
     self.ser.reset_input_buffer()
 
+  def __enter__(self):
+    self.ensure_capabilities()
+    self.open_isdr()
+    return self
+
+  def __exit__(self, *exc):
+    self.close()
+
   def close(self) -> None:
     try:
       if self.channel:
@@ -75,25 +83,24 @@ class AtClient:
             return data[:-2], data[-2], data[-1]
     raise RuntimeError("Missing +CGLA response")
 
-
-def es10x_command(client: AtClient, data: bytes) -> bytes:
-  response = bytearray()
-  sequence = 0
-  offset = 0
-  while offset < len(data):
-    chunk = data[offset : offset + ES10X_MSS]
-    offset += len(chunk)
-    is_last = offset == len(data)
-    apdu = bytes([0x80, 0xE2, 0x91 if is_last else 0x11, sequence & 0xFF, len(chunk)]) + chunk
-    segment, sw1, sw2 = client.send_apdu(apdu)
-    response.extend(segment)
-    while True:
-      if sw1 == 0x61:  # More data available
-        segment, sw1, sw2 = client.send_apdu(bytes([0x80, 0xC0, 0x00, 0x00, sw2 or 0]))
-        response.extend(segment)
-        continue
-      if (sw1 & 0xF0) == 0x90:
-        break
-      raise RuntimeError(f"APDU failed with SW={sw1:02X}{sw2:02X}")
-    sequence += 1
-  return bytes(response)
+  def es10x_command(self, data: bytes) -> bytes:
+    response = bytearray()
+    sequence = 0
+    offset = 0
+    while offset < len(data):
+      chunk = data[offset : offset + ES10X_MSS]
+      offset += len(chunk)
+      is_last = offset == len(data)
+      apdu = bytes([0x80, 0xE2, 0x91 if is_last else 0x11, sequence & 0xFF, len(chunk)]) + chunk
+      segment, sw1, sw2 = self.send_apdu(apdu)
+      response.extend(segment)
+      while True:
+        if sw1 == 0x61:  # More data available
+          segment, sw1, sw2 = self.send_apdu(bytes([0x80, 0xC0, 0x00, 0x00, sw2 or 0]))
+          response.extend(segment)
+          continue
+        if (sw1 & 0xF0) == 0x90:
+          break
+        raise RuntimeError(f"APDU failed with SW={sw1:02X}{sw2:02X}")
+      sequence += 1
+    return bytes(response)
