@@ -79,10 +79,10 @@ def b64d(s: str) -> bytes:
 
 class AtClient:
   def __init__(self, device: str, baud: int, timeout: float, verbose: bool) -> None:
-    self.ser = serial.Serial(device, baudrate=baud, timeout=timeout)
+    self.serial = serial.Serial(device, baudrate=baud, timeout=timeout)
     self.verbose = verbose
     self.channel: str | None = None
-    self.ser.reset_input_buffer()
+    self.serial.reset_input_buffer()
 
   def close(self) -> None:
     try:
@@ -90,17 +90,17 @@ class AtClient:
         self.query(f"AT+CCHC={self.channel}")
         self.channel = None
     finally:
-      self.ser.close()
+      self.serial.close()
 
   def send(self, cmd: str) -> None:
     if self.verbose:
       print(f">> {cmd}", file=sys.stderr)
-    self.ser.write((cmd + "\r").encode("ascii"))
+    self.serial.write((cmd + "\r").encode("ascii"))
 
   def expect(self) -> list[str]:
     lines: list[str] = []
     while True:
-      raw = self.ser.readline()
+      raw = self.serial.readline()
       if not raw:
         raise TimeoutError("AT command timed out")
       line = raw.decode(errors="ignore").strip()
@@ -150,11 +150,13 @@ def iter_tlv(data: bytes, with_positions: bool = False) -> Generator:
   idx, length = 0, len(data)
   while idx < length:
     start_pos = idx
-    tag = data[idx]; idx += 1
+    tag = data[idx]
+    idx += 1
     if tag & 0x1F == 0x1F:  # Multi-byte tag
       tag_value = tag
       while idx < length:
-        next_byte = data[idx]; idx += 1
+        next_byte = data[idx]
+        idx += 1
         tag_value = (tag_value << 8) | next_byte
         if not (next_byte & 0x80):
           break
@@ -162,7 +164,8 @@ def iter_tlv(data: bytes, with_positions: bool = False) -> Generator:
       tag_value = tag
     if idx >= length:
       break
-    size = data[idx]; idx += 1
+    size = data[idx]
+    idx += 1
     if size & 0x80:  # Multi-byte length
       num_bytes = size & 0x7F
       if idx + num_bytes > length:
@@ -313,10 +316,8 @@ def list_profiles(client: AtClient) -> list[dict]:
 
 
 def _profile_op(client: AtClient, tag: int, iccid: str, refresh: bool, action: str) -> None:
-  if tag == TAG_DELETE_PROFILE:
-    inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
-  else:
-    inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+  inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+  if tag != TAG_DELETE_PROFILE:
     if not refresh:
       inner += encode_tlv(0x81, b'\x00')
     inner = encode_tlv(0xA0, inner)
@@ -513,7 +514,7 @@ def load_bpp(client: AtClient, b64_bpp: str) -> dict:
   if not bpp.startswith(bytes([0xBF, 0x36])):
     raise RuntimeError("Invalid BoundProfilePackage")
 
-  bpp_root_value, bpp_value_start = None, 0
+  bpp_root_value = None
   for tag, value, start, end in iter_tlv(bpp, with_positions=True):
     if tag == TAG_BPP:
       bpp_root_value = value
@@ -523,12 +524,10 @@ def load_bpp(client: AtClient, b64_bpp: str) -> dict:
     raise RuntimeError("Invalid BoundProfilePackage")
 
   chunks = []
-  for tag, _, _, end in iter_tlv(bpp_root_value, with_positions=True):
+  for tag, value, start, end in iter_tlv(bpp_root_value, with_positions=True):
     if tag == 0xBF23:
       chunks.append(bpp[0 : bpp_value_start + end])
-      break
-  for tag, value, start, end in iter_tlv(bpp_root_value, with_positions=True):
-    if tag == 0xA0:
+    elif tag == 0xA0:
       chunks.append(bpp[bpp_value_start + start : bpp_value_start + end])
     elif tag in (0xA1, 0xA3):
       hdr_len = _parse_tlv_header_len(bpp_root_value[start:end])
@@ -668,7 +667,6 @@ def main() -> None:
   try:
     client.ensure_capabilities()
     client.open_isdr()
-    action_done = False
     if args.enable:
       enable_profile(client, args.enable, refresh=not args.no_refresh)
     elif args.disable:
@@ -679,14 +677,13 @@ def main() -> None:
       set_profile_nickname(client, args.set_nickname[0], args.set_nickname[1])
     elif args.list_notifications:
       print(json.dumps(list_notifications(client), indent=2))
-      action_done = True
+      return
     elif args.process_notifications:
       process_notifications(client)
-      action_done = True
+      return
     elif args.download:
       download_profile(client, args.download)
-    if not action_done:
-      print(json.dumps(list_profiles(client), indent=2))
+    print(json.dumps(list_profiles(client), indent=2))
   finally:
     client.close()
 
