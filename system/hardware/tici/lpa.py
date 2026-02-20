@@ -130,6 +130,10 @@ class AtClient:
       self.query(f"{command}=?")
 
   def open_isdr(self) -> None:
+    try:
+      self.query(f'AT+CCHC=1')
+    except Exception:
+      pass
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
