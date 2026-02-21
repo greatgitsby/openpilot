@@ -47,6 +47,8 @@ STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
 
+FieldMap = dict[int, tuple[str, Callable[[bytes], Any]]]
+
 
 def b64e(data: bytes) -> str:
   return base64.b64encode(data).decode("ascii")
@@ -176,6 +178,11 @@ def encode_tlv(tag: int, value: bytes) -> bytes:
   return tag_bytes + bytes([0x80 | len(length_bytes)]) + length_bytes + value
 
 
+def int_bytes(n: int) -> bytes:
+  """Encode a positive integer as minimal big-endian bytes (at least 1 byte)."""
+  return n.to_bytes((n.bit_length() + 7) // 8 or 1, "big")
+
+
 # Profile field decoders: TLV tag -> (field_name, decoder)
 PROFILE = {
   TAG_ICCID: ("iccid", tbcd_to_string),
@@ -189,8 +196,6 @@ PROFILE = {
   0x95: ("profileClass", lambda v: CLASS_LABELS.get(v[0], "unknown")),
 }
 
-
-FieldMap = dict[int, tuple[str, Callable[[bytes], Any]]]
 
 def decode_struct(data: bytes, field_map: FieldMap) -> dict[str, Any]:
   """Parse TLV data using a {tag: (field_name, decoder)} map into a dict."""
@@ -208,11 +213,6 @@ NOTIFICATION = {
   0x0C: ("notificationAddress", lambda v: v.decode("utf-8", errors="ignore")),
   TAG_ICCID: ("iccid", tbcd_to_string),
 }
-
-
-def _int_bytes(n: int) -> bytes:
-  """Encode a positive integer as minimal big-endian bytes (at least 1 byte)."""
-  return n.to_bytes((n.bit_length() + 7) // 8 or 1, "big")
 
 
 # --- ES10x command transport ---
@@ -297,7 +297,7 @@ def list_notifications(client: AtClient) -> list[dict]:
 
 
 def retrieve_notification(client: AtClient, seq_number: int) -> dict:
-  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
+  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
   response = es10x_command(client, request)
   root = find_tag(response, TAG_RETRIEVE_NOTIFICATION)
   if root is None:
@@ -326,7 +326,7 @@ def retrieve_notification(client: AtClient, seq_number: int) -> dict:
 
 
 def remove_notification(client: AtClient, seq_number: int) -> None:
-  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
+  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
   root = find_tag(response, TAG_NOTIFICATION_SENT)
   if root is None:
     raise RuntimeError("Invalid NotificationSentResponse")
