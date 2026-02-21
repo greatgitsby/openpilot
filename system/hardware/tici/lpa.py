@@ -3,12 +3,18 @@
 import atexit
 import base64
 import os
+import requests
 import serial
 import sys
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from typing import Any
+from pathlib import Path
 
+from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.hardware.base import LPABase, LPAError, Profile
+
+GSMA_CI_BUNDLE = str(Path(__file__).parent / 'gsma_ci_bundle.pem')
 
 
 DEFAULT_DEVICE = "/dev/ttyUSB2"
@@ -23,8 +29,13 @@ DEBUG = os.environ.get("DEBUG") == "1"
 TAG_ICCID = 0x5A
 TAG_STATUS = 0x80
 TAG_PROFILE_INFO_LIST = 0xBF2D
+TAG_LIST_NOTIFICATION = 0xBF28
+TAG_RETRIEVE_NOTIFICATION = 0xBF2B
+TAG_NOTIFICATION_METADATA = 0xBF2F
+TAG_NOTIFICATION_SENT = 0xBF30
 TAG_ENABLE_PROFILE = 0xBF31
 TAG_DELETE_PROFILE = 0xBF33
+TAG_PROFILE_INSTALL_RESULT = 0xBF37
 
 PROFILE_ERROR_CODES = {
   0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
@@ -166,7 +177,7 @@ def encode_tlv(tag: int, value: bytes) -> bytes:
 
 
 # Profile field decoders: TLV tag -> (field_name, decoder)
-_PROFILE_FIELDS = {
+PROFILE = {
   TAG_ICCID: ("iccid", tbcd_to_string),
   0x4F: ("isdpAid", lambda v: v.hex().upper()),
   0x9F70: ("profileState", lambda v: STATE_LABELS.get(v[0], "unknown")),
@@ -179,13 +190,29 @@ _PROFILE_FIELDS = {
 }
 
 
-def _decode_profile_fields(data: bytes) -> dict:
-  """Parse known profile metadata TLV fields into a dict."""
-  result = {}
+FieldMap = dict[int, tuple[str, Callable[[bytes], Any]]]
+
+def decode_struct(data: bytes, field_map: FieldMap) -> dict[str, Any]:
+  """Parse TLV data using a {tag: (field_name, decoder)} map into a dict."""
+  result: dict[str, Any] = {name: None for name, _ in field_map.values()}
   for tag, value in iter_tlv(data):
-    if (field := _PROFILE_FIELDS.get(tag)):
+    if (field := field_map.get(tag)):
       result[field[0]] = field[1](value)
   return result
+
+
+# Notification field decoders: TLV tag -> (field_name, decoder)
+NOTIFICATION = {
+  TAG_STATUS: ("seqNumber", lambda v: int.from_bytes(v, "big")),
+  0x81: ("profileManagementOperation", lambda v: next((m for m in [0x80, 0x40, 0x20, 0x10] if len(v) >= 2 and v[1] & m), 0xFF)),
+  0x0C: ("notificationAddress", lambda v: v.decode("utf-8", errors="ignore")),
+  TAG_ICCID: ("iccid", tbcd_to_string),
+}
+
+
+def _int_bytes(n: int) -> bytes:
+  """Encode a positive integer as minimal big-endian bytes (at least 1 byte)."""
+  return n.to_bytes((n.bit_length() + 7) // 8 or 1, "big")
 
 
 # --- ES10x command transport ---
@@ -222,12 +249,103 @@ def decode_profiles(blob: bytes) -> list[dict]:
   list_ok = find_tag(root, 0xA0)
   if list_ok is None:
     return []
-  defaults = {name: None for name, _ in _PROFILE_FIELDS.values()}
-  return [{**defaults, **_decode_profile_fields(value)} for tag, value in iter_tlv(list_ok) if tag == 0xE3]
+  return [decode_struct(value, PROFILE) for tag, value in iter_tlv(list_ok) if tag == 0xE3]
 
 
 def list_profiles(client: AtClient) -> list[dict]:
   return decode_profiles(es10x_command(client, TAG_PROFILE_INFO_LIST.to_bytes(2, "big") + b"\x00"))
+
+
+# --- ES9P HTTP ---
+
+def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: str = "Request") -> dict:
+  if not system_time_valid():
+    raise RuntimeError("System time is not set; TLS certificate validation requires a valid clock")
+  url = f"https://{smdp_address}/gsma/rsp2/es9plus/{endpoint}"
+  headers = {"User-Agent": "gsma-rsp-lpad", "X-Admin-Protocol": "gsma/rsp/v2.3.0", "Content-Type": "application/json"}
+  resp = requests.post(url, json=payload, headers=headers, timeout=30, verify=GSMA_CI_BUNDLE)
+  resp.raise_for_status()
+  if not resp.content:
+    return {}
+  data = resp.json()
+  if "header" in data and "functionExecutionStatus" in data["header"]:
+    status = data["header"]["functionExecutionStatus"]
+    if status.get("status") == "Failed":
+      sd = status.get("statusCodeData", {})
+      raise RuntimeError(f"{error_prefix} failed: {sd.get('reasonCode', 'unknown')}/{sd.get('subjectCode', 'unknown')} - {sd.get('message', 'unknown')}")
+  return data
+
+
+# --- Notifications ---
+
+def list_notifications(client: AtClient) -> list[dict]:
+  response = es10x_command(client, encode_tlv(TAG_LIST_NOTIFICATION, b""))
+  root = find_tag(response, TAG_LIST_NOTIFICATION)
+  if root is None:
+    raise RuntimeError("Missing ListNotificationResponse")
+  metadata_list = find_tag(root, 0xA0)
+  if metadata_list is None:
+    return []
+  notifications: list[dict] = []
+  for tag, value in iter_tlv(metadata_list):
+    if tag != TAG_NOTIFICATION_METADATA:
+      continue
+    notification = decode_struct(value, NOTIFICATION)
+    if notification["seqNumber"] is not None and notification["profileManagementOperation"] is not None and notification["notificationAddress"]:
+      notifications.append(notification)
+  return notifications
+
+
+def retrieve_notification(client: AtClient, seq_number: int) -> dict:
+  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
+  response = es10x_command(client, request)
+  root = find_tag(response, TAG_RETRIEVE_NOTIFICATION)
+  if root is None:
+    raise RuntimeError("Invalid RetrieveNotificationsListResponse")
+  a0_content = find_tag(root, 0xA0)
+  if a0_content is None:
+    raise RuntimeError("Invalid RetrieveNotificationsListResponse")
+  pending_notif, pending_tag = None, None
+  for tag, value in iter_tlv(a0_content):
+    if tag in (TAG_PROFILE_INSTALL_RESULT, 0x30):
+      pending_notif, pending_tag = value, tag
+      break
+  if pending_notif is None:
+    raise RuntimeError("Missing PendingNotification")
+  if pending_tag == TAG_PROFILE_INSTALL_RESULT:
+    result_data = find_tag(pending_notif, 0xBF27)
+    notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA) if result_data else None
+  else:
+    notif_meta = find_tag(pending_notif, TAG_NOTIFICATION_METADATA)
+  if notif_meta is None:
+    raise RuntimeError("Missing NotificationMetadata")
+  addr = find_tag(notif_meta, 0x0C)
+  if addr is None:
+    raise RuntimeError("Missing notificationAddress")
+  return {"notificationAddress": addr.decode("utf-8", errors="ignore"), "b64_PendingNotification": b64e(pending_notif)}
+
+
+def remove_notification(client: AtClient, seq_number: int) -> None:
+  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, _int_bytes(seq_number))))
+  root = find_tag(response, TAG_NOTIFICATION_SENT)
+  if root is None:
+    raise RuntimeError("Invalid NotificationSentResponse")
+  status = find_tag(root, TAG_STATUS)
+  if status is None or int.from_bytes(status, "big") != 0:
+    raise RuntimeError("RemoveNotificationFromList failed")
+
+
+def process_notifications(client: AtClient) -> None:
+  for notification in list_notifications(client):
+    seq_number, smdp_address = notification["seqNumber"], notification["notificationAddress"]
+    if not seq_number or not smdp_address:
+      continue
+    try:
+      notif_data = retrieve_notification(client, seq_number)
+      es9p_request(smdp_address, "handleNotification", {"pendingNotification": notif_data["b64_PendingNotification"]}, "HandleNotification")
+      remove_notification(client, seq_number)
+    except Exception:
+      pass
 
 
 def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
@@ -298,6 +416,7 @@ class TiciLPA(LPABase):
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
     delete_profile(self._client, iccid)
+    process_notifications(self._client)
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
     return None
@@ -307,3 +426,4 @@ class TiciLPA(LPABase):
 
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
+    process_notifications(self._client)
