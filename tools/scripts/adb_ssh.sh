@@ -35,9 +35,4 @@ PY
 adb forward tcp:2222 tcp:22
 
 # SSH!
-if [ $# -gt 0 ]; then
-  cmd=$(printf '%q ' "$@")
-  ssh comma@localhost -p 2222 "source ~/.bash_profile; source ~/.bashrc; $cmd"
-else
-  ssh comma@localhost -p 2222
-fi
+ssh comma@localhost -p 2222 "$@"
