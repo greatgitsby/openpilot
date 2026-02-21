@@ -48,6 +48,7 @@ STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
 
+# TLV tag -> (field_name, decoder)
 FieldMap = dict[int, tuple[str, Callable[[bytes], Any]]]
 
 
@@ -191,8 +192,7 @@ def int_bytes(n: int) -> bytes:
   return n.to_bytes((n.bit_length() + 7) // 8 or 1, "big")
 
 
-# Profile field decoders: TLV tag -> (field_name, decoder)
-PROFILE = {
+PROFILE: FieldMap = {
   TAG_ICCID: ("iccid", tbcd_to_string),
   0x4F: ("isdpAid", lambda v: v.hex().upper()),
   0x9F70: ("profileState", lambda v: STATE_LABELS.get(v[0], "unknown")),
@@ -204,6 +204,13 @@ PROFILE = {
   0x95: ("profileClass", lambda v: CLASS_LABELS.get(v[0], "unknown")),
 }
 
+NOTIFICATION: FieldMap = {
+  TAG_STATUS: ("seqNumber", lambda v: int.from_bytes(v, "big")),
+  0x81: ("profileManagementOperation", lambda v: next((m for m in [0x80, 0x40, 0x20, 0x10] if len(v) >= 2 and v[1] & m), 0xFF)),
+  0x0C: ("notificationAddress", lambda v: v.decode("utf-8", errors="ignore")),
+  TAG_ICCID: ("iccid", tbcd_to_string),
+}
+
 
 def decode_struct(data: bytes, field_map: FieldMap) -> dict[str, Any]:
   """Parse TLV data using a {tag: (field_name, decoder)} map into a dict."""
@@ -212,15 +219,6 @@ def decode_struct(data: bytes, field_map: FieldMap) -> dict[str, Any]:
     if (field := field_map.get(tag)):
       result[field[0]] = field[1](value)
   return result
-
-
-# Notification field decoders: TLV tag -> (field_name, decoder)
-NOTIFICATION = {
-  TAG_STATUS: ("seqNumber", lambda v: int.from_bytes(v, "big")),
-  0x81: ("profileManagementOperation", lambda v: next((m for m in [0x80, 0x40, 0x20, 0x10] if len(v) >= 2 and v[1] & m), 0xFF)),
-  0x0C: ("notificationAddress", lambda v: v.decode("utf-8", errors="ignore")),
-  TAG_ICCID: ("iccid", tbcd_to_string),
-}
 
 
 # --- ES10x command transport ---
