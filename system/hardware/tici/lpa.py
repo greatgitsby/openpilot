@@ -383,11 +383,6 @@ class TiciLPA(LPABase):
     self._client.open_isdr()
     atexit.register(self._client.close)
 
-  def close(self) -> None:
-    self._client.close()
-    TiciLPA._instance = None
-    del self._client
-
   def list_profiles(self) -> list[Profile]:
     return [
       Profile(
