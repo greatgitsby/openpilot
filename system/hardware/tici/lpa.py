@@ -36,6 +36,7 @@ TAG_NOTIFICATION_SENT = 0xBF30
 TAG_ENABLE_PROFILE = 0xBF31
 TAG_DELETE_PROFILE = 0xBF33
 TAG_PROFILE_INSTALL_RESULT = 0xBF37
+TAG_OK = 0xA0
 
 PROFILE_ERROR_CODES = {
   0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
@@ -160,6 +161,13 @@ def find_tag(data: bytes, target: int) -> bytes | None:
   return next((v for t, v in iter_tlv(data) if t == target), None)
 
 
+def require_tag(data: bytes, target: int, label: str = "") -> bytes:
+  v = find_tag(data, target)
+  if v is None:
+    raise RuntimeError(f"Missing {label or f'tag 0x{target:X}'}")
+  return v
+
+
 def tbcd_to_string(raw: bytes) -> str:
   return "".join(str(n) for b in raw for n in (b & 0x0F, b >> 4) if n <= 9)
 
@@ -243,10 +251,8 @@ def es10x_command(client: AtClient, data: bytes) -> bytes:
 # --- Profile operations ---
 
 def decode_profiles(blob: bytes) -> list[dict]:
-  root = find_tag(blob, TAG_PROFILE_INFO_LIST)
-  if root is None:
-    raise RuntimeError("Missing ProfileInfoList")
-  list_ok = find_tag(root, 0xA0)
+  root = require_tag(blob, TAG_PROFILE_INFO_LIST, "ProfileInfoList")
+  list_ok = find_tag(root, TAG_OK)
   if list_ok is None:
     return []
   return [decode_struct(value, PROFILE) for tag, value in iter_tlv(list_ok) if tag == 0xE3]
@@ -280,10 +286,8 @@ def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: 
 
 def list_notifications(client: AtClient) -> list[dict]:
   response = es10x_command(client, encode_tlv(TAG_LIST_NOTIFICATION, b""))
-  root = find_tag(response, TAG_LIST_NOTIFICATION)
-  if root is None:
-    raise RuntimeError("Missing ListNotificationResponse")
-  metadata_list = find_tag(root, 0xA0)
+  root = require_tag(response, TAG_LIST_NOTIFICATION, "ListNotificationResponse")
+  metadata_list = find_tag(root, TAG_OK)
   if metadata_list is None:
     return []
   notifications: list[dict] = []
@@ -297,16 +301,12 @@ def list_notifications(client: AtClient) -> list[dict]:
 
 
 def retrieve_notification(client: AtClient, seq_number: int) -> dict:
-  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(0xA0, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
+  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(TAG_OK, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
   response = es10x_command(client, request)
-  root = find_tag(response, TAG_RETRIEVE_NOTIFICATION)
-  if root is None:
-    raise RuntimeError("Invalid RetrieveNotificationsListResponse")
-  a0_content = find_tag(root, 0xA0)
-  if a0_content is None:
-    raise RuntimeError("Invalid RetrieveNotificationsListResponse")
+  label = "RetrieveNotificationsListResponse"
+  content = require_tag(require_tag(response, TAG_RETRIEVE_NOTIFICATION, label), TAG_OK, label)
   pending_notif, pending_tag = None, None
-  for tag, value in iter_tlv(a0_content):
+  for tag, value in iter_tlv(content):
     if tag in (TAG_PROFILE_INSTALL_RESULT, 0x30):
       pending_notif, pending_tag = value, tag
       break
@@ -319,19 +319,15 @@ def retrieve_notification(client: AtClient, seq_number: int) -> dict:
     notif_meta = find_tag(pending_notif, TAG_NOTIFICATION_METADATA)
   if notif_meta is None:
     raise RuntimeError("Missing NotificationMetadata")
-  addr = find_tag(notif_meta, 0x0C)
-  if addr is None:
-    raise RuntimeError("Missing notificationAddress")
+  addr = require_tag(notif_meta, 0x0C, "notificationAddress")
   return {"notificationAddress": addr.decode("utf-8", errors="ignore"), "b64_PendingNotification": b64e(pending_notif)}
 
 
 def remove_notification(client: AtClient, seq_number: int) -> None:
   response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
-  root = find_tag(response, TAG_NOTIFICATION_SENT)
-  if root is None:
-    raise RuntimeError("Invalid NotificationSentResponse")
-  status = find_tag(root, TAG_STATUS)
-  if status is None or int.from_bytes(status, "big") != 0:
+  root = require_tag(response, TAG_NOTIFICATION_SENT, "NotificationSentResponse")
+  status = require_tag(root, TAG_STATUS, "RemoveNotificationFromList status")
+  if int.from_bytes(status, "big") != 0:
     raise RuntimeError("RemoveNotificationFromList failed")
 
 
@@ -352,15 +348,10 @@ def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
   inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
   if not refresh:
     inner += encode_tlv(0x81, b'\x00')
-  request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(0xA0, inner))
+  request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(TAG_OK, inner))
   response = es10x_command(client, request)
-  root = find_tag(response, TAG_ENABLE_PROFILE)
-  if root is None:
-    raise RuntimeError("Missing EnableProfileResponse")
-  status = find_tag(root, TAG_STATUS)
-  if status is None:
-    raise RuntimeError("Missing status in EnableProfileResponse")
-  code = status[0]
+  root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+  code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
   if code == 0x00:
     return
   if code == 0x02:
@@ -371,13 +362,8 @@ def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
 def delete_profile(client: AtClient, iccid: str) -> None:
   request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
   response = es10x_command(client, request)
-  root = find_tag(response, TAG_DELETE_PROFILE)
-  if root is None:
-    raise RuntimeError("Missing DeleteProfileResponse")
-  status = find_tag(root, TAG_STATUS)
-  if status is None:
-    raise RuntimeError("Missing status in DeleteProfileResponse")
-  code = status[0]
+  root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+  code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
   if code == 0x00:
     return
   raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
