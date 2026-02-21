@@ -8,7 +8,7 @@ import sys
 
 from collections.abc import Generator
 
-from openpilot.system.hardware.base import LPABase, Profile
+from openpilot.system.hardware.base import LPABase, LPAError, Profile
 
 
 DEFAULT_DEVICE = "/dev/ttyUSB2"
@@ -21,7 +21,16 @@ DEBUG = os.environ.get("DEBUG") == "1"
 
 # TLV Tags
 TAG_ICCID = 0x5A
+TAG_STATUS = 0x80
 TAG_PROFILE_INFO_LIST = 0xBF2D
+TAG_ENABLE_PROFILE = 0xBF31
+TAG_DELETE_PROFILE = 0xBF33
+
+PROFILE_ERROR_CODES = {
+  0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
+  0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
+  0x05: "catBusy", 0x06: "undefinedError",
+}
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
@@ -142,6 +151,20 @@ def tbcd_to_string(raw: bytes) -> str:
   return "".join(str(n) for b in raw for n in (b & 0x0F, b >> 4) if n <= 9)
 
 
+def string_to_tbcd(s: str) -> bytes:
+  digits = [int(c) for c in s if c.isdigit()]
+  return bytes(digits[i] | ((digits[i + 1] if i + 1 < len(digits) else 0xF) << 4) for i in range(0, len(digits), 2))
+
+
+def encode_tlv(tag: int, value: bytes) -> bytes:
+  tag_bytes = bytes([(tag >> 8) & 0xFF, tag & 0xFF]) if tag > 255 else bytes([tag])
+  vlen = len(value)
+  if vlen <= 127:
+    return tag_bytes + bytes([vlen]) + value
+  length_bytes = vlen.to_bytes((vlen.bit_length() + 7) // 8, "big")
+  return tag_bytes + bytes([0x80 | len(length_bytes)]) + length_bytes + value
+
+
 # Profile field decoders: TLV tag -> (field_name, decoder)
 _PROFILE_FIELDS = {
   TAG_ICCID: ("iccid", tbcd_to_string),
@@ -207,6 +230,41 @@ def list_profiles(client: AtClient) -> list[dict]:
   return decode_profiles(es10x_command(client, TAG_PROFILE_INFO_LIST.to_bytes(2, "big") + b"\x00"))
 
 
+def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
+  inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+  if not refresh:
+    inner += encode_tlv(0x81, b'\x00')
+  request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(0xA0, inner))
+  response = es10x_command(client, request)
+  root = find_tag(response, TAG_ENABLE_PROFILE)
+  if root is None:
+    raise RuntimeError("Missing EnableProfileResponse")
+  status = find_tag(root, TAG_STATUS)
+  if status is None:
+    raise RuntimeError("Missing status in EnableProfileResponse")
+  code = status[0]
+  if code == 0x00:
+    return
+  if code == 0x02:
+    return  # already enabled
+  raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+
+
+def delete_profile(client: AtClient, iccid: str) -> None:
+  request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+  response = es10x_command(client, request)
+  root = find_tag(response, TAG_DELETE_PROFILE)
+  if root is None:
+    raise RuntimeError("Missing DeleteProfileResponse")
+  status = find_tag(root, TAG_STATUS)
+  if status is None:
+    raise RuntimeError("Missing status in DeleteProfileResponse")
+  code = status[0]
+  if code == 0x00:
+    return
+  raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+
+
 class TiciLPA(LPABase):
   _instance = None
 
@@ -237,7 +295,9 @@ class TiciLPA(LPABase):
     return None
 
   def delete_profile(self, iccid: str) -> None:
-    return None
+    if self.is_comma_profile(iccid):
+      raise LPAError("refusing to delete a comma profile")
+    delete_profile(self._client, iccid)
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
     return None
@@ -246,4 +306,4 @@ class TiciLPA(LPABase):
     return None
 
   def switch_profile(self, iccid: str) -> None:
-    return None
+    enable_profile(self._client, iccid)
