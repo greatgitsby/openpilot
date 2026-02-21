@@ -379,9 +379,19 @@ class TiciLPA(LPABase):
   def __init__(self):
     if hasattr(self, '_client'):
       return
+    self._client: AtClient | None = None
+    self._open_client()
+    atexit.register(self._close_client)
+
+  def _close_client(self) -> None:
+    if self._client:
+      self._client.close()
+      self._client = None
+
+  def _open_client(self) -> None:
+    self._close_client()
     self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT, debug=DEBUG)
     self._client.open_isdr()
-    atexit.register(self._client.close)
 
   def list_profiles(self) -> list[Profile]:
     return [
@@ -412,6 +422,9 @@ class TiciLPA(LPABase):
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
     process_notifications(self._client)
+
+    # refresh invalidates the logical channel; reopen before polling
+    self._open_client()
 
     for attempt in range(10):
       if DEBUG:
