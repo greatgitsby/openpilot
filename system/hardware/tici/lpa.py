@@ -75,6 +75,25 @@ class AtClient:
     finally:
       self.serial.close()
 
+  def wait_for_sim_ready(self, timeout: float = 10.0) -> None:
+    """Block until the modem signals the SIM is ready after a hotswap."""
+    prev_timeout = self.serial.timeout
+    self.serial.timeout = timeout
+    try:
+      while True:
+        raw = self.serial.readline()
+        if not raw:
+          break
+        line = raw.decode(errors="ignore").strip()
+        if not line:
+          continue
+        if self.debug:
+          print(f"<< {line}", file=sys.stderr)
+        if "+QUSIM: 1" in line or "+CPIN: READY" in line:
+          break
+    finally:
+      self.serial.timeout = prev_timeout
+
   def send(self, cmd: str) -> None:
     if self.debug:
       print(f">> {cmd}", file=sys.stderr)
@@ -414,6 +433,9 @@ class TiciLPA(LPABase):
     code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    # EnableProfile triggers an asynchronous SIM hotswap that invalidates the logical channel
-    self._client.channel = None
+    if code == 0x00:
+      # EnableProfile triggers an asynchronous SIM hotswap; wait for it to complete
+      # before processing notifications or listing profiles
+      self._client.channel = None
+      self._client.wait_for_sim_ready()
     process_notifications(self._client)
