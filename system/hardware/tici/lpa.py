@@ -6,6 +6,7 @@ import os
 import requests
 import serial
 import sys
+import time
 
 from collections.abc import Callable, Generator
 from typing import Any
@@ -98,12 +99,6 @@ class AtClient:
     return self.expect()
 
   def open_isdr(self) -> None:
-    # enable SIM hot swap detection so the modem re-registers after profile switches
-    try:
-      self.query("AT+QSIMDET=1,0")
-      self.query("AT+QSIMSTAT=1")
-    except RuntimeError:
-      pass
     # close any stale logical channel from a previous crashed session
     try:
       self.query("AT+CCHC=1")
@@ -414,6 +409,19 @@ class TiciLPA(LPABase):
   def nickname_profile(self, iccid: str, nickname: str) -> None:
     return None
 
+  def _reboot_modem(self) -> None:
+    for state in (0, 1):
+      try:
+        self._client.query(f'AT+CFUN={state}')
+      except RuntimeError:
+        pass
+    # modem reboot invalidates the logical channel; reconnect
+    self._client.serial.close()
+    time.sleep(1)
+    self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT, debug=DEBUG)
+    self._client.open_isdr()
+
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
     process_notifications(self._client)
+    self._reboot_modem()
