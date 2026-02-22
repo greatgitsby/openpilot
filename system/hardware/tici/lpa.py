@@ -6,6 +6,7 @@ import os
 import requests
 import serial
 import sys
+import time
 
 from collections.abc import Callable, Generator
 from typing import Any
@@ -115,7 +116,14 @@ class AtClient:
   def send_apdu(self, apdu: bytes, max_retries: int = 3) -> tuple[bytes, int, int]:
     for attempt in range(max_retries):
       if not self.channel:
-        self.open_isdr()
+        for open_attempt in range(max_retries):
+          try:
+            self.open_isdr()
+            break
+          except RuntimeError:
+            if open_attempt == max_retries - 1:
+              raise
+            time.sleep(1 + open_attempt)
       hex_payload = apdu.hex().upper()
       try:
         for line in self.query(f'AT+CGLA={self.channel},{len(hex_payload)},"{hex_payload}"'):
@@ -406,4 +414,6 @@ class TiciLPA(LPABase):
     code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    # EnableProfile triggers an asynchronous SIM hotswap that invalidates the logical channel
+    self._client.channel = None
     process_notifications(self._client)
