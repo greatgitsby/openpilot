@@ -411,3 +411,13 @@ class TiciLPA(LPABase):
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
     process_notifications(self._client)
+
+    # poll until the eUICC reports the profile as enabled;
+    # serial round-trips provide natural pacing
+    for attempt in range(10):
+      if DEBUG:
+        print(f"polling for profile {iccid} to become active (attempt {attempt + 1}/10)", file=sys.stderr)
+      for p in list_profiles(self._client):
+        if p.get("iccid") == iccid and p.get("profileState") == "enabled":
+          return
+    raise LPAError(f"profile {iccid} did not become active after switching")
