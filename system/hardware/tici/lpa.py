@@ -451,28 +451,44 @@ class TiciLPA(LPABase):
     return None
 
   def switch_profile(self, iccid: str) -> None:
+    if DEBUG:
+      print(f"switching to profile {iccid}", file=sys.stderr)
     inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
     request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(TAG_OK, inner))
     response = es10x_command(self._client, request)
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+    if DEBUG:
+      print(f"EnableProfile result: {PROFILE_ERROR_CODES.get(code, 'ok')} (0x{code:02X})", file=sys.stderr)
     if code == CAT_BUSY:
       if DEBUG:
-        print("EnableProfile catBusy, processing notifications and retrying", file=sys.stderr)
+        print("processing notifications and retrying", file=sys.stderr)
       process_notifications(self._client)
       response = es10x_command(self._client, request)
       root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
       code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+      if DEBUG:
+        print(f"EnableProfile retry result: {PROFILE_ERROR_CODES.get(code, 'ok')} (0x{code:02X})", file=sys.stderr)
       if code == CAT_BUSY:
         if DEBUG:
-          print("EnableProfile still catBusy, rebooting modem and retrying", file=sys.stderr)
+          print("still catBusy, rebooting modem and retrying", file=sys.stderr)
         self._reboot_modem()
         response = es10x_command(self._client, request)
         root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
         code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+        if DEBUG:
+          print(f"EnableProfile post-reboot result: {PROFILE_ERROR_CODES.get(code, 'ok')} (0x{code:02X})", file=sys.stderr)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
+      if DEBUG:
+        print("profile switched, waiting for SIM ready", file=sys.stderr)
       self._client.channel = None
       self._client.wait_for_sim_ready()
+      if DEBUG:
+        print("SIM ready", file=sys.stderr)
+    elif DEBUG:
+      print("profile already enabled", file=sys.stderr)
+    if DEBUG:
+      print("processing notifications", file=sys.stderr)
     process_notifications(self._client)
