@@ -13,6 +13,7 @@ from typing import Any
 from pathlib import Path
 
 from openpilot.common.time_helpers import system_time_valid
+from openpilot.common.utils import retry
 from openpilot.system.hardware.base import LPABase, LPAError, Profile
 
 GSMA_CI_BUNDLE = str(Path(__file__).parent / 'gsma_ci_bundle.pem')
@@ -77,26 +78,7 @@ class AtClient:
     finally:
       self.serial.close()
 
-  def wait_for_sim_ready(self, timeout: float = 10.0) -> None:
-    """Block until the modem signals the SIM is ready."""
-    prev_timeout = self.serial.timeout
-    self.serial.timeout = timeout
-    try:
-      while True:
-        raw = self.serial.readline()
-        if not raw:
-          break
-        line = raw.decode(errors="ignore").strip()
-        if not line:
-          continue
-        if self.debug:
-          print(f"<< {line}", file=sys.stderr)
-        if "+QUSIM: 1" in line or "+CPIN: READY" in line:
-          break
-    finally:
-      self.serial.timeout = prev_timeout
-
-  def send(self, cmd: str) -> None:
+def send(self, cmd: str) -> None:
     if self.debug:
       print(f">> {cmd}", file=sys.stderr)
     self.serial.write((cmd + "\r").encode("ascii"))
@@ -385,13 +367,19 @@ class TiciLPA(LPABase):
   def get_active_profile(self) -> Profile | None:
     return None
 
-  def _clear_cat_busy(self) -> None:
-    """Reboot modem to clear CAT busy state, then re-open ISD-R."""
+  def _reboot_modem(self) -> None:
+    """Reboot modem and re-open ISD-R."""
     from openpilot.system.hardware import HARDWARE
     HARDWARE.reboot_modem()
     self._client.channel = None
-    self._client.wait_for_sim_ready()
+    self._client.serial.close()
+    self._reconnect_serial()
     self._client.open_isdr()
+
+  @retry(attempts=3, delay=1.0)
+  def _reconnect_serial(self) -> None:
+    self._client.serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
+    self._client.serial.reset_input_buffer()
 
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
@@ -404,7 +392,7 @@ class TiciLPA(LPABase):
       raise LPAError("refusing to delete a comma profile")
     code = self._delete_profile(iccid)
     if code == CAT_BUSY:
-      self._clear_cat_busy()
+      self._reboot_modem()
       code = self._delete_profile(iccid)
     if code != 0x00:
       raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
@@ -426,11 +414,10 @@ class TiciLPA(LPABase):
   def switch_profile(self, iccid: str) -> None:
     code = self._enable_profile(iccid)
     if code == CAT_BUSY:
-      self._clear_cat_busy()
+      self._reboot_modem()
       code = self._enable_profile(iccid)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
-      self._client.channel = None
-      self._client.wait_for_sim_ready()
+      self._reboot_modem()
     process_notifications(self._client)
