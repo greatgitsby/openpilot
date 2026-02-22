@@ -5,7 +5,6 @@ import base64
 import os
 import requests
 import serial
-import subprocess
 import sys
 import time
 
@@ -15,6 +14,7 @@ from pathlib import Path
 
 from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.hardware.base import LPABase, LPAError, Profile
+from openpilot.system.hardware import HARDWARE
 
 GSMA_CI_BUNDLE = str(Path(__file__).parent / 'gsma_ci_bundle.pem')
 
@@ -415,7 +415,7 @@ class TiciLPA(LPABase):
     if DEBUG:
       print("rebooting modem", file=sys.stderr)
     self._client.close()
-    subprocess.run("/usr/comma/lte/lte.sh stop && /usr/comma/lte/lte.sh start", shell=True, timeout=30)
+    HARDWARE.reboot_modem()
     self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT, debug=DEBUG)
     self._client.open_isdr()
 
