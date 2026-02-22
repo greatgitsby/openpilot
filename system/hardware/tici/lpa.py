@@ -5,6 +5,7 @@ import base64
 import os
 import requests
 import serial
+import subprocess
 import sys
 import time
 
@@ -44,6 +45,8 @@ PROFILE_ERROR_CODES = {
   0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
   0x05: "catBusy", 0x06: "undefinedError",
 }
+
+CAT_BUSY = 0x05
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
@@ -408,6 +411,14 @@ class TiciLPA(LPABase):
   def get_active_profile(self) -> Profile | None:
     return None
 
+  def _reboot_modem(self) -> None:
+    if DEBUG:
+      print("rebooting modem", file=sys.stderr)
+    self._client.close()
+    subprocess.run("/usr/comma/lte/lte.sh stop && /usr/comma/lte/lte.sh start", shell=True, timeout=30)
+    self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT, debug=DEBUG)
+    self._client.open_isdr()
+
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
@@ -415,6 +426,20 @@ class TiciLPA(LPABase):
     response = es10x_command(self._client, request)
     root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
     code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+    if code == CAT_BUSY:
+      if DEBUG:
+        print("DeleteProfile catBusy, processing notifications and retrying", file=sys.stderr)
+      process_notifications(self._client)
+      response = es10x_command(self._client, request)
+      root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+      code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+      if code == CAT_BUSY:
+        if DEBUG:
+          print("DeleteProfile still catBusy, rebooting modem and retrying", file=sys.stderr)
+        self._reboot_modem()
+        response = es10x_command(self._client, request)
+        root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+        code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
     if code != 0x00:
       raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
@@ -431,11 +456,23 @@ class TiciLPA(LPABase):
     response = es10x_command(self._client, request)
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+    if code == CAT_BUSY:
+      if DEBUG:
+        print("EnableProfile catBusy, processing notifications and retrying", file=sys.stderr)
+      process_notifications(self._client)
+      response = es10x_command(self._client, request)
+      root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+      code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+      if code == CAT_BUSY:
+        if DEBUG:
+          print("EnableProfile still catBusy, rebooting modem and retrying", file=sys.stderr)
+        self._reboot_modem()
+        response = es10x_command(self._client, request)
+        root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+        code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
-      # EnableProfile triggers an asynchronous SIM hotswap; wait for it to complete
-      # before processing notifications or listing profiles
       self._client.channel = None
       self._client.wait_for_sim_ready()
     process_notifications(self._client)
