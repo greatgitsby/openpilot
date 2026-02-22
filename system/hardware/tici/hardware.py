@@ -521,7 +521,7 @@ class Tici(HardwareBase):
 
   def reboot_modem(self):
     modem = self.get_modem()
-    for cmd in ('AT+CFUN=0', 'AT+CFUN=1,1'):
+    for cmd in ('AT+CFUN=0', 'AT+CFUN=1,1', 'AT+CFUN=1,1'):
       try:
         modem.Command(cmd, math.ceil(TIMEOUT), dbus_interface=MM_MODEM, timeout=TIMEOUT)
       except Exception:
