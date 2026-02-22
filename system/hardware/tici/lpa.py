@@ -334,46 +334,27 @@ def list_notifications(client: AtClient) -> list[dict]:
   return notifications
 
 
-def retrieve_notification(client: AtClient, seq_number: int) -> dict:
-  request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(TAG_OK, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
-  response = es10x_command(client, request)
-  label = "RetrieveNotificationsListResponse"
-  content = require_tag(require_tag(response, TAG_RETRIEVE_NOTIFICATION, label), TAG_OK, label)
-  pending_notif, pending_tag = None, None
-  for tag, value in iter_tlv(content):
-    if tag in (TAG_PROFILE_INSTALL_RESULT, 0x30):
-      pending_notif, pending_tag = value, tag
-      break
-  if pending_notif is None:
-    raise RuntimeError("Missing PendingNotification")
-  if pending_tag == TAG_PROFILE_INSTALL_RESULT:
-    result_data = find_tag(pending_notif, 0xBF27)
-    notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA) if result_data else None
-  else:
-    notif_meta = find_tag(pending_notif, TAG_NOTIFICATION_METADATA)
-  if notif_meta is None:
-    raise RuntimeError("Missing NotificationMetadata")
-  addr = require_tag(notif_meta, 0x0C, "notificationAddress")
-  return {"notificationAddress": addr.decode("utf-8", errors="ignore"), "b64_PendingNotification": b64e(pending_notif)}
-
-
-def remove_notification(client: AtClient, seq_number: int) -> None:
-  response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
-  root = require_tag(response, TAG_NOTIFICATION_SENT, "NotificationSentResponse")
-  status = require_tag(root, TAG_STATUS, "RemoveNotificationFromList status")
-  if int.from_bytes(status, "big") != 0:
-    raise RuntimeError("RemoveNotificationFromList failed")
-
-
 def process_notifications(client: AtClient) -> None:
   for notification in list_notifications(client):
     seq_number, smdp_address = notification["seqNumber"], notification["notificationAddress"]
-    if not seq_number or not smdp_address:
-      continue
     try:
-      notif_data = retrieve_notification(client, seq_number)
-      es9p_request(smdp_address, "handleNotification", {"pendingNotification": notif_data["b64_PendingNotification"]}, "HandleNotification")
-      remove_notification(client, seq_number)
+      # retrieve notification
+      request = encode_tlv(TAG_RETRIEVE_NOTIFICATION, encode_tlv(TAG_OK, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
+      response = es10x_command(client, request)
+      content = require_tag(require_tag(response, TAG_RETRIEVE_NOTIFICATION, "RetrieveNotificationsListResponse"),
+                            TAG_OK, "RetrieveNotificationsListResponse")
+      pending_notif = next((v for t, v in iter_tlv(content) if t in (TAG_PROFILE_INSTALL_RESULT, 0x30)), None)
+      if pending_notif is None:
+        raise RuntimeError("Missing PendingNotification")
+
+      # send to SM-DP+
+      es9p_request(smdp_address, "handleNotification", {"pendingNotification": b64e(pending_notif)}, "HandleNotification")
+
+      # remove notification
+      response = es10x_command(client, encode_tlv(TAG_NOTIFICATION_SENT, encode_tlv(TAG_STATUS, int_bytes(seq_number))))
+      root = require_tag(response, TAG_NOTIFICATION_SENT, "NotificationSentResponse")
+      if int.from_bytes(require_tag(root, TAG_STATUS, "RemoveNotificationFromList status"), "big") != 0:
+        raise RuntimeError("RemoveNotificationFromList failed")
     except Exception:
       pass
 
