@@ -417,4 +417,3 @@ class TiciLPA(LPABase):
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
     process_notifications(self._client)
-    self._client.query("AT+CFUN=1,1")
