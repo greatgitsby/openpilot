@@ -134,17 +134,10 @@ class AtClient:
 
   def send_apdu(self, apdu: bytes, max_retries: int = 3) -> tuple[bytes, int, int]:
     for attempt in range(max_retries):
-      if not self.channel:
-        for open_attempt in range(max_retries):
-          try:
-            self.open_isdr()
-            break
-          except RuntimeError:
-            if open_attempt == max_retries - 1:
-              raise
-            time.sleep(1 + open_attempt)
-      hex_payload = apdu.hex().upper()
       try:
+        if not self.channel:
+          self.open_isdr()
+        hex_payload = apdu.hex().upper()
         for line in self.query(f'AT+CGLA={self.channel},{len(hex_payload)},"{hex_payload}"'):
           if line.startswith("+CGLA:"):
             parts = line.split(":", 1)[1].split(",", 1)
@@ -157,6 +150,7 @@ class AtClient:
         self.channel = None
         if attempt == max_retries - 1:
           raise
+        time.sleep(1 + attempt)
 
 
 # --- TLV utilities ---
