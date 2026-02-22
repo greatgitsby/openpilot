@@ -78,7 +78,7 @@ class AtClient:
     finally:
       self.serial.close()
 
-def send(self, cmd: str) -> None:
+  def send(self, cmd: str) -> None:
     if self.debug:
       print(f">> {cmd}", file=sys.stderr)
     self.serial.write((cmd + "\r").encode("ascii"))
