@@ -415,12 +415,6 @@ class TiciLPA(LPABase):
         self._client.query(f'AT+CFUN={state}')
       except RuntimeError:
         pass
-    # modem reboot invalidates the logical channel; reconnect
-    self._client.serial.close()
-    time.sleep(1)
-    self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT, debug=DEBUG)
-    self._client.open_isdr()
-    atexit.register(self._client.close)
 
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
