@@ -342,30 +342,6 @@ def process_notifications(client: AtClient) -> None:
       pass
 
 
-def enable_profile(client: AtClient, iccid: str, refresh: bool = True) -> None:
-  inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
-  if not refresh:
-    inner += encode_tlv(0x81, b'\x00')
-  request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(TAG_OK, inner))
-  response = es10x_command(client, request)
-  root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
-  code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
-  if code == 0x00:
-    return
-  if code == 0x02:
-    return  # already enabled
-  raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-
-
-def delete_profile(client: AtClient, iccid: str) -> None:
-  request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-  response = es10x_command(client, request)
-  root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
-  code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
-  if code == 0x00:
-    return
-  raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-
 
 class TiciLPA(LPABase):
   _instance = None
@@ -399,7 +375,12 @@ class TiciLPA(LPABase):
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
-    delete_profile(self._client, iccid)
+    request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+    response = es10x_command(self._client, request)
+    root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+    code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+    if code != 0x00:
+      raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
@@ -409,5 +390,11 @@ class TiciLPA(LPABase):
     return None
 
   def switch_profile(self, iccid: str) -> None:
-    enable_profile(self._client, iccid)
+    inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
+    request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(TAG_OK, inner))
+    response = es10x_command(self._client, request)
+    root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+    code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+    if code not in (0x00, 0x02):  # 0x02 = already enabled
+      raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
