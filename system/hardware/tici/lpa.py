@@ -6,7 +6,6 @@ import os
 import requests
 import serial
 import sys
-import time
 
 from collections.abc import Callable, Generator
 from typing import Any
@@ -412,12 +411,3 @@ class TiciLPA(LPABase):
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
     process_notifications(self._client)
-
-    for attempt in range(10):
-      if DEBUG:
-        print(f"polling for profile {iccid} to become active (attempt {attempt + 1}/10)", file=sys.stderr)
-      for p in list_profiles(self._client):
-        if p.get("iccid") == iccid and p.get("profileState") == "enabled":
-          return
-      time.sleep(0.1)
-    raise LPAError(f"profile {iccid} did not become active after switching")
