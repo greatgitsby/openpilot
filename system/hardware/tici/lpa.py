@@ -104,6 +104,7 @@ class AtClient:
     self.send(cmd)
     return self.expect()
 
+  @retry(attempts=10, delay=3.0)
   def open_isdr(self) -> None:
     # close any stale logical channel from a previous crashed session
     try:
