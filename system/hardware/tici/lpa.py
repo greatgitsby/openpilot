@@ -104,7 +104,7 @@ class AtClient:
     self.send(cmd)
     return self.expect()
 
-  @retry(attempts=10, delay=3.0)
+  @retry(attempts=3, delay=2.0)
   def open_isdr(self) -> None:
     # close any stale logical channel from a previous crashed session
     try:
@@ -405,20 +405,21 @@ class TiciLPA(LPABase):
   def nickname_profile(self, iccid: str, nickname: str) -> None:
     return None
 
-  def _enable_profile(self, iccid: str) -> int:
-    inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
-    request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(TAG_OK, inner))
+  def _enable_profile(self, iccid: str, refresh: bool = True) -> int:
+    inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+    inner += b'\x01\x01' + (b'\xFF' if refresh else b'\x00')  # refreshFlag BOOLEAN
+    request = encode_tlv(TAG_ENABLE_PROFILE, inner)
     response = es10x_command(self._client, request)
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def switch_profile(self, iccid: str) -> None:
-    code = self._enable_profile(iccid)
+    code = self._enable_profile(iccid, refresh=False)
     if code == CAT_BUSY:
       self._reboot_modem()
-      code = self._enable_profile(iccid)
+      code = self._enable_profile(iccid, refresh=False)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    process_notifications(self._client)
     if code == 0x00:
       self._reboot_modem()
-    process_notifications(self._client)
