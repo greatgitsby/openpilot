@@ -409,14 +409,6 @@ class TiciLPA(LPABase):
   def nickname_profile(self, iccid: str, nickname: str) -> None:
     return None
 
-  def _reboot_modem(self) -> None:
-    for state in (0, 1):
-      try:
-        self._client.query(f'AT+CFUN={state}')
-      except RuntimeError:
-        pass
-
   def switch_profile(self, iccid: str) -> None:
     enable_profile(self._client, iccid)
     process_notifications(self._client)
-    self._reboot_modem()
