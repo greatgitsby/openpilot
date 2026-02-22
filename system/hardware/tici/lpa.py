@@ -39,10 +39,12 @@ TAG_DELETE_PROFILE = 0xBF33
 TAG_PROFILE_INSTALL_RESULT = 0xBF37
 TAG_OK = 0xA0
 
+CAT_BUSY = 0x05
+
 PROFILE_ERROR_CODES = {
   0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
   0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
-  0x05: "catBusy", 0x06: "undefinedError",
+  CAT_BUSY: "catBusy", 0x06: "undefinedError",
 }
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
@@ -76,7 +78,7 @@ class AtClient:
       self.serial.close()
 
   def wait_for_sim_ready(self, timeout: float = 10.0) -> None:
-    """Block until the modem signals the SIM is ready after a hotswap."""
+    """Block until the modem signals the SIM is ready."""
     prev_timeout = self.serial.timeout
     self.serial.timeout = timeout
     try:
@@ -383,13 +385,27 @@ class TiciLPA(LPABase):
   def get_active_profile(self) -> Profile | None:
     return None
 
-  def delete_profile(self, iccid: str) -> None:
-    if self.is_comma_profile(iccid):
-      raise LPAError("refusing to delete a comma profile")
+  def _clear_cat_busy(self) -> None:
+    """Reboot modem to clear CAT busy state, then re-open ISD-R."""
+    from openpilot.system.hardware import HARDWARE
+    HARDWARE.reboot_modem()
+    self._client.channel = None
+    self._client.wait_for_sim_ready()
+    self._client.open_isdr()
+
+  def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
     response = es10x_command(self._client, request)
     root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
-    code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+    return require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+
+  def delete_profile(self, iccid: str) -> None:
+    if self.is_comma_profile(iccid):
+      raise LPAError("refusing to delete a comma profile")
+    code = self._delete_profile(iccid)
+    if code == CAT_BUSY:
+      self._clear_cat_busy()
+      code = self._delete_profile(iccid)
     if code != 0x00:
       raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
@@ -400,12 +416,18 @@ class TiciLPA(LPABase):
   def nickname_profile(self, iccid: str, nickname: str) -> None:
     return None
 
-  def switch_profile(self, iccid: str) -> None:
+  def _enable_profile(self, iccid: str) -> int:
     inner = encode_tlv(TAG_ICCID, string_to_tbcd(iccid))
     request = encode_tlv(TAG_ENABLE_PROFILE, encode_tlv(TAG_OK, inner))
     response = es10x_command(self._client, request)
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
-    code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+    return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+
+  def switch_profile(self, iccid: str) -> None:
+    code = self._enable_profile(iccid)
+    if code == CAT_BUSY:
+      self._clear_cat_busy()
+      code = self._enable_profile(iccid)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
