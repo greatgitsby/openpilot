@@ -45,7 +45,7 @@ class AtClient:
       self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
       self._serial.reset_input_buffer()
     except (serial.SerialException, PermissionError, OSError):
-      print(f"<< Serial port {device} unavailable, falling back to ModemManager D-Bus", file=sys.stderr)
+      pass
 
   def close(self) -> None:
     try:
