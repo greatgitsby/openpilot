@@ -28,26 +28,11 @@ fi
 
 brew bundle --file=- <<-EOS
 brew "git-lfs"
-brew "capnp"
 brew "coreutils"
 brew "eigen"
-brew "ffmpeg"
-brew "libusb"
-brew "llvm"
-brew "zeromq"
-cask "gcc-arm-embedded"
-brew "portaudio"
 EOS
 
 echo "[ ] finished brew install t=$SECONDS"
-
-BREW_PREFIX=$(brew --prefix)
-
-# archive backend tools for pip dependencies
-export LDFLAGS="$LDFLAGS -L${BREW_PREFIX}/opt/zlib/lib"
-export LDFLAGS="$LDFLAGS -L${BREW_PREFIX}/opt/bzip2/lib"
-export CPPFLAGS="$CPPFLAGS -I${BREW_PREFIX}/opt/zlib/include"
-export CPPFLAGS="$CPPFLAGS -I${BREW_PREFIX}/opt/bzip2/include"
 
 # install python dependencies
 $DIR/install_python_dependencies.sh
