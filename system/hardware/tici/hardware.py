@@ -461,13 +461,13 @@ class Tici(HardwareBase):
       modem_revision = str(modem.Get(MM_MODEM, 'Revision', dbus_interface=DBUS_PROPS, timeout=TIMEOUT))
     except Exception:
       modem_revision = None
-
-    print(f"configuring modem: {modem_revision}")
-    cmds = []
+    finally:
+      print(f"modem revision: {modem_revision}")
 
     is_eg25 = modem_revision is not None and modem_revision.startswith("EG25")
     is_eg916 = modem_revision is not None and modem_revision.startswith("EG916")
 
+    cmds = []
     if is_eg25 or is_eg916:
       # SIM hot swap
       cmds += [
