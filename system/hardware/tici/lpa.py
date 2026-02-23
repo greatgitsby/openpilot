@@ -45,7 +45,7 @@ class AtClient:
       self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
       self._serial.reset_input_buffer()
     except (serial.SerialException, PermissionError, OSError):
-      pass
+      print(f"<< Serial port {device} unavailable, falling back to ModemManager D-Bus", file=sys.stderr)
 
   def close(self) -> None:
     try:
@@ -58,7 +58,7 @@ class AtClient:
 
   def _send(self, cmd: str) -> None:
     if self.debug:
-      print(f">> {cmd}", file=sys.stderr)
+      print(f"SER >> {cmd}", file=sys.stderr)
     self._serial.write((cmd + "\r").encode("ascii"))
 
   def _expect(self) -> list[str]:
@@ -71,7 +71,7 @@ class AtClient:
       if not line:
         continue
       if self.debug:
-        print(f"<< {line}", file=sys.stderr)
+        print(f"SER << {line}", file=sys.stderr)
       if line == "OK":
         return lines
       if line == "ERROR" or line.startswith("+CME ERROR"):
@@ -88,7 +88,7 @@ class AtClient:
 
   def _dbus_query(self, cmd: str) -> list[str]:
     if self.debug:
-      print(f">> {cmd} (dbus)", file=sys.stderr)
+      print(f"DBUS >> {cmd}", file=sys.stderr)
     try:
       result = str(self._get_modem().Command(cmd, math.ceil(self._timeout), dbus_interface=MM_MODEM, timeout=self._timeout))
     except Exception as e:
@@ -96,7 +96,7 @@ class AtClient:
     lines = [line.strip() for line in result.splitlines() if line.strip()]
     if self.debug:
       for line in lines:
-        print(f"<< {line}", file=sys.stderr)
+        print(f"DBUS << {line}", file=sys.stderr)
     return lines
 
   def query(self, cmd: str) -> list[str]:
