@@ -458,23 +458,24 @@ class Tici(HardwareBase):
 
     modem = self.get_modem()
     try:
-      modem_model = str(modem.Get(MM_MODEM, 'Model', dbus_interface=DBUS_PROPS, timeout=TIMEOUT))
-      modem_mfr = str(modem.Get(MM_MODEM, 'Manufacturer', dbus_interface=DBUS_PROPS, timeout=TIMEOUT))
+      modem_revision = str(modem.Get(MM_MODEM, 'Revision', dbus_interface=DBUS_PROPS, timeout=TIMEOUT))
     except Exception:
-      modem_model = None
-      modem_mfr = None
+      modem_revision = None
 
-    print(f"configuring modem: {modem_mfr} {modem_model}")
+    print(f"configuring modem: {modem_revision}")
     cmds = []
 
-    if modem_model in ("EG25", "EG916"):
+    is_eg25 = modem_revision is not None and modem_revision.startswith("EG25")
+    is_eg916 = modem_revision is not None and modem_revision.startswith("EG916")
+
+    if is_eg25 or is_eg916:
       # SIM hot swap
       cmds += [
         'AT+QSIMDET=1,0',
         'AT+QSIMSTAT=1',
       ]
 
-    if modem_model == "EG25":
+    if is_eg25:
       # clear out old blue prime initial APN
       os.system('mmcli -m any --3gpp-set-initial-eps-bearer-settings="apn="')
 
@@ -484,7 +485,7 @@ class Tici(HardwareBase):
         'AT+QNVFW="/nv/item_files/ims/IMS_enable",00',
         'AT+QNVFW="/nv/item_files/modem/mmode/ue_usage_setting",01',
       ]
-    elif modem_model != "EG916":
+    elif not is_eg916:
       # this modem gets upset with too many AT commands
       if sim_id is None or len(sim_id) == 0:
         cmds += [
