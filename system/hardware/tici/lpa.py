@@ -400,20 +400,6 @@ class TiciLPA(LPABase):
   def get_active_profile(self) -> Profile | None:
     return None
 
-  def _reboot_modem(self) -> None:
-    """Reboot modem and re-open ISD-R."""
-    from openpilot.system.hardware import HARDWARE
-    HARDWARE.reboot_modem()
-    self._client.channel = None
-    self._client.serial.close()
-    self._reconnect_serial()
-    self._client.open_isdr()
-
-  @retry(attempts=3, delay=1.0)
-  def _reconnect_serial(self) -> None:
-    self._client.serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
-    self._client.serial.reset_input_buffer()
-
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
     response = es10x_command(self._client, request)
@@ -424,9 +410,6 @@ class TiciLPA(LPABase):
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
     code = self._delete_profile(iccid)
-    if code == CAT_BUSY:
-      self._reboot_modem()
-      code = self._delete_profile(iccid)
     if code != 0x00:
       raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
@@ -447,11 +430,6 @@ class TiciLPA(LPABase):
 
   def switch_profile(self, iccid: str) -> None:
     code = self._enable_profile(iccid, refresh=False)
-    if code == CAT_BUSY:
-      self._reboot_modem()
-      code = self._enable_profile(iccid, refresh=False)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
-    if code == 0x00:
-      self._reboot_modem()
