@@ -92,7 +92,7 @@ class AtClient:
     try:
       result = str(self._get_modem().Command(cmd, math.ceil(self._timeout), dbus_interface=MM_MODEM, timeout=self._timeout))
     except Exception as e:
-      raise RuntimeError(f"AT command failed: {e}")
+      raise RuntimeError(f"AT command failed: {e}") from e
     lines = [line.strip() for line in result.splitlines() if line.strip()]
     if self.debug:
       for line in lines:
