@@ -10,7 +10,6 @@ import sys
 from collections.abc import Generator
 
 from openpilot.system.hardware.base import LPABase, Profile
-from openpilot.system.hardware.tici.hardware import MM, MM_MODEM
 
 
 DEFAULT_DEVICE = "/dev/ttyUSB2"
@@ -18,6 +17,8 @@ DEFAULT_BAUD = 9600
 DEFAULT_TIMEOUT = 5.0
 # https://euicc-manual.osmocom.org/docs/lpa/applet-id/
 ISDR_AID = "A0000005591010FFFFFFFF8900000100"
+MM = "org.freedesktop.ModemManager1"
+MM_MODEM = MM + ".Modem"
 ES10X_MSS = 120
 DEBUG = os.environ.get("DEBUG") == "1"
 
