@@ -465,7 +465,7 @@ class Tici(HardwareBase):
       print(f"modem revision: {modem_revision}")
 
     cmds = []
-    if modem_revision.startswith("EG25") or modem_revision.startswith("EG916"):
+    if modem_revision.startswith(("EG25", "EG916")):
       # SIM hot swap
       cmds += [
         'AT+QSIMDET=1,0',
