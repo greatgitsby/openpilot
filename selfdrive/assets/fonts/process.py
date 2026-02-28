@@ -37,10 +37,10 @@ def _char_sets():
   return tuple(sorted(ord(c) for c in base)), tuple(sorted(ord(c) for c in unifont))
 
 
-def _glyph_metrics(glyphs, rects, codepoints):
+def _glyph_metrics(glyphs, rects, n):
   entries = []
   min_offset_y, max_extent = None, 0
-  for idx, codepoint in enumerate(codepoints):
+  for idx in range(n):
     glyph = glyphs[idx]
     rect = rects[idx]
     width = int(round(rect.width))
@@ -49,7 +49,7 @@ def _glyph_metrics(glyphs, rects, codepoints):
     min_offset_y = offset_y if min_offset_y is None else min(min_offset_y, offset_y)
     max_extent = max(max_extent, offset_y + height)
     entries.append({
-      "id": codepoint,
+      "id": glyph.value,
       "x": int(round(rect.x)),
       "y": int(round(rect.y)),
       "width": width,
@@ -111,7 +111,7 @@ def _process_font(font_path: Path, codepoints: tuple[int, ...]):
   rects = rects_ptr[0]
   atlas_name = f"{font_path.stem}.png"
   atlas_path = FONT_DIR / atlas_name
-  entries, line_height, base = _glyph_metrics(glyphs, rects, codepoints[:n])
+  entries, line_height, base = _glyph_metrics(glyphs, rects, n)
 
   if not rl.export_image(image, atlas_path.as_posix()):
     raise RuntimeError("Failed to export atlas image")
