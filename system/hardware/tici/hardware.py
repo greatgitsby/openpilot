@@ -458,27 +458,28 @@ class Tici(HardwareBase):
   def configure_modem(self):
     sim_id = self.get_sim_info().get('sim_id', '')
 
-    cmds = []
-    modem = self.get_modem()
+    modem_version = self.get_modem_version() or ''
+    print(f"modem version: '{modem_version}'")
 
-    # Quectel EG25
-    if self.get_device_type() in ("tizi", ):
+    cmds = []
+    if modem_version.startswith(("EG25", "EG916")):
+      # SIM hot swap
+      cmds += [
+        'AT+QSIMDET=1,0',
+        'AT+QSIMSTAT=1',
+      ]
+
+    if modem_version.startswith("EG25"):
       # clear out old blue prime initial APN
       os.system('mmcli -m any --3gpp-set-initial-eps-bearer-settings="apn="')
 
+      # configure modem as data-centric
       cmds += [
-        # SIM hot swap
-        'AT+QSIMDET=1,0',
-        'AT+QSIMSTAT=1',
-
-        # configure modem as data-centric
         'AT+QNVW=5280,0,"0102000000000000"',
         'AT+QNVFW="/nv/item_files/ims/IMS_enable",00',
         'AT+QNVFW="/nv/item_files/modem/mmode/ue_usage_setting",01',
       ]
-
-    # Quectel EG916
-    else:
+    elif modem_version.startswith("EG916"):
       # this modem gets upset with too many AT commands
       if sim_id is None or len(sim_id) == 0:
         cmds += [
