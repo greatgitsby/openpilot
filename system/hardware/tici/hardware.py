@@ -477,19 +477,6 @@ class Tici(HardwareBase):
         'AT+QNVFW="/nv/item_files/modem/mmode/ue_usage_setting",01',
       ]
 
-    # Quectel EG916
-    else:
-      # this modem gets upset with too many AT commands
-      if sim_id is None or len(sim_id) == 0:
-        cmds += [
-          # SIM sleep disable
-          'AT$QCSIMSLEEP=0',
-          'AT$QCSIMCFG=SimPowerSave,0',
-
-          # ethernet config
-          'AT$QCPCFG=usbNet,1',
-        ]
-
     for cmd in cmds:
       try:
         modem.Command(cmd, math.ceil(TIMEOUT), dbus_interface=MM_MODEM, timeout=TIMEOUT)
