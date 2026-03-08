@@ -491,6 +491,7 @@ class Tici(HardwareBase):
           'AT$QCPCFG=usbNet,1',
         ]
 
+    modem = self.get_modem()
     for cmd in cmds:
       try:
         modem.Command(cmd, math.ceil(TIMEOUT), dbus_interface=MM_MODEM, timeout=TIMEOUT)
