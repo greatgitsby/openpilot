@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import math
 import pyray as rl
 from collections.abc import Callable
 from openpilot.system.ui.widgets import Widget
@@ -15,6 +16,7 @@ NAV_BAR_MARGIN = 6
 NAV_BAR_WIDTH = 205
 NAV_BAR_HEIGHT = 8
 
+EDGE_SHADOW_HEIGHT = 20
 DISMISS_PUSH_OFFSET = NAV_BAR_MARGIN + NAV_BAR_HEIGHT + 50  # px extra to push down when dismissing
 DISMISS_ANIMATION_RC = 0.2  # slightly slower for non-user triggered dismiss animation
 
@@ -179,6 +181,11 @@ class NavWidget(Widget, abc.ABC):
     rl.draw_rectangle_rec(rl.Rectangle(0, 0, self._rect.width, self._rect.height), rl.Color(0, 0, 0, overlay_alpha))
 
     bounce_height = 20
+    shadow_height = EDGE_SHADOW_HEIGHT
+    shadow_y = math.floor(self._rect.y) - shadow_height
+    rl.draw_rectangle_gradient_v(int(self._rect.x), shadow_y,
+                                 int(self._rect.width), shadow_height + 1,
+                                 rl.BLANK, rl.Color(0, 0, 0, 204))
     rl.draw_rectangle_rec(rl.Rectangle(self._rect.x, self._rect.y, self._rect.width, self._rect.height + bounce_height), rl.BLACK)
 
   def render(self, rect: rl.Rectangle | None = None) -> bool | int | None:
