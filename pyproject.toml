@@ -76,6 +76,9 @@ dependencies = [
   "qrcode",
   "jeepney",
   "pillow",
+
+  # tesla BLE
+  "bleak",  # pure-Python BLE library for tools/tesla_ble
 ]
 
 [project.optional-dependencies]
