@@ -205,6 +205,13 @@ class NavWidget(Widget, abc.ABC):
   def is_dismissing(self) -> bool:
     return self._dragging_down or self._playing_dismiss_animation
 
+  @property
+  def cover_progress(self) -> float:
+    """How much this widget covers the one behind it (0.0 = off screen, 1.0 = fully covering)."""
+    if self._rect.height <= 0:
+      return 0.0
+    return max(0.0, min(1.0, 1.0 - self._y_pos_filter.x / self._rect.height))
+
   def dismiss(self, callback: Callable[[], None] | None = None):
     """Programmatically trigger the dismiss animation. Calls pop_widget when done, then callback."""
     if not self._playing_dismiss_animation:

@@ -612,8 +612,38 @@ class GuiApplication:
         for tick in self._nav_stack_ticks:
           tick()
 
-        # Only render top widgets
-        for widget in self._nav_stack[-self._nav_stack_widgets_to_render:]:
+        # Only render top widgets, with iOS-style card stack effect
+        widgets_to_render = self._nav_stack[-self._nav_stack_widgets_to_render:]
+        for i, widget in enumerate(widgets_to_render):
+          is_behind = i < len(widgets_to_render) - 1
+          if is_behind and len(widgets_to_render) > 1:
+            top_widget = widgets_to_render[i + 1]
+            # Check if top widget is a NavWidget with cover_progress
+            cover_progress = getattr(top_widget, 'cover_progress', 0.0)
+            if cover_progress > 0.0:
+              # iOS-style: scale down to ~92% and shift down slightly
+              min_scale = 0.92
+              scale = 1.0 - (1.0 - min_scale) * cover_progress
+              y_offset = 10 * cover_progress
+
+              rl.rl_push_matrix()
+              cx = self.width / 2.0
+              cy = self.height / 2.0
+              rl.rl_translatef(cx, cy + y_offset, 0)
+              rl.rl_scalef(scale, scale, 1.0)
+              rl.rl_translatef(-cx, -cy, 0)
+              widget.render(rl.Rectangle(0, 0, self.width, self.height))
+              rl.rl_pop_matrix()
+
+              # Fill the black border around the scaled-down widget
+              inset_x = math.ceil(cx * (1.0 - scale))
+              inset_y = math.ceil(cy * (1.0 - scale) - y_offset)
+              rl.draw_rectangle(0, 0, inset_x, self.height, rl.BLACK)  # left
+              rl.draw_rectangle(self.width - inset_x, 0, inset_x, self.height, rl.BLACK)  # right
+              rl.draw_rectangle(0, 0, self.width, max(inset_y, 0), rl.BLACK)  # top
+              rl.draw_rectangle(0, self.height - inset_y + int(y_offset * 2), self.width, inset_y, rl.BLACK)  # bottom
+              continue
+
           widget.render(rl.Rectangle(0, 0, self.width, self.height))
 
         yield True
