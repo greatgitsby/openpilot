@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import time
 from openpilot.system.hardware import HARDWARE
 
 

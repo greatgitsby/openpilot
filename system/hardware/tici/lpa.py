@@ -168,6 +168,7 @@ class AtClient:
         if attempt == max_retries - 1:
           raise
         time.sleep(1 + attempt)
+    raise RuntimeError("send_apdu failed")
 
 
 # --- TLV utilities ---
@@ -405,14 +406,15 @@ class TiciLPA(LPABase):
     from openpilot.system.hardware import HARDWARE
     HARDWARE.reboot_modem()
     self._client.channel = None
-    self._client.serial.close()
-    self._reconnect_serial()
+    if self._client._serial is not None:
+      self._client._serial.close()
+      self._reconnect_serial()
     self._client.open_isdr()
 
   @retry(attempts=3, delay=1.0)
   def _reconnect_serial(self) -> None:
-    self._client.serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
-    self._client.serial.reset_input_buffer()
+    self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
+    self._client._serial.reset_input_buffer()
 
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
