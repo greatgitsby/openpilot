@@ -136,8 +136,8 @@ class AtClient:
       return self._expect()
     return self._dbus_query(cmd)
 
-  @retry(attempts=10, delay=2.0)
-  def open_isdr(self) -> None:
+  def _open_isdr_once(self) -> None:
+    """Try once to open ISD-R. Raises on failure."""
     # close any stale logical channel from a previous crashed session
     try:
       self.query("AT+CCHC=1")
@@ -148,6 +148,10 @@ class AtClient:
         self.channel = ch
         return
     raise RuntimeError("Failed to open ISD-R application")
+
+  @retry(attempts=10, delay=2.0)
+  def open_isdr(self) -> None:
+    self._open_isdr_once()
 
   def send_apdu(self, apdu: bytes, max_retries: int = 3) -> tuple[bytes, int, int]:
     for attempt in range(max_retries):
@@ -408,13 +412,30 @@ class TiciLPA(LPABase):
     self._client.channel = None
     if self._client._serial is not None:
       self._client._serial.close()
-      self._reconnect_serial()
-    self._client.open_isdr()
+      self._client._serial = None
 
-  @retry(attempts=3, delay=1.0)
-  def _reconnect_serial(self) -> None:
-    self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
-    self._client._serial.reset_input_buffer()
+    # wait for serial device to come back and modem to be ready
+    self._wait_for_modem()
+
+  def _wait_for_modem(self, timeout: float = 60.0) -> None:
+    """Wait for modem serial device to reappear and ISD-R to be accessible."""
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
+      if not os.path.exists(DEFAULT_DEVICE):
+        time.sleep(1)
+        continue
+      try:
+        self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
+        self._client._serial.reset_input_buffer()
+        self._client._open_isdr_once()
+        return
+      except Exception:
+        if self._client._serial is not None:
+          self._client._serial.close()
+          self._client._serial = None
+        self._client.channel = None
+        time.sleep(2)
+    raise RuntimeError("Modem did not recover after reboot")
 
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
