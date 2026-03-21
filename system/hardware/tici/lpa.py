@@ -46,9 +46,12 @@ TAG_OK = 0xA0
 CAT_BUSY = 0x05
 
 PROFILE_ERROR_CODES = {
-  0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
-  0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
-  CAT_BUSY: "catBusy", 0x06: "undefinedError",
+  0x01: "iccidOrAidNotFound",
+  0x02: "profileNotInDisabledState",
+  0x03: "disallowedByPolicy",
+  0x04: "wrongProfileReenabling",
+  CAT_BUSY: "catBusy",
+  0x06: "undefinedError",
 }
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
@@ -86,6 +89,17 @@ class AtClient:
     finally:
       if self._serial:
         self._serial.close()
+        self._serial = None
+
+  def reconnect(self, device: str, baud: int, timeout: float) -> None:
+    """Close existing connection and re-open serial + ISD-R."""
+    self.channel = None
+    if self._serial is not None:
+      self._serial.close()
+      self._serial = None
+    self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
+    self._serial.reset_input_buffer()
+    self._open_isdr_once()
 
   def _send(self, cmd: str) -> None:
     if self.debug:
@@ -172,7 +186,6 @@ class AtClient:
         if attempt == max_retries - 1:
           raise
         time.sleep(1 + attempt)
-    raise RuntimeError("send_apdu failed")
 
 
 # --- TLV utilities ---
@@ -262,6 +275,7 @@ NOTIFICATION: FieldMap = {
   0x0C: ("notificationAddress", lambda v: v.decode("utf-8", errors="ignore")),
   TAG_ICCID: ("iccid", tbcd_to_string),
 }
+REQUIRED_NOTIFICATION_FIELDS = ("seqNumber", "profileManagementOperation", "notificationAddress")
 
 
 def decode_struct(data: bytes, field_map: FieldMap) -> dict[str, Any]:
@@ -345,7 +359,7 @@ def list_notifications(client: AtClient) -> list[dict]:
     if tag != TAG_NOTIFICATION_METADATA:
       continue
     notification = decode_struct(value, NOTIFICATION)
-    if notification["seqNumber"] is not None and notification["profileManagementOperation"] is not None and notification["notificationAddress"]:
+    if all(notification[f] for f in REQUIRED_NOTIFICATION_FIELDS):
       notifications.append(notification)
   return notifications
 
@@ -371,9 +385,9 @@ def process_notifications(client: AtClient) -> None:
       root = require_tag(response, TAG_NOTIFICATION_SENT, "NotificationSentResponse")
       if int.from_bytes(require_tag(root, TAG_STATUS, "RemoveNotificationFromList status"), "big") != 0:
         raise RuntimeError("RemoveNotificationFromList failed")
-    except Exception:
-      pass
-
+    except Exception as e:
+      if DEBUG:
+        print(f"Notification {seq_number} failed: {e}", file=sys.stderr)
 
 
 class TiciLPA(LPABase):
@@ -409,12 +423,7 @@ class TiciLPA(LPABase):
     """Reboot modem and re-open ISD-R."""
     from openpilot.system.hardware import HARDWARE
     HARDWARE.reboot_modem()
-    self._client.channel = None
-    if self._client._serial is not None:
-      self._client._serial.close()
-      self._client._serial = None
-
-    # wait for serial device to come back and modem to be ready
+    self._client.close()
     self._wait_for_modem()
 
   def _wait_for_modem(self, timeout: float = 60.0) -> None:
@@ -425,17 +434,20 @@ class TiciLPA(LPABase):
         time.sleep(1)
         continue
       try:
-        self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
-        self._client._serial.reset_input_buffer()
-        self._client._open_isdr_once()
+        self._client.reconnect(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT)
         return
       except Exception:
-        if self._client._serial is not None:
-          self._client._serial.close()
-          self._client._serial = None
-        self._client.channel = None
+        self._client.close()
         time.sleep(2)
     raise RuntimeError("Modem did not recover after reboot")
+
+  def _retry_on_cat_busy(self, op: Callable[[], int]) -> int:
+    """Run op(); if CAT_BUSY, reboot modem and retry once."""
+    code = op()
+    if code == CAT_BUSY:
+      self._reboot_modem()
+      code = op()
+    return code
 
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
@@ -446,10 +458,7 @@ class TiciLPA(LPABase):
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
-    code = self._delete_profile(iccid)
-    if code == CAT_BUSY:
-      self._reboot_modem()
-      code = self._delete_profile(iccid)
+    code = self._retry_on_cat_busy(lambda: self._delete_profile(iccid))
     if code != 0x00:
       raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
@@ -462,17 +471,14 @@ class TiciLPA(LPABase):
 
   def _enable_profile(self, iccid: str, refresh: bool = True) -> int:
     inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    inner += b'\x01\x01' + (b'\xFF' if refresh else b'\x00')  # refreshFlag BOOLEAN
+    inner += encode_tlv(0x01, b'\xFF' if refresh else b'\x00')  # refreshFlag BOOLEAN
     request = encode_tlv(TAG_ENABLE_PROFILE, inner)
     response = es10x_command(self._client, request)
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def switch_profile(self, iccid: str) -> None:
-    code = self._enable_profile(iccid, refresh=False)
-    if code == CAT_BUSY:
-      self._reboot_modem()
-      code = self._enable_profile(iccid, refresh=False)
+    code = self._retry_on_cat_busy(lambda: self._enable_profile(iccid, refresh=False))
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
