@@ -1,5 +1,6 @@
 import atexit
 import cffi
+import math
 import os
 import queue
 import time
@@ -94,7 +95,6 @@ FONT_DIR = ASSETS_DIR.joinpath("fonts")
 
 
 class FontWeight(StrEnum):
-  LIGHT = "Inter-Light.fnt"
   NORMAL = "Inter-Regular.fnt" if BIG_UI else "Inter-Medium.fnt"
   MEDIUM = "Inter-Medium.fnt"
   BOLD = "Inter-Bold.fnt"
@@ -169,6 +169,10 @@ class MouseState:
       self._rk.keep_time()
 
   def _handle_mouse_event(self):
+    # TODO: read touch events from evdev directly to get real kernel timestamps.
+    #  Polling at 140Hz with time.monotonic() causes timing jitter that makes scroll
+    #  velocity oscillate (alternating high/low). Real timestamps would also let us
+    #  detect swipe-stop-lift via event gaps instead of the fragile decel heuristic.
     for slot in range(MAX_TOUCH_SLOTS):
       mouse_pos = rl.get_touch_position(slot)
       x = mouse_pos.x / self._scale if self._scale != 1.0 else mouse_pos.x
@@ -220,7 +224,7 @@ class GuiApplication:
     self._frame = 0
     self._window_close_requested = False
     self._nav_stack: list[object] = []
-    self._nav_stack_tick: Callable[[], None] | None = None
+    self._nav_stack_ticks: list[Callable[[], None]] = []
     self._nav_stack_widgets_to_render = 1 if self.big_ui() else 2
 
     self._mouse = MouseState(self._scale)
@@ -249,6 +253,10 @@ class GuiApplication:
     self._show_fps = show
 
   @property
+  def show_touches(self) -> bool:
+    return self._show_touches
+
+  @property
   def target_fps(self):
     return self._target_fps
 
@@ -274,7 +282,7 @@ class GuiApplication:
       if self._scale != 1.0:
         rl.set_mouse_scale(1 / self._scale, 1 / self._scale)
       if needs_render_texture:
-        self._render_texture = rl.load_render_texture(self._width, self._height)
+        self._render_texture = rl.load_render_texture(self._scaled_width, self._scaled_height)
         rl.set_texture_filter(self._render_texture.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
 
       if RECORD:
@@ -285,7 +293,7 @@ class GuiApplication:
           '-nostats',               # Suppress encoding progress
           '-f', 'rawvideo',         # Input format
           '-pix_fmt', 'rgba',       # Input pixel format
-          '-s', f'{self._width}x{self._height}',  # Input resolution
+          '-s', f'{self._scaled_width}x{self._scaled_height}',  # Input resolution
           '-r', str(fps),           # Input frame rate
           '-i', 'pipe:0',           # Input from stdin
           '-vf', 'vflip,format=yuv420p',  # Flip vertically and convert to yuv420p
@@ -315,6 +323,7 @@ class GuiApplication:
       self._set_styles()
       self._load_fonts()
       self._patch_text_functions()
+      self._patch_scissor_mode()
       if BURN_IN_MODE and self._burn_in_shader is None:
         self._burn_in_shader = rl.load_shader_from_memory(BURN_IN_VERTEX_SHADER, BURN_IN_FRAGMENT_SHADER)
 
@@ -379,27 +388,47 @@ class GuiApplication:
 
     self._nav_stack.append(widget)
     widget.show_event()
+    widget.set_enabled(True)
 
-  def pop_widget(self):
+  def pop_widget(self, idx: int | None = None):
+    # Pops widget instantly without animation
     if len(self._nav_stack) < 2:
       cloudlog.warning("At least one widget should remain on the stack, ignoring pop!")
       return
 
-    # re-enable previous widget and pop current
-    # TODO: switch to touch_valid
-    prev_widget = self._nav_stack[-2]
-    prev_widget.set_enabled(True)
+    idx_to_pop = len(self._nav_stack) - 1 if idx is None else idx
+    if idx_to_pop <= 0 or idx_to_pop >= len(self._nav_stack):
+      cloudlog.warning(f"Invalid index {idx_to_pop} to pop, ignoring!")
+      return
 
-    widget = self._nav_stack.pop()
+    # only re-enable previous widget if popping top widget
+    if idx_to_pop == len(self._nav_stack) - 1:
+      prev_widget = self._nav_stack[idx_to_pop - 1]
+      prev_widget.set_enabled(True)
+
+    widget = self._nav_stack.pop(idx_to_pop)
     widget.hide_event()
 
-  def pop_widgets_to(self, widget):
+  def pop_widgets_to(self, widget: object, callback: Callable[[], None] | None = None, instant: bool = False):
+    # Pops middle widgets instantly without animation then dismisses top, animated out if NavWidget
     if widget not in self._nav_stack:
       cloudlog.warning("Widget not in stack, cannot pop to it!")
       return
 
-    # pops all widgets after specified widget
-    while len(self._nav_stack) > 0 and self._nav_stack[-1] != widget:
+    # Nothing to pop, ensure we still run callback
+    top_widget = self._nav_stack[-1]
+    if top_widget == widget:
+      if callback:
+        callback()
+      return
+
+    # instantly pop widgets in between, then dismiss top widget for animation
+    while len(self._nav_stack) > 1 and self._nav_stack[-2] != widget:
+      self.pop_widget(len(self._nav_stack) - 2)
+
+    if not instant:
+      top_widget.dismiss(callback)
+    else:
       self.pop_widget()
 
   def get_active_widget(self):
@@ -407,31 +436,50 @@ class GuiApplication:
       return self._nav_stack[-1]
     return None
 
-  def set_nav_stack_tick(self, tick_function: Callable | None):
-    self._nav_stack_tick = tick_function
+  def widget_in_stack(self, widget: object) -> bool:
+    return widget in self._nav_stack
+
+  def add_nav_stack_tick(self, tick_function: Callable[[], None]):
+    if tick_function not in self._nav_stack_ticks:
+      self._nav_stack_ticks.append(tick_function)
+
+  def remove_nav_stack_tick(self, tick_function: Callable[[], None]):
+    if tick_function in self._nav_stack_ticks:
+      self._nav_stack_ticks.remove(tick_function)
 
   def set_should_render(self, should_render: bool):
     self._should_render = should_render
 
   def texture(self, asset_path: str, width: int | None = None, height: int | None = None,
-              alpha_premultiply=False, keep_aspect_ratio=True):
-    cache_key = f"{asset_path}_{width}_{height}_{alpha_premultiply}{keep_aspect_ratio}"
+              alpha_premultiply=False, keep_aspect_ratio=True, flip_x: bool = False) -> rl.Texture:
+    cache_key = f"{asset_path}_{width}_{height}_{alpha_premultiply}_{keep_aspect_ratio}_{flip_x}"
     if cache_key in self._textures:
       return self._textures[cache_key]
 
     with as_file(ASSETS_DIR.joinpath(asset_path)) as fspath:
-      image_obj = self._load_image_from_path(fspath.as_posix(), width, height, alpha_premultiply, keep_aspect_ratio)
+      image_obj = self._load_image_from_path(fspath.as_posix(), width, height, alpha_premultiply, keep_aspect_ratio, flip_x)
       texture_obj = self._load_texture_from_image(image_obj)
+
+    # Set logical size so widget layout math stays at 1x coordinates
+    if self._scale != 1.0 and width is not None and height is not None:
+      texture_obj.width = width
+      texture_obj.height = height
+
     self._textures[cache_key] = texture_obj
     return texture_obj
 
   def _load_image_from_path(self, image_path: str, width: int | None = None, height: int | None = None,
-                            alpha_premultiply: bool = False, keep_aspect_ratio: bool = True) -> rl.Image:
+                            alpha_premultiply: bool = False, keep_aspect_ratio: bool = True, flip_x: bool = False) -> rl.Image:
     """Load and resize an image, storing it for later automatic unloading."""
     image = rl.load_image(image_path)
 
     if alpha_premultiply:
       rl.image_alpha_premultiply(image)
+
+    # Scale up load size for sharper rendering, capped at source resolution
+    if self._scale != 1.0 and width is not None and height is not None:
+      width = min(int(width * self._scale), image.width)
+      height = min(int(height * self._scale), image.height)
 
     if width is not None and height is not None:
       same_dimensions = image.width == width and image.height == height
@@ -455,6 +503,10 @@ class GuiApplication:
           rl.image_resize(image, width, height)
     else:
       assert keep_aspect_ratio, "Cannot resize without specifying width and height"
+
+    if flip_x:
+      rl.image_flip_horizontal(image)
+
     return image
 
   def _load_texture_from_image(self, image: rl.Image) -> rl.Texture:
@@ -552,9 +604,13 @@ class GuiApplication:
           rl.begin_drawing()
           rl.clear_background(rl.BLACK)
 
+        if self._scale != 1.0:
+          rl.rl_push_matrix()
+          rl.rl_scalef(self._scale, self._scale, 1.0)
+
         # Allow a Widget to still run a function regardless of the stack depth
-        if self._nav_stack_tick is not None:
-          self._nav_stack_tick()
+        for tick in self._nav_stack_ticks:
+          tick()
 
         # Only render top widgets
         for widget in self._nav_stack[-self._nav_stack_widgets_to_render:]:
@@ -562,11 +618,14 @@ class GuiApplication:
 
         yield True
 
+        if self._scale != 1.0:
+          rl.rl_pop_matrix()
+
         if self._render_texture:
           rl.end_texture_mode()
           rl.begin_drawing()
           rl.clear_background(rl.BLACK)
-          src_rect = rl.Rectangle(0, 0, float(self._width), -float(self._height))
+          src_rect = rl.Rectangle(0, 0, float(self._scaled_width), -float(self._scaled_height))
           dst_rect = rl.Rectangle(0, 0, float(self._scaled_width), float(self._scaled_height))
           texture = self._render_texture.texture
           if texture:
@@ -620,7 +679,8 @@ class GuiApplication:
         fnt_path = fspath / font_weight_file
         font = rl.load_font(fnt_path.as_posix())
         if font_weight_file != FontWeight.UNIFONT:
-          rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_BILINEAR)
+          rl.gen_texture_mipmaps(font.texture)
+          rl.set_texture_filter(font.texture, rl.TextureFilter.TEXTURE_FILTER_TRILINEAR)
         self._fonts[font_weight_file] = font
     rl.gui_set_font(self._fonts[FontWeight.NORMAL])
 
@@ -641,6 +701,20 @@ class GuiApplication:
       return rl._orig_draw_text_ex(font, text, position, font_size * FONT_SCALE, spacing, tint)
 
     rl.draw_text_ex = _draw_text_ex_scaled
+
+  def _patch_scissor_mode(self):
+    if self._scale == 1.0:
+      return
+
+    if not hasattr(rl, "_orig_begin_scissor_mode"):
+      rl._orig_begin_scissor_mode = rl.begin_scissor_mode
+
+    def _begin_scissor_mode_scaled(x, y, width, height):
+      return rl._orig_begin_scissor_mode(
+        int(x * self._scale), int(y * self._scale),
+        int(math.ceil(width * self._scale)), int(math.ceil(height * self._scale)))
+
+    rl.begin_scissor_mode = _begin_scissor_mode_scaled
 
   def _set_log_callback(self):
     ffi_libc = cffi.FFI()

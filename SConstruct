@@ -4,6 +4,7 @@ import sys
 import sysconfig
 import platform
 import shlex
+import importlib
 import numpy as np
 
 import SCons.Errors
@@ -18,6 +19,7 @@ AddOption('--asan', action='store_true', help='turn on ASAN')
 AddOption('--ubsan', action='store_true', help='turn on UBSan')
 AddOption('--mutation', action='store_true', help='generate mutation-ready code')
 AddOption('--ccflags', action='store', type='string', default='', help='pass arbitrary flags over the command line')
+AddOption('--verbose', action='store_true', default=False, help='show full build commands')
 AddOption('--minimal',
           action='store_false',
           dest='extras',
@@ -28,7 +30,6 @@ AddOption('--minimal',
 arch = subprocess.check_output(["uname", "-m"], encoding='utf8').rstrip()
 if platform.system() == "Darwin":
   arch = "Darwin"
-  brew_prefix = subprocess.check_output(['brew', '--prefix'], encoding='utf8').strip()
 elif arch == "aarch64" and os.path.isfile('/TICI'):
   arch = "larch64"
 assert arch in [
@@ -38,6 +39,9 @@ assert arch in [
   "Darwin",   # macOS arm64 (x86 not supported)
 ]
 
+pkg_names = ['bzip2', 'capnproto', 'eigen', 'ffmpeg', 'libjpeg', 'libyuv', 'ncurses', 'zeromq', 'zstd']
+pkgs = [importlib.import_module(name) for name in pkg_names]
+
 env = Environment(
   ENV={
     "PATH": os.environ['PATH'],
@@ -46,15 +50,13 @@ env = Environment(
     "ACADOS_PYTHON_INTERFACE_PATH": Dir("#third_party/acados/acados_template").abspath,
     "TERA_PATH": Dir("#").abspath + f"/third_party/acados/{arch}/t_renderer"
   },
-  CC='clang',
-  CXX='clang++',
   CCFLAGS=[
     "-g",
     "-fPIC",
     "-O2",
     "-Wunused",
     "-Werror",
-    "-Wshadow",
+    "-Wshadow" if arch in ("Darwin", "larch64") else "-Wshadow=local",
     "-Wno-unknown-warning-option",
     "-Wno-inconsistent-missing-override",
     "-Wno-c99-designator",
@@ -73,7 +75,7 @@ env = Environment(
     "#third_party/acados/include/blasfeo/include",
     "#third_party/acados/include/hpipm/include",
     "#third_party/catch2/include",
-    "#third_party/libyuv/include",
+    [x.INCLUDE_DIR for x in pkgs],
   ],
   LIBPATH=[
     "#common",
@@ -81,8 +83,8 @@ env = Environment(
     "#third_party",
     "#selfdrive/pandad",
     "#rednose/helpers",
-    f"#third_party/libyuv/{arch}/lib",
     f"#third_party/acados/{arch}/lib",
+    [x.LIB_DIR for x in pkgs],
   ],
   RPATH=[],
   CYTHONCFILESUFFIX=".cpp",
@@ -94,6 +96,8 @@ env = Environment(
 
 # Arch-specific flags and paths
 if arch == "larch64":
+  env["CC"] = "clang"
+  env["CXX"] = "clang++"
   env.Append(LIBPATH=[
     "/usr/local/lib",
     "/system/vendor/lib64",
@@ -104,17 +108,10 @@ if arch == "larch64":
   env.Append(CXXFLAGS=arch_flags)
 elif arch == "Darwin":
   env.Append(LIBPATH=[
-    f"{brew_prefix}/lib",
-    f"{brew_prefix}/opt/openssl@3.0/lib",
-    f"{brew_prefix}/opt/llvm/lib/c++",
     "/System/Library/Frameworks/OpenGL.framework/Libraries",
   ])
   env.Append(CCFLAGS=["-DGL_SILENCE_DEPRECATION"])
   env.Append(CXXFLAGS=["-DGL_SILENCE_DEPRECATION"])
-  env.Append(CPPPATH=[
-    f"{brew_prefix}/include",
-    f"{brew_prefix}/opt/openssl@3.0/include",
-  ])
 else:
   env.Append(LIBPATH=[
     "/usr/lib",
@@ -137,6 +134,22 @@ if _extra_cc:
 if arch != "Darwin":
   env.Append(LINKFLAGS=["-Wl,--as-needed", "-Wl,--no-undefined"])
 
+# Shorter build output: show brief descriptions instead of full commands.
+# Full command lines are still printed on failure by scons.
+if not GetOption('verbose'):
+  for action, short in (
+    ("CC",     "CC"),
+    ("CXX",    "CXX"),
+    ("LINK",   "LINK"),
+    ("SHCC",   "CC"),
+    ("SHCXX",  "CXX"),
+    ("SHLINK", "LINK"),
+    ("AR",     "AR"),
+    ("RANLIB", "RANLIB"),
+    ("AS",     "AS"),
+  ):
+    env[f"{action}COMSTR"] = f"  [{short}] $TARGET"
+
 # progress output
 node_interval = 5
 node_count = 0
@@ -148,10 +161,9 @@ if os.environ.get('SCONS_PROGRESS'):
   Progress(progress_function, interval=node_interval)
 
 # ********** Cython build environment **********
-py_include = sysconfig.get_paths()['include']
 envCython = env.Clone()
-envCython["CPPPATH"] += [py_include, np.get_include()]
-envCython["CCFLAGS"] += ["-Wno-#warnings", "-Wno-shadow", "-Wno-deprecated-declarations"]
+envCython["CPPPATH"] += [sysconfig.get_paths()['include'], np.get_include()]
+envCython["CCFLAGS"] += ["-Wno-#warnings", "-Wno-cpp", "-Wno-shadow", "-Wno-deprecated-declarations"]
 envCython["CCFLAGS"].remove("-Werror")
 
 envCython["LIBS"] = []
@@ -183,7 +195,6 @@ Export('common')
 env_swaglog = env.Clone()
 env_swaglog['CXXFLAGS'].append('-DSWAGLOG="\\"common/swaglog.h\\""')
 SConscript(['msgq_repo/SConscript'], exports={'env': env_swaglog})
-SConscript(['opendbc_repo/SConscript'], exports={'env': env_swaglog})
 
 SConscript(['cereal/SConscript'])
 
