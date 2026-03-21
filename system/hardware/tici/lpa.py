@@ -20,7 +20,7 @@ from openpilot.system.hardware.base import LPABase, LPAError, Profile
 GSMA_CI_BUNDLE = str(Path(__file__).parent / 'gsma_ci_bundle.pem')
 
 
-DEFAULT_DEVICE = "/dev/ttyUSB2"
+DEFAULT_DEVICE = "/dev/modem_at0"
 DEFAULT_BAUD = 9600
 DEFAULT_TIMEOUT = 5.0
 # https://euicc-manual.osmocom.org/docs/lpa/applet-id/
