@@ -66,6 +66,7 @@ class QRScannerDialog(NavWidget):
     self._on_qr_detected = on_qr_detected
     self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_DRIVER)
     self._detected = False
+    self._last_scan_time = 0.0
     self.set_rect(rl.Rectangle(0, 0, gui_app.width, gui_app.height))
 
   def show_event(self):
@@ -85,6 +86,11 @@ class QRScannerDialog(NavWidget):
 
     if self._detected or not self._camera_view.frame:
       return
+
+    now = rl.get_time()
+    if now - self._last_scan_time < 0.2:
+      return
+    self._last_scan_time = now
 
     frame = self._camera_view.frame
     gray = frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width]
