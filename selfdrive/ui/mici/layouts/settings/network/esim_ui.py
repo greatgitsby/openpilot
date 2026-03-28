@@ -75,6 +75,8 @@ class QRScannerDialog(NavWidget):
   def hide_event(self):
     super().hide_event()
     ui_state.params.put_bool("IsDriverViewEnabled", False)
+
+  def __del__(self):
     self._camera_view.close()
 
   def _update_state(self):
