@@ -139,7 +139,8 @@ class ESimManager:
         self._callback_queue.append(lambda: self._finish_switch(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to switch eSIM profile")
-        self._callback_queue.append(lambda: self._finish_switch(error=str(e)))
+        error_msg = str(e)
+        self._callback_queue.append(lambda: self._finish_switch(error=error_msg))
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -166,7 +167,8 @@ class ESimManager:
         self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to delete eSIM profile")
-        self._callback_queue.append(lambda: self._finish_operation(error=str(e)))
+        error_msg = str(e)
+        self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -197,6 +199,7 @@ class ESimManager:
         self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to update eSIM profile nickname")
-        self._callback_queue.append(lambda: self._finish_operation(error=str(e)))
+        error_msg = str(e)
+        self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
 
     threading.Thread(target=worker, daemon=True).start()
