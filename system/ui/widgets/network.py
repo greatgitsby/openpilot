@@ -68,6 +68,8 @@ class NavButton(Widget):
 
 
 class NetworkUI(Widget):
+  NAV_BTN_SPACING = 20
+
   def __init__(self, wifi_manager: WifiManager):
     super().__init__()
     self._wifi_manager = wifi_manager
@@ -76,39 +78,60 @@ class NetworkUI(Widget):
     self._wifi_panel = self._child(WifiManagerUI(wifi_manager))
     self._esim_panel = self._child(ESimManagerUI(self._cellular_manager))
     self._advanced_panel = self._child(AdvancedNetworkSettings(wifi_manager))
-    self._nav_button = self._child(NavButton(tr("eSIM")))
-    self._nav_button.set_click_callback(self._cycle_panel)
+
+    self._toggle_button = self._child(NavButton(tr("eSIM")))
+    self._toggle_button.set_click_callback(self._toggle_wifi_esim)
+
+    self._advanced_button = self._child(NavButton(tr("Advanced")))
+    self._advanced_button.set_click_callback(self._toggle_advanced)
 
   def show_event(self):
     super().show_event()
     self._set_current_panel(PanelType.WIFI)
 
-  def _cycle_panel(self):
-    next_panel = {
-      PanelType.WIFI: PanelType.ESIM,
-      PanelType.ESIM: PanelType.ADVANCED,
-      PanelType.ADVANCED: PanelType.WIFI,
-    }
-    self._set_current_panel(next_panel[self._current_panel])
+  def _toggle_wifi_esim(self):
+    if self._current_panel == PanelType.WIFI:
+      self._set_current_panel(PanelType.ESIM)
+    else:
+      self._set_current_panel(PanelType.WIFI)
+
+  def _toggle_advanced(self):
+    if self._current_panel == PanelType.ADVANCED:
+      self._set_current_panel(PanelType.WIFI)
+    else:
+      self._set_current_panel(PanelType.ADVANCED)
 
   def _render(self, _):
-    # subtract button
-    content_rect = rl.Rectangle(self._rect.x, self._rect.y + self._nav_button.rect.height + 40,
-                                self._rect.width, self._rect.height - self._nav_button.rect.height - 40)
+    btn_h = self._toggle_button.rect.height
+    content_rect = rl.Rectangle(self._rect.x, self._rect.y + btn_h + 40,
+                                self._rect.width, self._rect.height - btn_h - 40)
+
+    # Toggle button: shows the other option (Wi-Fi / eSIM)
+    if self._current_panel == PanelType.ESIM:
+      self._toggle_button.text = tr("Wi-Fi")
+    else:
+      self._toggle_button.text = tr("eSIM")
+
+    # Advanced button
+    if self._current_panel == PanelType.ADVANCED:
+      self._advanced_button.text = tr("Back")
+    else:
+      self._advanced_button.text = tr("Advanced")
+
+    # Position: toggle on left of advanced, advanced on right
+    self._advanced_button.set_position(self._rect.x + self._rect.width - self._advanced_button.rect.width, self._rect.y + 20)
+    self._toggle_button.set_position(self._advanced_button.rect.x - self._toggle_button.rect.width - self.NAV_BTN_SPACING, self._rect.y + 20)
+
+    # Render panel
     if self._current_panel == PanelType.WIFI:
-      self._nav_button.text = tr("eSIM")
-      self._nav_button.set_position(self._rect.x + self._rect.width - self._nav_button.rect.width, self._rect.y + 20)
       self._wifi_panel.render(content_rect)
     elif self._current_panel == PanelType.ESIM:
-      self._nav_button.text = tr("Advanced")
-      self._nav_button.set_position(self._rect.x + self._rect.width - self._nav_button.rect.width, self._rect.y + 20)
       self._esim_panel.render(content_rect)
     else:
-      self._nav_button.text = tr("Back")
-      self._nav_button.set_position(self._rect.x, self._rect.y + 20)
       self._advanced_panel.render(content_rect)
 
-    self._nav_button.render()
+    self._toggle_button.render()
+    self._advanced_button.render()
 
   def _set_current_panel(self, panel: PanelType):
     self._current_panel = panel
