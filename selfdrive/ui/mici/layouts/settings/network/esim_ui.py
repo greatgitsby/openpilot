@@ -162,6 +162,7 @@ class ESimUIMici(NavScroller):
 
   def show_event(self):
     super().show_event()
+    self._on_profiles_updated(self._esim_manager.profiles)
     self._esim_manager.refresh_profiles()
 
   def _on_profiles_updated(self, profiles: list[Profile]):
@@ -184,16 +185,35 @@ class ESimUIMici(NavScroller):
       if not isinstance(btn, ESimProfileButton) or btn.profile.iccid in current_iccids
     ]
 
-    # Sort: active first
-    profile_btns = [btn for btn in self._scroller.items if isinstance(btn, ESimProfileButton)]
-    other_btns = [btn for btn in self._scroller.items if not isinstance(btn, ESimProfileButton)]
-    profile_btns.sort(key=lambda btn: (not btn.profile.enabled, btn.profile.nickname or btn.profile.provider))
-    self._scroller.items[:] = profile_btns + other_btns
-
     # Keep add button at the end
     if self._add_profile_btn in self._scroller.items:
-      self._scroller.items.remove(self._add_profile_btn)
-    self._scroller.add_widget(self._add_profile_btn)
+      self._scroller.items.append(self._scroller.items.pop(self._scroller.items.index(self._add_profile_btn)))
+    else:
+      self._scroller.add_widget(self._add_profile_btn)
+
+  def _move_profile_to_front(self, iccid: str | None, scroll: bool = False):
+    if iccid is None:
+      return
+
+    front_btn_idx = next((i for i, btn in enumerate(self._scroller.items)
+                          if isinstance(btn, ESimProfileButton) and
+                          btn.profile.iccid == iccid), None)
+
+    if front_btn_idx is not None and front_btn_idx > 0:
+      self._scroller.move_item(front_btn_idx, 0)
+
+      if scroll:
+        self._scroller.scroll_to(self._scroller.scroll_panel.get_offset(), smooth=True)
+
+  def _update_state(self):
+    super()._update_state()
+
+    # Keep the switching/active profile at the front with animation
+    iccid = self._esim_manager.switching_iccid
+    if iccid is None:
+      active = next((p for p in self._esim_manager.profiles if p.enabled), None)
+      iccid = active.iccid if active else None
+    self._move_profile_to_front(iccid)
 
   def _on_profile_clicked(self, iccid: str):
     profile = next((p for p in self._esim_manager.profiles if p.iccid == iccid), None)
@@ -208,7 +228,10 @@ class ESimUIMici(NavScroller):
       gui_app.push_widget(dlg)
     else:
       # Switch to profile
+      def _switch():
+        self._esim_manager.switch_profile(iccid)
+        self._move_profile_to_front(iccid, scroll=True)
+
       cell_icon = gui_app.texture("icons_mici/settings/network/cell_strength_full.png", 54, 40)
-      dlg = BigConfirmationDialog("slide to switch", cell_icon,
-                                  lambda: self._esim_manager.switch_profile(iccid))
+      dlg = BigConfirmationDialog("slide to switch", cell_icon, _switch)
       gui_app.push_widget(dlg)

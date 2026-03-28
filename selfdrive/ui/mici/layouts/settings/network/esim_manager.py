@@ -63,6 +63,7 @@ class ESimManager:
     self._lpa: LPABase = _get_lpa()
     self._profiles: list[Profile] = []
     self._busy: bool = False
+    self._switching_iccid: str | None = None
     self._lock = threading.Lock()
     self._callback_queue: list[Callable] = []
 
@@ -92,6 +93,10 @@ class ESimManager:
   def busy(self) -> bool:
     return self._busy
 
+  @property
+  def switching_iccid(self) -> str | None:
+    return self._switching_iccid
+
   def is_comma_profile(self, iccid: str) -> bool:
     return any(p.iccid == iccid and p.provider == 'Webbing' for p in self._profiles)
 
@@ -110,6 +115,7 @@ class ESimManager:
 
   def switch_profile(self, iccid: str):
     self._busy = True
+    self._switching_iccid = iccid
 
     def worker():
       try:
@@ -118,9 +124,11 @@ class ESimManager:
           profiles = self._lpa.list_profiles()
         self._profiles = profiles
         self._busy = False
+        self._switching_iccid = None
         self._enqueue_callbacks(self._profiles_updated_cbs, profiles)
       except Exception as e:
         self._busy = False
+        self._switching_iccid = None
         cloudlog.exception("Failed to switch eSIM profile")
         self._enqueue_callbacks(self._operation_error_cbs, str(e))
 
