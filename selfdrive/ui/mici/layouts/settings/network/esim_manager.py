@@ -1,9 +1,24 @@
+import subprocess
 import time
 import threading
 from collections.abc import Callable
 
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.base import LPABase, Profile
+
+MODEM_IP_POLL_INTERVAL = 5.0
+
+
+def _get_ppp0_ip() -> str:
+  try:
+    out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "ppp0"], timeout=1, text=True)
+    parts = out.split()
+    for i, part in enumerate(parts):
+      if part == "inet" and i + 1 < len(parts):
+        return parts[i + 1].split("/")[0]
+  except Exception:
+    pass
+  return ""
 
 
 class MockLPA(LPABase):
@@ -71,16 +86,28 @@ class ESimManager:
     self._profiles_updated_cbs: list[Callable[[list[Profile]], None]] = []
     self._operation_error_cbs: list[Callable[[str], None]] = []
 
+    self._modem_ip: str = ""
+    self._last_ip_poll: float = 0.0
+
   def add_callbacks(self, profiles_updated: Callable | None = None, operation_error: Callable | None = None):
     if profiles_updated:
       self._profiles_updated_cbs.append(profiles_updated)
     if operation_error:
       self._operation_error_cbs.append(operation_error)
 
+  @property
+  def modem_ip(self) -> str:
+    return self._modem_ip
+
   def process_callbacks(self):
     to_run, self._callback_queue = self._callback_queue, []
     for cb in to_run:
       cb()
+
+    now = time.monotonic()
+    if now - self._last_ip_poll >= MODEM_IP_POLL_INTERVAL:
+      self._last_ip_poll = now
+      self._modem_ip = _get_ppp0_ip()
 
   def _enqueue_callbacks(self, cbs: list, *args):
     for cb in cbs:
