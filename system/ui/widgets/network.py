@@ -5,11 +5,13 @@ from typing import cast
 import pyray as rl
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.multilang import tr
+from openpilot.system.ui.lib.cellular_manager import CellularManager
 from openpilot.system.ui.lib.scroll_panel import GuiScrollPanel
 from openpilot.system.ui.lib.wifi_manager import WifiManager, SecurityType, Network, MeteredType, normalize_ssid
 from openpilot.system.ui.widgets import DialogResult, Widget
 from openpilot.system.ui.widgets.button import ButtonStyle, Button
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
+from openpilot.system.ui.widgets.esim import ESimManagerUI
 from openpilot.system.ui.widgets.keyboard import Keyboard
 from openpilot.system.ui.widgets.label import gui_label
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -41,7 +43,8 @@ STRENGTH_ICONS = [
 
 class PanelType(IntEnum):
   WIFI = 0
-  ADVANCED = 1
+  ESIM = 1
+  ADVANCED = 2
 
 
 class UIState(IntEnum):
@@ -69,9 +72,11 @@ class NetworkUI(Widget):
     super().__init__()
     self._wifi_manager = wifi_manager
     self._current_panel: PanelType = PanelType.WIFI
+    self._cellular_manager = CellularManager()
     self._wifi_panel = self._child(WifiManagerUI(wifi_manager))
+    self._esim_panel = self._child(ESimManagerUI(self._cellular_manager))
     self._advanced_panel = self._child(AdvancedNetworkSettings(wifi_manager))
-    self._nav_button = self._child(NavButton(tr("Advanced")))
+    self._nav_button = self._child(NavButton(tr("eSIM")))
     self._nav_button.set_click_callback(self._cycle_panel)
 
   def show_event(self):
@@ -79,19 +84,25 @@ class NetworkUI(Widget):
     self._set_current_panel(PanelType.WIFI)
 
   def _cycle_panel(self):
-    if self._current_panel == PanelType.WIFI:
-      self._set_current_panel(PanelType.ADVANCED)
-    else:
-      self._set_current_panel(PanelType.WIFI)
+    next_panel = {
+      PanelType.WIFI: PanelType.ESIM,
+      PanelType.ESIM: PanelType.ADVANCED,
+      PanelType.ADVANCED: PanelType.WIFI,
+    }
+    self._set_current_panel(next_panel[self._current_panel])
 
   def _render(self, _):
     # subtract button
     content_rect = rl.Rectangle(self._rect.x, self._rect.y + self._nav_button.rect.height + 40,
                                 self._rect.width, self._rect.height - self._nav_button.rect.height - 40)
     if self._current_panel == PanelType.WIFI:
-      self._nav_button.text = tr("Advanced")
+      self._nav_button.text = tr("eSIM")
       self._nav_button.set_position(self._rect.x + self._rect.width - self._nav_button.rect.width, self._rect.y + 20)
       self._wifi_panel.render(content_rect)
+    elif self._current_panel == PanelType.ESIM:
+      self._nav_button.text = tr("Advanced")
+      self._nav_button.set_position(self._rect.x + self._rect.width - self._nav_button.rect.width, self._rect.y + 20)
+      self._esim_panel.render(content_rect)
     else:
       self._nav_button.text = tr("Back")
       self._nav_button.set_position(self._rect.x, self._rect.y + 20)

@@ -6,7 +6,7 @@ import pyray as rl
 from collections.abc import Callable
 from msgq.visionipc import VisionStreamType
 
-from openpilot.selfdrive.ui.mici.layouts.settings.network.cellular_manager import CellularManager
+from openpilot.system.ui.lib.cellular_manager import CellularManager
 from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, LABEL_COLOR
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigDialog, BigInputDialog

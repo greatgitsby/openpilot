@@ -1,7 +1,7 @@
 import pyray as rl
 
 from cereal import log
-from openpilot.selfdrive.ui.mici.layouts.settings.network.cellular_manager import CellularManager
+from openpilot.system.ui.lib.cellular_manager import CellularManager
 from openpilot.selfdrive.ui.mici.layouts.settings.network.wifi_ui import WifiIcon
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.ui_state import ui_state
