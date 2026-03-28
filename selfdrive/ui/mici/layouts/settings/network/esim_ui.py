@@ -227,11 +227,6 @@ class ESimUIMici(NavScroller):
                            confirm_callback=lambda name: self._esim_manager.nickname_profile(iccid, name))
       gui_app.push_widget(dlg)
     else:
-      # Switch to profile
-      def _switch():
-        self._esim_manager.switch_profile(iccid)
-        self._move_profile_to_front(iccid, scroll=True)
-
-      cell_icon = gui_app.texture("icons_mici/settings/network/cell_strength_full.png", 54, 40)
-      dlg = BigConfirmationDialog("slide to switch", cell_icon, _switch)
-      gui_app.push_widget(dlg)
+      # Switch to profile immediately
+      self._esim_manager.switch_profile(iccid)
+      self._move_profile_to_front(iccid, scroll=True)
