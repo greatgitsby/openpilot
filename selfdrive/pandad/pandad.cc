@@ -326,9 +326,7 @@ void process_peripheral_state(Panda *panda, PubMaster *pm, bool no_fan_control) 
       cur_integ_lines = (driver_view ? integ_lines_filter_driver_view : integ_lines_filter).update(cur_integ_lines);
       last_driver_camera_t = event.getLogMonoTime();
 
-      if (driver_view) {
-        ir_pwr = 0;
-      } else if (cur_integ_lines <= CUTOFF_IL) {
+      if (cur_integ_lines <= CUTOFF_IL) {
         ir_pwr = 0;
       } else if (cur_integ_lines > SATURATE_IL) {
         ir_pwr = 100;
