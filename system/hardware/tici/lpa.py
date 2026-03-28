@@ -659,6 +659,31 @@ class TiciLPA(LPABase):
   def get_active_profile(self) -> Profile | None:
     return None
 
+  def _clear_cat_busy(self) -> None:
+    """Graduated attempts to clear an active CAT session."""
+    # 1) wait — proactive sessions are typically short-lived
+    time.sleep(3)
+
+    # 2) try to dismiss via Quectel STK terminate command
+    try:
+      self._client.query('AT+QSTKRSP=254')
+    except Exception:
+      pass
+    time.sleep(1)
+
+    # 3) light radio reset (clears SIM/STK state without full modem reboot)
+    try:
+      self._client.query('AT+CFUN=4')
+    except Exception:
+      pass
+    time.sleep(2)
+    try:
+      self._client.query('AT+CFUN=1')
+    except Exception:
+      pass
+    self._client.channel = None
+    self._wait_for_modem()
+
   def _reboot_modem(self) -> None:
     """Reboot modem via AT commands and re-open ISD-R."""
     for cmd in ('AT+CFUN=0', 'AT+CFUN=1,1'):
@@ -695,6 +720,9 @@ class TiciLPA(LPABase):
       raise LPAError("refusing to delete a comma profile")
     code = self._delete_profile(iccid)
     if code == CAT_BUSY:
+      self._clear_cat_busy()
+      code = self._delete_profile(iccid)
+    if code == CAT_BUSY:
       self._reboot_modem()
       code = self._delete_profile(iccid)
     if code != 0x00:
@@ -720,6 +748,9 @@ class TiciLPA(LPABase):
 
   def switch_profile(self, iccid: str) -> None:
     code = self._enable_profile(iccid, refresh=False)
+    if code == CAT_BUSY:
+      self._clear_cat_busy()
+      code = self._enable_profile(iccid, refresh=False)
     if code == CAT_BUSY:
       self._reboot_modem()
       code = self._enable_profile(iccid, refresh=False)
