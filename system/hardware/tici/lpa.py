@@ -686,6 +686,9 @@ class TiciLPA(LPABase):
   def get_active_profile(self) -> Profile | None:
     return None
 
+  def process_notifications(self) -> None:
+    process_notifications(self._client)
+
   def _clear_cat_busy(self) -> None:
     """Graduated attempts to clear an active CAT session.
     Does not re-open ISD-R — send_apdu will do that on the next call."""

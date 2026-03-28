@@ -132,6 +132,7 @@ class CellularManager:
     def worker():
       try:
         with self._lock:
+          self._lpa.process_notifications()
           profiles = self._lpa.list_profiles()
         self._callback_queue.append(lambda: self._finish_refresh(profiles))
       except Exception as e:

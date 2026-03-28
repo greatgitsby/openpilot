@@ -91,6 +91,9 @@ class LPABase(ABC):
   def switch_profile(self, iccid: str) -> None:
     pass
 
+  def process_notifications(self) -> None:
+    pass
+
   def is_comma_profile(self, iccid: str) -> bool:
     return any(p.iccid == iccid and p.provider == 'Webbing' for p in self.list_profiles())
 
