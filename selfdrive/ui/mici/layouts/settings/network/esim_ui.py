@@ -85,7 +85,7 @@ class QRScannerDialog(NavWidget):
       return
 
     frame = self._camera_view.frame
-    gray = frame.data[:frame.uv_offset].reshape(frame.height, frame.stride)[:, :frame.width]
+    gray = frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width]
     results = pyzbar_decode(gray)
     data = results[0].data.decode('utf-8') if results else ""
     if data and _is_valid_lpa_code(data):
