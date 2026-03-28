@@ -663,7 +663,8 @@ class TiciLPA(LPABase):
     return None
 
   def _clear_cat_busy(self) -> None:
-    """Graduated attempts to clear an active CAT session."""
+    """Graduated attempts to clear an active CAT session.
+    Does not re-open ISD-R — send_apdu will do that on the next call."""
     # 1) wait — proactive sessions are typically short-lived
     time.sleep(3)
 
@@ -685,7 +686,7 @@ class TiciLPA(LPABase):
     except Exception:
       pass
     self._client.channel = None
-    self._wait_for_modem()
+    time.sleep(5)
 
   def _reboot_modem(self) -> None:
     """Reboot modem via AT commands and re-open ISD-R."""
