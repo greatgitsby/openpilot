@@ -118,7 +118,7 @@ class QRScannerDialog(NavWidget):
     self._camera_view._render(rect)
 
     if not self._camera_view.frame:
-      gui_label(rect, "camera starting...", font_size=36, font_weight=FontWeight.MEDIUM,
+      gui_label(rect, "camera starting...", font_size=54, font_weight=FontWeight.BOLD,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
     else:
       # Draw scan region border
@@ -126,7 +126,8 @@ class QRScannerDialog(NavWidget):
                                 rect.width / 2, rect.height / 2)
       rl.draw_rectangle_lines_ex(crop_rect, 3, rl.Color(255, 255, 255, 150))
 
-      label_rect = rl.Rectangle(rect.x, rect.y + rect.height - 80, rect.width, 60)
+      label_y = rect.y + rect.height * 3 / 4
+      label_rect = rl.Rectangle(rect.x, label_y + (rect.height - label_y) / 2 - 20, rect.width, 40)
       gui_label(label_rect, "hold QR code to camera", font_size=32, font_weight=FontWeight.MEDIUM,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
                 color=rl.Color(255, 255, 255, int(255 * 0.9)))
