@@ -1,9 +1,34 @@
 import pyray as rl
 
+from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_manager import ESimManager
 from openpilot.selfdrive.ui.mici.layouts.settings.network.wifi_ui import WifiIcon
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.wifi_manager import WifiManager, ConnectStatus, SecurityType, normalize_ssid
+
+
+class ESimNetworkButton(BigButton):
+  def __init__(self, esim_manager: ESimManager):
+    self._esim_manager = esim_manager
+    self._cell_icon = gui_app.texture("icons_mici/settings/network/cell_strength_full.png", 64, 47)
+    self._cell_none_icon = gui_app.texture("icons_mici/settings/network/cell_strength_none.png", 64, 47)
+    super().__init__("esim", "no active profile", self._cell_none_icon)
+
+  def _update_state(self):
+    super()._update_state()
+
+    if self._esim_manager.busy:
+      self.set_value("switching...")
+      self.set_icon(self._cell_none_icon)
+    else:
+      active = next((p for p in self._esim_manager.profiles if p.enabled), None)
+      if active:
+        display = active.nickname or active.provider or active.iccid[:12]
+        self.set_value(display)
+        self.set_icon(self._cell_icon)
+      else:
+        self.set_value("no active profile")
+        self.set_icon(self._cell_none_icon)
 
 
 class WifiNetworkButton(BigButton):
