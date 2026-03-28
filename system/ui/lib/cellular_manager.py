@@ -133,13 +133,18 @@ class CellularManager:
       try:
         with self._lock:
           profiles = self._lpa.list_profiles()
-        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
+        self._callback_queue.append(lambda: self._finish_refresh(profiles))
       except Exception as e:
         cloudlog.exception("Failed to list eSIM profiles")
-        error_msg = str(e)
-        self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
 
     threading.Thread(target=worker, daemon=True).start()
+
+  def _finish_refresh(self, profiles: list[Profile]):
+    """Update profile list without clearing busy state or installing dialog."""
+    self._profiles = profiles
+    if not self._busy:
+      for cb in self._profiles_updated_cbs:
+        cb(profiles)
 
   def _finish_switch(self, profiles: list[Profile] | None = None, error: str | None = None):
     """Called on UI thread via callback queue to atomically clear switch state."""
