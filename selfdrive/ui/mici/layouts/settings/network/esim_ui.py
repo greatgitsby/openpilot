@@ -121,6 +121,11 @@ class QRScannerDialog(NavWidget):
       gui_label(rect, "camera starting...", font_size=54, font_weight=FontWeight.BOLD,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
     else:
+      # Draw scan region border
+      crop_rect = rl.Rectangle(rect.x + rect.width / 4, rect.y + rect.height / 4,
+                                rect.width / 2, rect.height / 2)
+      rl.draw_rectangle_lines_ex(crop_rect, 3, rl.Color(255, 255, 255, 150))
+
       label_rect = rl.Rectangle(rect.x, rect.y + rect.height - 80, rect.width, 60)
       gui_label(label_rect, "hold QR code to camera", font_size=44, font_weight=FontWeight.MEDIUM,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
