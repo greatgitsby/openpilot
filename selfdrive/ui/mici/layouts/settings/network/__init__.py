@@ -1,3 +1,5 @@
+import subprocess
+
 import pyray as rl
 
 from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_manager import ESimManager
@@ -5,6 +7,17 @@ from openpilot.selfdrive.ui.mici.layouts.settings.network.wifi_ui import WifiIco
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.lib.wifi_manager import WifiManager, ConnectStatus, SecurityType, normalize_ssid
+
+
+def _get_ppp0_ip() -> str:
+  try:
+    out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "ppp0"], timeout=1, text=True)
+    for part in out.split():
+      if "." in part and "/" in part:
+        return part.split("/")[0]
+  except Exception:
+    pass
+  return ""
 
 
 class ESimNetworkButton(BigButton):
@@ -18,16 +31,19 @@ class ESimNetworkButton(BigButton):
     super()._update_state()
 
     if self._esim_manager.busy:
+      self.set_text("esim")
       self.set_value("switching...")
       self.set_icon(self._cell_none_icon)
     else:
       active = next((p for p in self._esim_manager.profiles if p.enabled), None)
       if active:
         name = active.nickname or active.provider or active.iccid[:12]
-        display = f"{name} (...{active.iccid[-4:]})"
-        self.set_value(display)
+        self.set_text(f"{name} (...{active.iccid[-4:]})")
+        ip = _get_ppp0_ip()
+        self.set_value(ip or "no IP")
         self.set_icon(self._cell_icon)
       else:
+        self.set_text("esim")
         self.set_value("no active profile")
         self.set_icon(self._cell_none_icon)
 
