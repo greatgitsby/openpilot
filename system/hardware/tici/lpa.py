@@ -77,6 +77,11 @@ BPP_ERROR_REASONS = {
   11: "installInterrupted", 12: "peProcessingError", 13: "dataMismatch",
   14: "invalidNAA",
 }
+BPP_ERROR_MESSAGES = {
+  9: "This eSIM profile is already installed on this device.",
+  10: "Not enough memory on the eUICC to install this profile.",
+  12: "Profile installation failed. The QR code may have already been used.",
+}
 
 # SGP.22 §5.2.6 — SM-DP+ reason/subject codes mapped to user-friendly messages
 # https://www.gsma.com/solutions-and-impact/technologies/esim/wp-content/uploads/2021/07/SGP.22-v2.3.pdf
@@ -556,9 +561,12 @@ def load_bpp(client: AtClient, b64_bpp: str) -> dict:
             result["errorReason"] = int.from_bytes(err, "big")
     break
   if not result["success"] and result["errorReason"] is not None:
-    cmd_name = BPP_COMMAND_NAMES.get(result["bppCommandId"], f"unknown({result['bppCommandId']})")
-    err_name = BPP_ERROR_REASONS.get(result["errorReason"], f"unknown({result['errorReason']})")
-    raise RuntimeError(f"Profile installation failed at {cmd_name}: {err_name} (bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']})")
+    msg = BPP_ERROR_MESSAGES.get(result["errorReason"])
+    if not msg:
+      cmd_name = BPP_COMMAND_NAMES.get(result["bppCommandId"], f"unknown({result['bppCommandId']})")
+      err_name = BPP_ERROR_REASONS.get(result["errorReason"], f"unknown({result['errorReason']})")
+      msg = f"Profile installation failed at {cmd_name}: {err_name}"
+    raise RuntimeError(msg)
   return result
 
 
