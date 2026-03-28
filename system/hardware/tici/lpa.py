@@ -759,7 +759,9 @@ class TiciLPA(LPABase):
       code = self._enable_profile(iccid, refresh=True)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    # refresh=True tells the modem to handle the SIM refresh internally,
-    # so we just need to re-open the ISD-R channel
-    self._client.channel = None
+    if code == 0x00:
+      # refresh=True triggers an internal SIM refresh that temporarily
+      # drops the serial port — wait for it to come back
+      self._client.channel = None
+      self._wait_for_modem()
     process_notifications(self._client)
