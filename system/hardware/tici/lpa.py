@@ -180,11 +180,13 @@ class AtClient:
 
   def _open_isdr_once(self) -> None:
     """Try once to open ISD-R. Raises on failure."""
-    # close any stale logical channel from a previous crashed session
-    try:
-      self.query("AT+CCHC=1")
-    except RuntimeError:
-      pass
+    # close any stale logical channels from previous crashed sessions
+    for ch in range(1, 5):
+      try:
+        self.query(f"AT+CCHC={ch}")
+      except RuntimeError:
+        pass
+    time.sleep(0.5)
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
