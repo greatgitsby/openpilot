@@ -178,7 +178,8 @@ class ESimManager:
         self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to download eSIM profile")
-        self._callback_queue.append(lambda: self._finish_operation(error=str(e)))
+        error_msg = str(e)
+        self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
 
     threading.Thread(target=worker, daemon=True).start()
 
