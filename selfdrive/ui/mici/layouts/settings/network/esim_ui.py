@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_manager import ESimManager
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, LABEL_COLOR
-from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigInputDialog
+from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigDialog, BigInputDialog
 from openpilot.system.hardware.base import Profile
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.system.ui.widgets import Widget
@@ -163,6 +163,7 @@ class ESimUIMici(NavScroller):
 
     self._esim_manager.add_callbacks(
       profiles_updated=self._on_profiles_updated,
+      operation_error=self._on_error,
     )
 
   def show_event(self):
@@ -219,6 +220,10 @@ class ESimUIMici(NavScroller):
       active = next((p for p in self._esim_manager.profiles if p.enabled), None)
       iccid = active.iccid if active else None
     self._move_profile_to_front(iccid)
+
+  def _on_error(self, error: str):
+    dlg = BigDialog("esim error", error)
+    gui_app.push_widget(dlg)
 
   def _on_profile_clicked(self, iccid: str):
     profile = next((p for p in self._esim_manager.profiles if p.iccid == iccid), None)
