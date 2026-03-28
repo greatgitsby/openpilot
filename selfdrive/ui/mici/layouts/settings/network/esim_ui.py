@@ -101,7 +101,7 @@ class QRScannerDialog(NavWidget):
     if self._scan_thread is None or not self._scan_thread.is_alive():
       frame = self._camera_view.frame
       gray = frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width]
-      gray = gray[::2, ::2].copy()
+      gray = gray[::4, ::4].copy()
 
       def scan():
         results = pyzbar_decode(gray)
