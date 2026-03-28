@@ -178,15 +178,16 @@ class AtClient:
       return self._expect()
     return self._dbus_query(cmd)
 
-  def _open_isdr_once(self) -> None:
+  def _open_isdr_once(self, close_stale: bool = True) -> None:
     """Try once to open ISD-R. Raises on failure."""
-    # close any stale logical channels from previous crashed sessions
-    for ch in range(1, 5):
-      try:
-        self.query(f"AT+CCHC={ch}")
-      except RuntimeError:
-        pass
-    time.sleep(0.5)
+    if close_stale:
+      # close any stale logical channels from previous crashed sessions
+      for ch in range(1, 5):
+        try:
+          self.query(f"AT+CCHC={ch}")
+        except RuntimeError:
+          pass
+      time.sleep(0.5)
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
@@ -696,7 +697,7 @@ class TiciLPA(LPABase):
     self._client.channel = None
     self._wait_for_modem()
 
-  def _wait_for_modem(self, timeout: float = 20.0) -> None:
+  def _wait_for_modem(self, timeout: float = 45.0) -> None:
     """Wait for modem to be ready and ISD-R to be accessible."""
     start = time.monotonic()
     while time.monotonic() - start < timeout:
@@ -704,7 +705,7 @@ class TiciLPA(LPABase):
         self._client._serial.close()
         self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
         self._client._disable_echo()
-        self._client._open_isdr_once()
+        self._client._open_isdr_once(close_stale=False)
         return
       except Exception:
         self._client.channel = None
