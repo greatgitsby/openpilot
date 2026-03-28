@@ -5,7 +5,6 @@ from functools import partial
 
 import pyray as rl
 
-from openpilot.common.swaglog import cloudlog
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.cellular_manager import CellularManager
 from openpilot.system.ui.lib.scroll_panel import GuiScrollPanel
@@ -194,21 +193,18 @@ class ESimManagerUI(Widget):
 
   def show_event(self):
     super().show_event()
-    print(f"[esim] show_event, cached profiles: {len(self._cellular_manager.profiles)}", flush=True)
     self._on_profiles_updated(self._cellular_manager.profiles)
     self._cellular_manager.refresh_profiles()
     gui_app.add_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def hide_event(self):
     super().hide_event()
-    print(f"[esim] hide_event", flush=True)
     gui_app.remove_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def _update_state(self):
     self._cellular_manager.process_callbacks()
 
   def _on_profiles_updated(self, profiles: list[Profile]):
-    print(f"[esim] _on_profiles_updated: {len(profiles)} profiles, installing_dialog={self._installing_dialog is not None}", flush=True)
     if self._installing_dialog:
       gui_app.pop_widget()
       self._installing_dialog = None
@@ -234,7 +230,6 @@ class ESimManagerUI(Widget):
       self._state_iccid = None
 
   def _on_error(self, error: str):
-    print(f"[esim] _on_error: {error}, installing_dialog={self._installing_dialog is not None}", flush=True)
     if self._installing_dialog:
       gui_app.pop_widget()
       self._installing_dialog = None
@@ -304,7 +299,6 @@ class ESimManagerUI(Widget):
       self._forget_buttons[profile.iccid].render(forget_rect)
 
   def _on_profile_clicked(self, iccid: str):
-    print(f"[esim] profile clicked: ...{iccid[-4:]}, busy={self._cellular_manager.busy}", flush=True)
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
     if profile is None:
       return
@@ -354,17 +348,14 @@ class ESimManagerUI(Widget):
 
   def _on_qr_scanned(self, lpa_code: str):
     self._pending_lpa_code = lpa_code
-    print(f"[esim] QR scanned: {lpa_code[:30]}...", flush=True)
 
     def check_connectivity():
       try:
         req = urllib.request.Request("https://openpilot.comma.ai", method="HEAD")
         urllib.request.urlopen(req, timeout=2.0)
         connected = True
-      except Exception as e:
-        print(f"[esim] connectivity check failed: {e}", flush=True)
+      except Exception:
         connected = False
-      print(f"[esim] connectivity: {connected}", flush=True)
       self._cellular_manager._callback_queue.append(
         lambda: self._start_download() if connected else self._on_error("No internet connection.\nConnect to Wi-Fi or cellular to install.")
       )
@@ -372,7 +363,6 @@ class ESimManagerUI(Widget):
     threading.Thread(target=check_connectivity, daemon=True).start()
 
   def _start_download(self):
-    print(f"[esim] starting download", flush=True)
     self._installing_dialog = InstallingDialog()
     gui_app.push_widget(self._installing_dialog)
     self._cellular_manager.download_profile(self._pending_lpa_code)

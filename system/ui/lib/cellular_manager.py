@@ -143,7 +143,6 @@ class CellularManager:
 
   def _finish_switch(self, profiles: list[Profile] | None = None, error: str | None = None):
     """Called on UI thread via callback queue to atomically clear switch state."""
-    print(f"[cellular] _finish_switch profiles={len(profiles) if profiles else None} error={error}", flush=True)
     self._busy = False
     self._switching_iccid = None
 
@@ -174,7 +173,6 @@ class CellularManager:
 
   def _finish_operation(self, profiles: list[Profile] | None = None, error: str | None = None):
     """Called on UI thread via callback queue to atomically clear busy state."""
-    print(f"[cellular] _finish_operation profiles={len(profiles) if profiles else None} error={error}", flush=True)
     self._busy = False
 
     if profiles is not None:
