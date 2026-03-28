@@ -23,7 +23,8 @@ class ESimNetworkButton(BigButton):
     else:
       active = next((p for p in self._esim_manager.profiles if p.enabled), None)
       if active:
-        display = active.nickname or active.provider or active.iccid[:12]
+        name = active.nickname or active.provider or active.iccid[:12]
+        display = f"{name} (...{active.iccid[-4:]})"
         self.set_value(display)
         self.set_icon(self._cell_icon)
       else:

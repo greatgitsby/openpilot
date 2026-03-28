@@ -38,13 +38,19 @@ class DeleteButton(Widget):
     rl.draw_texture_ex(self._trash_txt, (trash_x, trash_y), 0, 1.0, rl.WHITE)
 
 
+def _profile_display_name(profile: Profile) -> str:
+  name = profile.nickname or profile.provider or profile.iccid[:12]
+  suffix = profile.iccid[-4:]
+  return f"{name} (...{suffix})"
+
+
 class ESimProfileButton(BigButton):
   LABEL_PADDING = 98
   LABEL_WIDTH = 402 - 98 - 28
   SUB_LABEL_WIDTH = 402 - BigButton.LABEL_HORIZONTAL_PADDING * 2
 
   def __init__(self, profile: Profile, esim_manager: ESimManager):
-    display_name = profile.nickname or profile.provider or profile.iccid[:12]
+    display_name = _profile_display_name(profile)
     super().__init__(display_name, scroll=True)
 
     self._profile = profile
@@ -64,8 +70,7 @@ class ESimProfileButton(BigButton):
   def update_profile(self, profile: Profile):
     self._profile = profile
     self._deleting = False
-    display_name = profile.nickname or profile.provider or profile.iccid[:12]
-    self.set_text(display_name)
+    self.set_text(_profile_display_name(profile))
 
   @property
   def _show_delete_btn(self) -> bool:
