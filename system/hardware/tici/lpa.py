@@ -660,36 +660,26 @@ class TiciLPA(LPABase):
     return None
 
   def _reboot_modem(self) -> None:
-    """Reboot modem and re-open ISD-R."""
-    from openpilot.system.hardware import HARDWARE
-    try:
-      HARDWARE.reboot_modem()
-    except Exception:
-      pass  # modem may have already dropped (e.g. after catBusy)
+    """Reboot modem via AT commands and re-open ISD-R."""
+    for cmd in ('AT+CFUN=0', 'AT+CFUN=1,1'):
+      try:
+        self._client.query(cmd)
+      except Exception:
+        pass
     self._client.channel = None
-    if self._client._serial is not None:
-      self._client._serial.close()
-      self._client._serial = None
-
-    # wait for serial device to come back and modem to be ready
     self._wait_for_modem()
 
-  def _wait_for_modem(self, timeout: float = 60.0) -> None:
-    """Wait for modem serial device to reappear and ISD-R to be accessible."""
+  def _wait_for_modem(self, timeout: float = 20.0) -> None:
+    """Wait for modem to be ready and ISD-R to be accessible."""
     start = time.monotonic()
     while time.monotonic() - start < timeout:
-      if not os.path.exists(DEFAULT_DEVICE):
-        time.sleep(1)
-        continue
       try:
+        self._client._serial.close()
         self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
         self._client._disable_echo()
         self._client._open_isdr_once()
         return
       except Exception:
-        if self._client._serial is not None:
-          self._client._serial.close()
-          self._client._serial = None
         self._client.channel = None
         time.sleep(2)
     raise RuntimeError("Modem did not recover after reboot")
