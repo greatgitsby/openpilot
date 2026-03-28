@@ -149,12 +149,15 @@ class InstallingDialog(Widget):
   def show_event(self):
     super().show_event()
     self._show_time = rl.get_time()
+    if device:
+      device.set_override_interactive_timeout(600)
+
+  def hide_event(self):
+    super().hide_event()
+    if device:
+      device.set_override_interactive_timeout(None)
 
   def _render(self, rect):
-    # Keep screen awake during profile installation
-    if device:
-      device._reset_interactive_timeout()
-
     rl.draw_rectangle_rec(rl.Rectangle(0, 0, gui_app.width, gui_app.height), rl.Color(27, 27, 27, 255))
     t = (rl.get_time() - self._show_time) % (self.DOT_STEP * 2)
     dots = "." * min(int(t / (self.DOT_STEP / 4)), 3)
