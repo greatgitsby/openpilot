@@ -2,6 +2,7 @@
 
 import atexit
 import base64
+import hashlib
 import math
 import os
 import requests
@@ -40,7 +41,14 @@ TAG_NOTIFICATION_METADATA = 0xBF2F
 TAG_NOTIFICATION_SENT = 0xBF30
 TAG_ENABLE_PROFILE = 0xBF31
 TAG_DELETE_PROFILE = 0xBF33
+TAG_EUICC_INFO = 0xBF20
+TAG_PREPARE_DOWNLOAD = 0xBF21
+TAG_EUICC_CHALLENGE = 0xBF2E
+TAG_SET_NICKNAME = 0xBF29
 TAG_PROFILE_INSTALL_RESULT = 0xBF37
+TAG_BPP = 0xBF36
+TAG_AUTH_SERVER = 0xBF38
+TAG_CANCEL_SESSION = 0xBF41
 TAG_OK = 0xA0
 
 CAT_BUSY = 0x05
@@ -49,6 +57,25 @@ PROFILE_ERROR_CODES = {
   0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
   0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
   CAT_BUSY: "catBusy", 0x06: "undefinedError",
+}
+
+AUTH_SERVER_ERROR_CODES = {
+  0x01: "eUICCVerificationFailed", 0x02: "eUICCCertificateExpired",
+  0x03: "eUICCCertificateRevoked", 0x05: "invalidServerSignature",
+  0x06: "euiccCiPKUnknown", 0x0A: "matchingIdRefused",
+  0x10: "insufficientMemory",
+}
+BPP_COMMAND_NAMES = {
+  0: "initialiseSecureChannel", 1: "configureISDP", 2: "storeMetadata",
+  3: "storeMetadata2", 4: "replaceSessionKeys", 5: "loadProfileElements",
+}
+BPP_ERROR_REASONS = {
+  1: "incorrectInputValues", 2: "invalidSignature", 3: "invalidTransactionId",
+  4: "unsupportedCrtValues", 5: "unsupportedRemoteOperationType",
+  6: "unsupportedProfileClass", 7: "scp03tStructureError", 8: "scp03tSecurityError",
+  9: "iccidAlreadyExistsOnEuicc", 10: "insufficientMemoryForProfile",
+  11: "installInterrupted", 12: "peProcessingError", 13: "dataMismatch",
+  14: "invalidNAA",
 }
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
@@ -61,6 +88,14 @@ FieldMap = dict[int, tuple[str, Callable[[bytes], Any]]]
 
 def b64e(data: bytes) -> str:
   return base64.b64encode(data).decode("ascii")
+
+
+def base64_trim(s: str) -> str:
+  return "".join(c for c in s if c not in "\n\r \t")
+
+
+def b64d(s: str) -> bytes:
+  return base64.b64decode(base64_trim(s))
 
 
 class AtClient:
@@ -383,6 +418,213 @@ def process_notifications(client: AtClient) -> None:
 
 
 
+# --- Authentication & Download ---
+
+def get_challenge_and_info(client: AtClient) -> tuple[bytes, bytes]:
+  challenge_resp = es10x_command(client, encode_tlv(TAG_EUICC_CHALLENGE, b""))
+  challenge = require_tag(require_tag(challenge_resp, TAG_EUICC_CHALLENGE, "GetEuiccDataResponse"),
+                          TAG_STATUS, "challenge in response")
+  info_resp = es10x_command(client, encode_tlv(TAG_EUICC_INFO, b""))
+  if not info_resp.startswith(bytes([0xBF, 0x20])):
+    raise RuntimeError("Missing GetEuiccInfo1Response")
+  return challenge, info_resp
+
+
+def authenticate_server(client: AtClient, b64_signed1: str, b64_sig1: str, b64_pk_id: str, b64_cert: str, matching_id: str | None = None) -> str:
+  tac = bytes([0x35, 0x29, 0x06, 0x11])
+  device_info = encode_tlv(TAG_STATUS, tac) + encode_tlv(0xA1, b"")
+  ctx_inner = b""
+  if matching_id:
+    ctx_inner += encode_tlv(TAG_STATUS, matching_id.encode("utf-8"))
+  ctx_inner += encode_tlv(0xA1, device_info)
+  content = base64.b64decode(b64_signed1) + base64.b64decode(b64_sig1) + base64.b64decode(b64_pk_id) + base64.b64decode(b64_cert) + encode_tlv(0xA0, ctx_inner)
+  response = es10x_command(client, encode_tlv(TAG_AUTH_SERVER, content))
+  if not response.startswith(bytes([0xBF, 0x38])):
+    raise RuntimeError("Invalid AuthenticateServerResponse")
+  root = find_tag(response, TAG_AUTH_SERVER)
+  if root is not None:
+    error_tag = find_tag(root, 0xA1)
+    if error_tag is not None:
+      code = int.from_bytes(error_tag, "big") if error_tag else 0
+      raise RuntimeError(f"AuthenticateServer rejected by eUICC: {AUTH_SERVER_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+  return b64e(response)
+
+
+def prepare_download(client: AtClient, b64_signed2: str, b64_sig2: str, b64_cert: str, cc: str | None = None) -> str:
+  smdp_signed2 = base64.b64decode(b64_signed2)
+  smdp_signature2 = base64.b64decode(b64_sig2)
+  smdp_certificate = base64.b64decode(b64_cert)
+  smdp_signed2_root = find_tag(smdp_signed2, 0x30)
+  if smdp_signed2_root is None:
+    raise RuntimeError("Invalid smdpSigned2")
+  transaction_id = find_tag(smdp_signed2_root, TAG_STATUS)
+  cc_required_flag = find_tag(smdp_signed2_root, 0x01)
+  if transaction_id is None or cc_required_flag is None:
+    raise RuntimeError("Invalid smdpSigned2")
+  content = smdp_signed2 + smdp_signature2
+  if int.from_bytes(cc_required_flag, "big") != 0:
+    if not cc:
+      raise RuntimeError("Confirmation code required but not provided")
+    content += encode_tlv(0x04, hashlib.sha256(hashlib.sha256(cc.encode("utf-8")).digest() + transaction_id).digest())
+  content += smdp_certificate
+  response = es10x_command(client, encode_tlv(TAG_PREPARE_DOWNLOAD, content))
+  if not response.startswith(bytes([0xBF, 0x21])):
+    raise RuntimeError("Invalid PrepareDownloadResponse")
+  return b64e(response)
+
+
+def _parse_tlv_header_len(data: bytes) -> int:
+  tag_len = 2 if data[0] & 0x1F == 0x1F else 1
+  length_byte = data[tag_len]
+  return tag_len + (1 + (length_byte & 0x7F) if length_byte & 0x80 else 1)
+
+
+def load_bpp(client: AtClient, b64_bpp: str) -> dict:
+  bpp = b64d(b64_bpp)
+  if not bpp.startswith(bytes([0xBF, 0x36])):
+    raise RuntimeError("Invalid BoundProfilePackage")
+
+  bpp_root_value = None
+  for tag, value, start, end in iter_tlv(bpp, with_positions=True):
+    if tag == TAG_BPP:
+      bpp_root_value = value
+      bpp_value_start = start + _parse_tlv_header_len(bpp[start:end])
+      break
+  if bpp_root_value is None:
+    raise RuntimeError("Invalid BoundProfilePackage")
+
+  chunks: list[bytes] = []
+  for tag, value, start, end in iter_tlv(bpp_root_value, with_positions=True):
+    if tag == 0xBF23:
+      chunks.append(bpp[0 : bpp_value_start + end])
+    elif tag == 0xA0:
+      chunks.append(bpp[bpp_value_start + start : bpp_value_start + end])
+    elif tag in (0xA1, 0xA3):
+      hdr_len = _parse_tlv_header_len(bpp_root_value[start:end])
+      chunks.append(bpp[bpp_value_start + start : bpp_value_start + start + hdr_len])
+      for _, _, child_start, child_end in iter_tlv(value, with_positions=True):
+        chunks.append(value[child_start:child_end])
+    elif tag == 0xA2:
+      chunks.append(bpp[bpp_value_start + start : bpp_value_start + end])
+
+  result: dict[str, Any] = {"seqNumber": 0, "success": False, "bppCommandId": None, "errorReason": None}
+  for chunk in chunks:
+    response = es10x_command(client, chunk)
+    if not response:
+      continue
+    root = find_tag(response, TAG_PROFILE_INSTALL_RESULT)
+    if not root:
+      continue
+    result_data = find_tag(root, 0xBF27)
+    if not result_data:
+      break
+    notif_meta = find_tag(result_data, TAG_NOTIFICATION_METADATA)
+    if notif_meta:
+      seq_num = find_tag(notif_meta, TAG_STATUS)
+      if seq_num:
+        result["seqNumber"] = int.from_bytes(seq_num, "big")
+    final_result = find_tag(result_data, 0xA2)
+    if final_result:
+      for tag, value in iter_tlv(final_result):
+        if tag == 0xA0:
+          result["success"] = True
+        elif tag == 0xA1:
+          bpp_cmd = find_tag(value, TAG_STATUS)
+          if bpp_cmd:
+            result["bppCommandId"] = int.from_bytes(bpp_cmd, "big")
+          err = find_tag(value, 0x81)
+          if err:
+            result["errorReason"] = int.from_bytes(err, "big")
+    break
+  if not result["success"] and result["errorReason"] is not None:
+    cmd_name = BPP_COMMAND_NAMES.get(result["bppCommandId"], f"unknown({result['bppCommandId']})")
+    err_name = BPP_ERROR_REASONS.get(result["errorReason"], f"unknown({result['errorReason']})")
+    raise RuntimeError(f"Profile installation failed at {cmd_name}: {err_name} (bppCommandId={result['bppCommandId']}, errorReason={result['errorReason']})")
+  return result
+
+
+def parse_metadata(b64_metadata: str) -> dict:
+  root = find_tag(b64d(b64_metadata), 0xBF25)
+  if root is None:
+    raise RuntimeError("Invalid profileMetadata")
+  return decode_struct(root, PROFILE)
+
+
+def cancel_session(client: AtClient, transaction_id: bytes, reason: int = 127) -> str:
+  content = encode_tlv(0x80, transaction_id) + encode_tlv(0x81, bytes([reason]))
+  response = es10x_command(client, encode_tlv(TAG_CANCEL_SESSION, content))
+  return b64e(response)
+
+
+def parse_lpa_activation_code(activation_code: str) -> tuple[str, str, str]:
+  if not activation_code.startswith("LPA:"):
+    raise ValueError("Invalid activation code format")
+  parts = activation_code[4:].split("$")
+  if len(parts) != 3:
+    raise ValueError("Invalid activation code format")
+  return parts[0], parts[1], parts[2]
+
+
+def download_profile(client: AtClient, activation_code: str) -> str:
+  """Download and install an eSIM profile. Returns the ICCID of the installed profile."""
+  _, smdp, matching_id = parse_lpa_activation_code(activation_code)
+
+  challenge, euicc_info = get_challenge_and_info(client)
+
+  payload: dict[str, str] = {"smdpAddress": smdp, "euiccChallenge": b64e(challenge), "euiccInfo1": b64e(euicc_info)}
+  if matching_id:
+    payload["matchingId"] = matching_id
+  auth = es9p_request(smdp, "initiateAuthentication", payload, "Authentication")
+  tx_id = base64_trim(auth.get("transactionId", ""))
+  tx_id_bytes = base64.b64decode(tx_id) if tx_id else b""
+
+  try:
+    b64_auth_resp = authenticate_server(
+      client, base64_trim(auth.get("serverSigned1", "")), base64_trim(auth.get("serverSignature1", "")),
+      base64_trim(auth.get("euiccCiPKIdToBeUsed", "")), base64_trim(auth.get("serverCertificate", "")),
+      matching_id=matching_id)
+
+    cli = es9p_request(smdp, "authenticateClient", {"transactionId": tx_id, "authenticateServerResponse": b64_auth_resp}, "Authentication")
+    metadata = parse_metadata(base64_trim(cli.get("profileMetadata", "")))
+    iccid = metadata.get("iccid", "")
+
+    b64_prep = prepare_download(
+      client, base64_trim(cli.get("smdpSigned2", "")), base64_trim(cli.get("smdpSignature2", "")), base64_trim(cli.get("smdpCertificate", "")))
+
+    bpp = es9p_request(smdp, "getBoundProfilePackage", {"transactionId": tx_id, "prepareDownloadResponse": b64_prep}, "GetBoundProfilePackage")
+
+    result = load_bpp(client, base64_trim(bpp.get("boundProfilePackage", "")))
+    if not result["success"]:
+      raise RuntimeError(f"Profile installation failed: {result}")
+    return iccid
+  except Exception:
+    if tx_id_bytes:
+      b64_cancel_resp = ""
+      try:
+        b64_cancel_resp = cancel_session(client, tx_id_bytes)
+      except Exception:
+        pass
+      try:
+        es9p_request(smdp, "cancelSession", {"transactionId": tx_id, "cancelSessionResponse": b64_cancel_resp}, "CancelSession")
+      except Exception:
+        pass
+    raise
+
+
+def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
+  nickname_bytes = nickname.encode("utf-8")
+  if len(nickname_bytes) > 64:
+    raise ValueError("Profile nickname must be 64 bytes or less")
+  content = encode_tlv(TAG_ICCID, string_to_tbcd(iccid)) + encode_tlv(0x90, nickname_bytes)
+  response = es10x_command(client, encode_tlv(TAG_SET_NICKNAME, content))
+  root = require_tag(response, TAG_SET_NICKNAME, "SetNicknameResponse")
+  code = require_tag(root, TAG_STATUS, "status in SetNicknameResponse")[0]
+  if code == 0x01:
+    raise LPAError(f"profile {iccid} not found")
+  if code != 0x00:
+    raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
+
+
 class TiciLPA(LPABase):
   _instance = None
 
@@ -465,10 +707,13 @@ class TiciLPA(LPABase):
     process_notifications(self._client)
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
-    return None
+    iccid = download_profile(self._client, qr)
+    process_notifications(self._client)
+    if nickname and iccid:
+      self.nickname_profile(iccid, nickname)
 
   def nickname_profile(self, iccid: str, nickname: str) -> None:
-    return None
+    set_profile_nickname(self._client, iccid, nickname)
 
   def _enable_profile(self, iccid: str, refresh: bool = True) -> int:
     inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
