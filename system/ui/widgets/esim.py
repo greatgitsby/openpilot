@@ -194,18 +194,21 @@ class ESimManagerUI(Widget):
 
   def show_event(self):
     super().show_event()
+    print(f"[esim] show_event, cached profiles: {len(self._cellular_manager.profiles)}", flush=True)
     self._on_profiles_updated(self._cellular_manager.profiles)
     self._cellular_manager.refresh_profiles()
     gui_app.add_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def hide_event(self):
     super().hide_event()
+    print(f"[esim] hide_event", flush=True)
     gui_app.remove_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def _update_state(self):
     self._cellular_manager.process_callbacks()
 
   def _on_profiles_updated(self, profiles: list[Profile]):
+    print(f"[esim] _on_profiles_updated: {len(profiles)} profiles, installing_dialog={self._installing_dialog is not None}", flush=True)
     if self._installing_dialog:
       gui_app.pop_widget()
       self._installing_dialog = None
@@ -231,6 +234,7 @@ class ESimManagerUI(Widget):
       self._state_iccid = None
 
   def _on_error(self, error: str):
+    print(f"[esim] _on_error: {error}, installing_dialog={self._installing_dialog is not None}", flush=True)
     if self._installing_dialog:
       gui_app.pop_widget()
       self._installing_dialog = None
@@ -300,6 +304,7 @@ class ESimManagerUI(Widget):
       self._forget_buttons[profile.iccid].render(forget_rect)
 
   def _on_profile_clicked(self, iccid: str):
+    print(f"[esim] profile clicked: ...{iccid[-4:]}, busy={self._cellular_manager.busy}", flush=True)
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
     if profile is None:
       return
