@@ -186,6 +186,11 @@ class ESimManagerUI(Widget):
     super().show_event()
     self._on_profiles_updated(self._cellular_manager.profiles)
     self._cellular_manager.refresh_profiles()
+    gui_app.add_nav_stack_tick(self._cellular_manager.process_callbacks)
+
+  def hide_event(self):
+    super().hide_event()
+    gui_app.remove_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def _update_state(self):
     self._cellular_manager.process_callbacks()
