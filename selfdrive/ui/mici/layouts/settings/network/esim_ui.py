@@ -1,7 +1,7 @@
 import threading
 import urllib.request
 
-import cv2
+from pyzbar.pyzbar import decode as pyzbar_decode
 import pyray as rl
 from collections.abc import Callable
 from msgq.visionipc import VisionStreamType
@@ -65,7 +65,6 @@ class QRScannerDialog(NavWidget):
     super().__init__()
     self._on_qr_detected = on_qr_detected
     self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_DRIVER)
-    self._detector = cv2.QRCodeDetector()
     self._detected = False
     self.set_rect(rl.Rectangle(0, 0, gui_app.width, gui_app.height))
 
@@ -87,7 +86,8 @@ class QRScannerDialog(NavWidget):
 
     frame = self._camera_view.frame
     gray = frame.data[:frame.uv_offset].reshape(frame.height, frame.stride)[:, :frame.width]
-    data, _, _ = self._detector.detectAndDecode(gray)
+    results = pyzbar_decode(gray)
+    data = results[0].data.decode('utf-8') if results else ""
     if data and _is_valid_lpa_code(data):
       self._detected = True
       self.dismiss(lambda: self._on_qr_detected(data))
