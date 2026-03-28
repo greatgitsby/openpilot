@@ -113,6 +113,18 @@ class ESimManager:
 
     threading.Thread(target=worker, daemon=True).start()
 
+  def _finish_switch(self, profiles: list[Profile] | None = None, error: str | None = None):
+    """Called on UI thread via callback queue to atomically clear switch state."""
+    self._busy = False
+    self._switching_iccid = None
+    if profiles is not None:
+      self._profiles = profiles
+      for cb in self._profiles_updated_cbs:
+        cb(profiles)
+    if error is not None:
+      for cb in self._operation_error_cbs:
+        cb(error)
+
   def switch_profile(self, iccid: str):
     self._busy = True
     self._switching_iccid = iccid
@@ -122,17 +134,23 @@ class ESimManager:
         with self._lock:
           self._lpa.switch_profile(iccid)
           profiles = self._lpa.list_profiles()
-        self._profiles = profiles
-        self._busy = False
-        self._switching_iccid = None
-        self._enqueue_callbacks(self._profiles_updated_cbs, profiles)
+        self._callback_queue.append(lambda: self._finish_switch(profiles=profiles))
       except Exception as e:
-        self._busy = False
-        self._switching_iccid = None
         cloudlog.exception("Failed to switch eSIM profile")
-        self._enqueue_callbacks(self._operation_error_cbs, str(e))
+        self._callback_queue.append(lambda: self._finish_switch(error=str(e)))
 
     threading.Thread(target=worker, daemon=True).start()
+
+  def _finish_operation(self, profiles: list[Profile] | None = None, error: str | None = None):
+    """Called on UI thread via callback queue to atomically clear busy state."""
+    self._busy = False
+    if profiles is not None:
+      self._profiles = profiles
+      for cb in self._profiles_updated_cbs:
+        cb(profiles)
+    if error is not None:
+      for cb in self._operation_error_cbs:
+        cb(error)
 
   def delete_profile(self, iccid: str):
     self._busy = True
@@ -142,13 +160,10 @@ class ESimManager:
         with self._lock:
           self._lpa.delete_profile(iccid)
           profiles = self._lpa.list_profiles()
-        self._profiles = profiles
-        self._busy = False
-        self._enqueue_callbacks(self._profiles_updated_cbs, profiles)
+        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
-        self._busy = False
         cloudlog.exception("Failed to delete eSIM profile")
-        self._enqueue_callbacks(self._operation_error_cbs, str(e))
+        self._callback_queue.append(lambda: self._finish_operation(error=str(e)))
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -160,12 +175,9 @@ class ESimManager:
         with self._lock:
           self._lpa.nickname_profile(iccid, nickname)
           profiles = self._lpa.list_profiles()
-        self._profiles = profiles
-        self._busy = False
-        self._enqueue_callbacks(self._profiles_updated_cbs, profiles)
+        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
-        self._busy = False
         cloudlog.exception("Failed to update eSIM profile nickname")
-        self._enqueue_callbacks(self._operation_error_cbs, str(e))
+        self._callback_queue.append(lambda: self._finish_operation(error=str(e)))
 
     threading.Thread(target=worker, daemon=True).start()
