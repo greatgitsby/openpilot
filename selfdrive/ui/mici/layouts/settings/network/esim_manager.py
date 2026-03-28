@@ -167,6 +167,21 @@ class ESimManager:
 
     threading.Thread(target=worker, daemon=True).start()
 
+  def download_profile(self, qr: str, nickname: str | None = None):
+    self._busy = True
+
+    def worker():
+      try:
+        with self._lock:
+          self._lpa.download_profile(qr, nickname)
+          profiles = self._lpa.list_profiles()
+        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
+      except Exception as e:
+        cloudlog.exception("Failed to download eSIM profile")
+        self._callback_queue.append(lambda: self._finish_operation(error=str(e)))
+
+    threading.Thread(target=worker, daemon=True).start()
+
   def nickname_profile(self, iccid: str, nickname: str):
     self._busy = True
 
