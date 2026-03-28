@@ -373,7 +373,13 @@ def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: 
     status = data["header"]["functionExecutionStatus"]
     if status.get("status") == "Failed":
       sd = status.get("statusCodeData", {})
-      raise RuntimeError(f"{error_prefix} failed: {sd.get('reasonCode', 'unknown')}/{sd.get('subjectCode', 'unknown')} - {sd.get('message', 'unknown')}")
+      reason = sd.get('reasonCode', 'unknown')
+      subject = sd.get('subjectCode', 'unknown')
+      msg = f"{error_prefix} failed: {reason}/{subject} - {sd.get('message', 'unknown')}"
+      # 3.8/8.2.6 = "Refused" — profile already installed on another device
+      if reason == '3.8' and subject == '8.2.6':
+        msg = "This eSIM profile is already installed on another device. Please use a new QR code."
+      raise RuntimeError(msg)
   return data
 
 
