@@ -21,11 +21,13 @@ try:
   from msgq.visionipc import VisionStreamType
   from openpilot.selfdrive.ui.onroad.cameraview import CameraView
   from openpilot.common.params import Params
+  from openpilot.selfdrive.ui.ui_state import device
 except Exception:
   pyzbar_decode = None
   VisionStreamType = None
   CameraView = None
   Params = None
+  device = None
 
 ITEM_HEIGHT = 160
 ICON_SIZE = 50
@@ -149,6 +151,10 @@ class InstallingDialog(Widget):
     self._show_time = rl.get_time()
 
   def _render(self, rect):
+    # Keep screen awake during profile installation
+    if device:
+      device._reset_interactive_timeout()
+
     rl.draw_rectangle_rec(rl.Rectangle(0, 0, gui_app.width, gui_app.height), rl.Color(27, 27, 27, 255))
     t = (rl.get_time() - self._show_time) % (self.DOT_STEP * 2)
     dots = "." * min(int(t / (self.DOT_STEP / 4)), 3)
