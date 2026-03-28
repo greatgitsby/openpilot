@@ -6,7 +6,7 @@ import pyray as rl
 from collections.abc import Callable
 from msgq.visionipc import VisionStreamType
 
-from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_manager import ESimManager
+from openpilot.selfdrive.ui.mici.layouts.settings.network.cellular_manager import CellularManager
 from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, LABEL_COLOR
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigDialog, BigInputDialog
@@ -162,12 +162,12 @@ class ESimProfileButton(BigButton):
   LABEL_WIDTH = 402 - 98 - 28
   SUB_LABEL_WIDTH = 402 - BigButton.LABEL_HORIZONTAL_PADDING * 2
 
-  def __init__(self, profile: Profile, esim_manager: ESimManager):
+  def __init__(self, profile: Profile, cellular_manager: CellularManager):
     display_name = _profile_display_name(profile)
     super().__init__(display_name, scroll=True)
 
     self._profile = profile
-    self._esim_manager = esim_manager
+    self._cellular_manager = cellular_manager
     self._deleting = False
 
     self._cell_full_txt = gui_app.texture("icons_mici/settings/network/cell_strength_full.png", 48, 36)
@@ -189,13 +189,13 @@ class ESimProfileButton(BigButton):
   def _show_delete_btn(self) -> bool:
     if self._deleting or self._profile.enabled:
       return False
-    return not self._esim_manager.is_comma_profile(self._profile.iccid)
+    return not self._cellular_manager.is_comma_profile(self._profile.iccid)
 
   def _on_delete(self):
     if self._deleting:
       return
     self._deleting = True
-    self._esim_manager.delete_profile(self._profile.iccid)
+    self._cellular_manager.delete_profile(self._profile.iccid)
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if self._show_delete_btn and rl.check_collision_point_rec(mouse_pos, self._delete_btn.rect):
@@ -245,14 +245,14 @@ class ESimProfileButton(BigButton):
   def _update_state(self):
     super()._update_state()
 
-    if self._esim_manager.busy or self._deleting:
+    if self._cellular_manager.busy or self._deleting:
       self.set_enabled(False)
       self._sub_label.set_color(rl.Color(255, 255, 255, int(255 * 0.585)))
       self._sub_label.set_font_weight(FontWeight.ROMAN)
 
       if self._deleting:
         self.set_value("deleting...")
-      elif self._esim_manager.busy:
+      elif self._cellular_manager.busy:
         self.set_value("switching..." if not self._profile.enabled else "active")
     elif self._profile.enabled:
       self.set_value("active")
@@ -267,23 +267,23 @@ class ESimProfileButton(BigButton):
 
 
 class ESimUIMici(NavScroller):
-  def __init__(self, esim_manager: ESimManager):
+  def __init__(self, cellular_manager: CellularManager):
     super().__init__()
 
-    self._esim_manager = esim_manager
+    self._cellular_manager = cellular_manager
     self._add_profile_btn = BigButton("add profile", "scan QR code")
     self._add_profile_btn.set_click_callback(self._on_add_profile)
     self._installing_dialog: InstallingProfileDialog | None = None
 
-    self._esim_manager.add_callbacks(
+    self._cellular_manager.add_callbacks(
       profiles_updated=self._on_profiles_updated,
       operation_error=self._on_error,
     )
 
   def show_event(self):
     super().show_event()
-    self._on_profiles_updated(self._esim_manager.profiles)
-    self._esim_manager.refresh_profiles()
+    self._on_profiles_updated(self._cellular_manager.profiles)
+    self._cellular_manager.refresh_profiles()
 
   def _on_profiles_updated(self, profiles: list[Profile]):
     if self._installing_dialog:
@@ -299,7 +299,7 @@ class ESimUIMici(NavScroller):
       if profile.iccid in existing:
         existing[profile.iccid].update_profile(profile)
       else:
-        btn = ESimProfileButton(profile, self._esim_manager)
+        btn = ESimProfileButton(profile, self._cellular_manager)
         btn.set_click_callback(lambda iccid=profile.iccid: self._on_profile_clicked(iccid))
         self._scroller.add_widget(btn)
 
@@ -331,12 +331,12 @@ class ESimUIMici(NavScroller):
 
   def _update_state(self):
     super()._update_state()
-    self._add_profile_btn.set_enabled(not self._esim_manager.busy)
+    self._add_profile_btn.set_enabled(not self._cellular_manager.busy)
 
     # Keep the switching/active profile at the front with animation
-    iccid = self._esim_manager.switching_iccid
+    iccid = self._cellular_manager.switching_iccid
     if iccid is None:
-      active = next((p for p in self._esim_manager.profiles if p.enabled), None)
+      active = next((p for p in self._cellular_manager.profiles if p.enabled), None)
       iccid = active.iccid if active else None
     self._move_profile_to_front(iccid)
 
@@ -354,7 +354,7 @@ class ESimUIMici(NavScroller):
         connected = True
       except Exception:
         connected = False
-      self._esim_manager._callback_queue.append(
+      self._cellular_manager._callback_queue.append(
         lambda: self._start_download() if connected else self._on_error("no internet connection\nconnect to wifi or\ncellular to install")
       )
 
@@ -363,7 +363,7 @@ class ESimUIMici(NavScroller):
   def _start_download(self):
     self._installing_dialog = InstallingProfileDialog()
     gui_app.push_widget(self._installing_dialog)
-    self._esim_manager.download_profile(self._pending_lpa_code)
+    self._cellular_manager.download_profile(self._pending_lpa_code)
 
   def _on_error(self, error: str):
     if self._installing_dialog:
@@ -374,7 +374,7 @@ class ESimUIMici(NavScroller):
       gui_app.push_widget(dlg)
 
   def _on_profile_clicked(self, iccid: str):
-    profile = next((p for p in self._esim_manager.profiles if p.iccid == iccid), None)
+    profile = next((p for p in self._cellular_manager.profiles if p.iccid == iccid), None)
     if profile is None:
       return
 
@@ -382,9 +382,9 @@ class ESimUIMici(NavScroller):
       # Edit nickname
       current_name = profile.nickname or ""
       dlg = BigInputDialog("enter nickname...", current_name, minimum_length=0,
-                           confirm_callback=lambda name: self._esim_manager.nickname_profile(iccid, name))
+                           confirm_callback=lambda name: self._cellular_manager.nickname_profile(iccid, name))
       gui_app.push_widget(dlg)
     else:
       # Switch to profile immediately
-      self._esim_manager.switch_profile(iccid)
+      self._cellular_manager.switch_profile(iccid)
       self._move_profile_to_front(iccid, scroll=True)

@@ -1,7 +1,7 @@
 import pyray as rl
 
 from cereal import log
-from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_manager import ESimManager
+from openpilot.selfdrive.ui.mici.layouts.settings.network.cellular_manager import CellularManager
 from openpilot.selfdrive.ui.mici.layouts.settings.network.wifi_ui import WifiIcon
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -12,8 +12,8 @@ NetworkType = log.DeviceState.NetworkType
 
 
 class ESimNetworkButton(BigButton):
-  def __init__(self, esim_manager: ESimManager):
-    self._esim_manager = esim_manager
+  def __init__(self, cellular_manager: CellularManager):
+    self._cellular_manager = cellular_manager
     self._cell_none_icon = gui_app.texture("icons_mici/settings/network/cell_strength_none.png", 64, 47)
     self._cell_low_icon = gui_app.texture("icons_mici/settings/network/cell_strength_low.png", 64, 47)
     self._cell_medium_icon = gui_app.texture("icons_mici/settings/network/cell_strength_medium.png", 64, 47)
@@ -24,16 +24,16 @@ class ESimNetworkButton(BigButton):
   def _update_state(self):
     super()._update_state()
 
-    if self._esim_manager.busy:
+    if self._cellular_manager.busy:
       self.set_text("esim")
       self.set_value("switching...")
       self.set_icon(self._cell_none_icon)
     else:
-      active = next((p for p in self._esim_manager.profiles if p.enabled), None)
+      active = next((p for p in self._cellular_manager.profiles if p.enabled), None)
       if active:
         name = active.nickname or active.provider or active.iccid[:12]
         self.set_text(f"{name} (...{active.iccid[-4:]})")
-        self.set_value(self._esim_manager.modem_ip or "obtaining IP...")
+        self.set_value(self._cellular_manager.modem_ip or "obtaining IP...")
         self.set_icon(self._get_cell_icon())
       else:
         self.set_text("esim")

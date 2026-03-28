@@ -1,6 +1,6 @@
 from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.selfdrive.ui.mici.layouts.settings.network import ESimNetworkButton, WifiNetworkButton
-from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_manager import ESimManager
+from openpilot.selfdrive.ui.mici.layouts.settings.network.cellular_manager import CellularManager
 from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_ui import ESimUIMici
 from openpilot.selfdrive.ui.mici.layouts.settings.network.wifi_ui import WifiUIMici
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigMultiToggle, BigParamControl, BigToggle
@@ -67,9 +67,9 @@ class NetworkLayoutMici(NavScroller):
     self._wifi_button.set_click_callback(lambda: gui_app.push_widget(self._wifi_ui))
 
     # ******** eSIM ********
-    self._esim_manager = ESimManager()
-    self._esim_ui = ESimUIMici(self._esim_manager)
-    self._esim_button = ESimNetworkButton(self._esim_manager)
+    self._cellular_manager = CellularManager()
+    self._esim_ui = ESimUIMici(self._cellular_manager)
+    self._esim_button = ESimNetworkButton(self._cellular_manager)
     self._esim_button.set_click_callback(lambda: gui_app.push_widget(self._esim_ui))
 
     # ******** Advanced settings ********
@@ -115,18 +115,18 @@ class NetworkLayoutMici(NavScroller):
   def show_event(self):
     super().show_event()
     self._wifi_manager.set_active(True)
-    self._esim_manager.refresh_profiles()
+    self._cellular_manager.refresh_profiles()
 
     # Process wifi and esim callbacks while at any point in the nav stack
     gui_app.add_nav_stack_tick(self._wifi_manager.process_callbacks)
-    gui_app.add_nav_stack_tick(self._esim_manager.process_callbacks)
+    gui_app.add_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def hide_event(self):
     super().hide_event()
     self._wifi_manager.set_active(False)
 
     gui_app.remove_nav_stack_tick(self._wifi_manager.process_callbacks)
-    gui_app.remove_nav_stack_tick(self._esim_manager.process_callbacks)
+    gui_app.remove_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def _toggle_roaming(self, checked: bool):
     self._wifi_manager.update_gsm_settings(checked, ui_state.params.get("GsmApn") or "", ui_state.params.get_bool("GsmMetered"))

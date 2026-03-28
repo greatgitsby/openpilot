@@ -73,7 +73,7 @@ def _get_lpa() -> LPABase:
     return MockLPA()
 
 
-class ESimManager:
+class CellularManager:
   def __init__(self):
     self._lpa: LPABase = _get_lpa()
     self._profiles: list[Profile] = []
