@@ -641,6 +641,11 @@ class TiciLPA(LPABase):
     atexit.register(self._client.close)
 
   def list_profiles(self) -> list[Profile]:
+    try:
+      profiles = list_profiles(self._client)
+    except serial.serialutil.SerialException:
+      self._wait_for_modem()
+      profiles = list_profiles(self._client)
     return [
       Profile(
         iccid=p.get("iccid", ""),
@@ -648,7 +653,7 @@ class TiciLPA(LPABase):
         enabled=p.get("profileState") == "enabled",
         provider=p.get("serviceProviderName") or "",
       )
-      for p in list_profiles(self._client)
+      for p in profiles
     ]
 
   def get_active_profile(self) -> Profile | None:
