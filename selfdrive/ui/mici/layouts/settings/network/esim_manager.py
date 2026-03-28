@@ -64,6 +64,7 @@ class ESimManager:
     self._profiles: list[Profile] = []
     self._busy: bool = False
     self._switching_iccid: str | None = None
+
     self._lock = threading.Lock()
     self._callback_queue: list[Callable] = []
 
@@ -105,11 +106,10 @@ class ESimManager:
       try:
         with self._lock:
           profiles = self._lpa.list_profiles()
-        self._profiles = profiles
-        self._enqueue_callbacks(self._profiles_updated_cbs, profiles)
+        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to list eSIM profiles")
-        self._enqueue_callbacks(self._operation_error_cbs, str(e))
+        self._callback_queue.append(lambda: self._finish_operation(error=str(e)))
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -117,6 +117,7 @@ class ESimManager:
     """Called on UI thread via callback queue to atomically clear switch state."""
     self._busy = False
     self._switching_iccid = None
+
     if profiles is not None:
       self._profiles = profiles
       for cb in self._profiles_updated_cbs:
@@ -144,6 +145,7 @@ class ESimManager:
   def _finish_operation(self, profiles: list[Profile] | None = None, error: str | None = None):
     """Called on UI thread via callback queue to atomically clear busy state."""
     self._busy = False
+
     if profiles is not None:
       self._profiles = profiles
       for cb in self._profiles_updated_cbs:
