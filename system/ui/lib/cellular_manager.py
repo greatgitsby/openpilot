@@ -65,17 +65,17 @@ class MockLPA(LPABase):
     ]
 
 
+LPA_RETRY_INTERVAL = 5.0
+
+
 def _get_lpa() -> LPABase:
-  try:
-    from openpilot.system.hardware import HARDWARE
-    return HARDWARE.get_sim_lpa()
-  except Exception:
-    return MockLPA()
+  from openpilot.system.hardware import HARDWARE
+  return HARDWARE.get_sim_lpa()
 
 
 class CellularManager:
   def __init__(self):
-    self._lpa: LPABase = _get_lpa()
+    self._lpa: LPABase | None = None
     self._profiles: list[Profile] = []
     self._busy: bool = False
     self._switching_iccid: str | None = None
@@ -128,15 +128,23 @@ class CellularManager:
   def is_comma_profile(self, iccid: str) -> bool:
     return any(p.iccid == iccid and p.provider == 'Webbing' for p in self._profiles)
 
+  def _ensure_lpa(self) -> LPABase:
+    if self._lpa is None:
+      self._lpa = _get_lpa()
+    return self._lpa
+
   def refresh_profiles(self):
     def worker():
       try:
         with self._lock:
-          self._lpa.process_notifications()
-          profiles = self._lpa.list_profiles()
+          lpa = self._ensure_lpa()
+          lpa.process_notifications()
+          profiles = lpa.list_profiles()
         self._callback_queue.append(lambda: self._finish_refresh(profiles))
-      except Exception as e:
+      except Exception:
         cloudlog.exception("Failed to list eSIM profiles")
+        time.sleep(LPA_RETRY_INTERVAL)
+        self._callback_queue.append(lambda: self.refresh_profiles())
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -167,8 +175,9 @@ class CellularManager:
     def worker():
       try:
         with self._lock:
-          self._lpa.switch_profile(iccid)
-          profiles = self._lpa.list_profiles()
+          lpa = self._ensure_lpa()
+          lpa.switch_profile(iccid)
+          profiles = lpa.list_profiles()
         self._callback_queue.append(lambda: self._finish_switch(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to switch eSIM profile")
@@ -195,8 +204,9 @@ class CellularManager:
     def worker():
       try:
         with self._lock:
-          self._lpa.delete_profile(iccid)
-          profiles = self._lpa.list_profiles()
+          lpa = self._ensure_lpa()
+          lpa.delete_profile(iccid)
+          profiles = lpa.list_profiles()
         self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to delete eSIM profile")
@@ -211,8 +221,9 @@ class CellularManager:
     def worker():
       try:
         with self._lock:
-          self._lpa.download_profile(qr, nickname)
-          profiles = self._lpa.list_profiles()
+          lpa = self._ensure_lpa()
+          lpa.download_profile(qr, nickname)
+          profiles = lpa.list_profiles()
         self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to download eSIM profile")
@@ -227,8 +238,9 @@ class CellularManager:
     def worker():
       try:
         with self._lock:
-          self._lpa.nickname_profile(iccid, nickname)
-          profiles = self._lpa.list_profiles()
+          lpa = self._ensure_lpa()
+          lpa.nickname_profile(iccid, nickname)
+          profiles = lpa.list_profiles()
         self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to update eSIM profile nickname")
