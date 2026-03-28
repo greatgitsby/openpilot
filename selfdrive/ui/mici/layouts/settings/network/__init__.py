@@ -12,9 +12,10 @@ from openpilot.system.ui.lib.wifi_manager import WifiManager, ConnectStatus, Sec
 def _get_ppp0_ip() -> str:
   try:
     out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "ppp0"], timeout=1, text=True)
-    for part in out.split():
-      if "." in part and "/" in part:
-        return part.split("/")[0]
+    parts = out.split()
+    for i, part in enumerate(parts):
+      if part == "inet" and i + 1 < len(parts):
+        return parts[i + 1].split("/")[0]
   except Exception:
     pass
   return ""
