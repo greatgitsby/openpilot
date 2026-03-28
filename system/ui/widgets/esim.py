@@ -5,6 +5,7 @@ from functools import partial
 
 import pyray as rl
 
+from openpilot.common.swaglog import cloudlog
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.cellular_manager import CellularManager
 from openpilot.system.ui.lib.scroll_panel import GuiScrollPanel
@@ -339,14 +340,17 @@ class ESimManagerUI(Widget):
 
   def _on_qr_scanned(self, lpa_code: str):
     self._pending_lpa_code = lpa_code
+    print(f"[esim] QR scanned: {lpa_code[:30]}...", flush=True)
 
     def check_connectivity():
       try:
         req = urllib.request.Request("https://openpilot.comma.ai", method="HEAD")
         urllib.request.urlopen(req, timeout=2.0)
         connected = True
-      except Exception:
+      except Exception as e:
+        print(f"[esim] connectivity check failed: {e}", flush=True)
         connected = False
+      print(f"[esim] connectivity: {connected}", flush=True)
       self._cellular_manager._callback_queue.append(
         lambda: self._start_download() if connected else self._on_error("No internet connection.\nConnect to Wi-Fi or cellular to install.")
       )
@@ -354,6 +358,7 @@ class ESimManagerUI(Widget):
     threading.Thread(target=check_connectivity, daemon=True).start()
 
   def _start_download(self):
+    print(f"[esim] starting download", flush=True)
     self._installing_dialog = InstallingDialog()
     gui_app.push_widget(self._installing_dialog)
     self._cellular_manager.download_profile(self._pending_lpa_code)
