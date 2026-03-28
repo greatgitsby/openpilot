@@ -78,6 +78,18 @@ BPP_ERROR_REASONS = {
   14: "invalidNAA",
 }
 
+# SGP.22 §5.2.6 — SM-DP+ reason/subject codes mapped to user-friendly messages
+# https://www.gsma.com/solutions-and-impact/technologies/esim/wp-content/uploads/2021/07/SGP.22-v2.3.pdf
+ES9P_ERROR_MESSAGES: dict[tuple[str, str], str] = {
+  ('3.8', '8.2.6'): "This eSIM profile is already installed on another device. Please use a new QR code.",
+  ('3.8', '8.2.1'): "This eSIM profile has expired. Please request a new QR code.",
+  ('3.8', '8.1'): "The SM-DP+ server refused this request.",
+  ('3.1', '8.2.6'): "This eSIM profile has been revoked by the carrier.",
+  ('3.9', '8.2.6'): "This eSIM profile download has already been completed.",
+  ('2.1', '8.8'): "The device is not compatible with this eSIM profile.",
+  ('1.2', '8.1'): "The SM-DP+ server is temporarily unavailable. Try again later.",
+}
+
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
 CLASS_LABELS = {0: "test", 1: "provisioning", 2: "operational", 255: "unknown"}
@@ -375,10 +387,8 @@ def es9p_request(smdp_address: str, endpoint: str, payload: dict, error_prefix: 
       sd = status.get("statusCodeData", {})
       reason = sd.get('reasonCode', 'unknown')
       subject = sd.get('subjectCode', 'unknown')
-      msg = f"{error_prefix} failed: {reason}/{subject} - {sd.get('message', 'unknown')}"
-      # 3.8/8.2.6 = "Refused" — profile already installed on another device
-      if reason == '3.8' and subject == '8.2.6':
-        msg = "This eSIM profile is already installed on another device. Please use a new QR code."
+      msg = ES9P_ERROR_MESSAGES.get((reason, subject),
+            f"{error_prefix} failed: {reason}/{subject} - {sd.get('message', 'unknown')}")
       raise RuntimeError(msg)
   return data
 
