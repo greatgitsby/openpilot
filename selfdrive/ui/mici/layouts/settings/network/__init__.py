@@ -26,8 +26,7 @@ class ESimNetworkButton(BigButton):
       if active:
         name = active.nickname or active.provider or active.iccid[:12]
         self.set_text(f"{name} (...{active.iccid[-4:]})")
-        ip = self._esim_manager.modem_ip
-        self.set_value(ip or "no IP")
+        self.set_value(self._esim_manager.modem_ip or "obtaining IP...")
         self.set_icon(self._cell_icon)
       else:
         self.set_text("esim")
