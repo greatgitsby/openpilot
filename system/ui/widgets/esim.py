@@ -157,16 +157,15 @@ class InstallingDialog(Widget):
       device.set_override_interactive_timeout(None)
 
   def _render(self, rect):
-    rl.draw_rectangle_rec(rl.Rectangle(0, 0, gui_app.width, gui_app.height), rl.Color(27, 27, 27, 255))
+    margin = 200
+    dialog_rect = rl.Rectangle(margin, margin, gui_app.width - 2 * margin, gui_app.height - 2 * margin)
+    rl.draw_rectangle_rec(dialog_rect, rl.Color(27, 27, 27, 255))
+
     t = (rl.get_time() - self._show_time) % (self.DOT_STEP * 2)
     dots = "." * min(int(t / (self.DOT_STEP / 4)), 3)
-    gui_label(rl.Rectangle(0, 0, gui_app.width, gui_app.height - 80),
-              "Installing eSIM Profile", font_size=70, font_weight=FontWeight.BOLD,
-              alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
-    gui_label(rl.Rectangle(0, 80, gui_app.width, gui_app.height),
-              f"Please wait{dots}", font_size=55,
+    gui_label(dialog_rect, f"Installing eSIM profile{dots}", font_size=70, font_weight=FontWeight.BOLD,
               alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
-              color=rl.Color(170, 170, 170, 255))
+              color=rl.Color(201, 201, 201, 255))
 
 
 class ESimManagerUI(Widget):
