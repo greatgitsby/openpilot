@@ -13,6 +13,7 @@ from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, Bi
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.hardware.base import Profile
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
+from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.label import gui_label
 from openpilot.system.ui.widgets.nav_widget import NavWidget
@@ -118,7 +119,7 @@ class QRScannerDialog(NavWidget):
     self._camera_view._render(rect)
 
     if not self._camera_view.frame:
-      gui_label(rect, "camera starting...", font_size=54, font_weight=FontWeight.BOLD,
+      gui_label(rect, tr("camera starting"), font_size=100, font_weight=FontWeight.BOLD,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
     else:
       # Draw scan region border
