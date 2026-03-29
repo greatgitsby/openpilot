@@ -278,10 +278,10 @@ class ESimManagerUI(Widget):
     icon_offset = 0
     if is_comma:
       icon = gui_app.texture("icons_mici/settings/comma_icon.png", COMMA_ICON_SIZE, COMMA_ICON_SIZE)
-      icon_x = rect.x + 10
+      icon_x = rect.x + 20
       icon_y = rect.y + (ITEM_HEIGHT - COMMA_ICON_SIZE) / 2
       rl.draw_texture_v(icon, rl.Vector2(icon_x, icon_y), rl.WHITE)
-      icon_offset = COMMA_ICON_SIZE + 15
+      icon_offset = COMMA_ICON_SIZE + 30
 
     ssid_rect = rl.Rectangle(rect.x + icon_offset, rect.y, rect.width - btn_width * 2 - icon_offset, ITEM_HEIGHT)
 
