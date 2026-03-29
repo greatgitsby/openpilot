@@ -13,7 +13,7 @@ DOWNLOAD_TIMEOUT = 120  # seconds
 def _get_modem_ip() -> str:
   for iface in ("ppp0", "wwan0"):
     try:
-      out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", iface], timeout=1, text=True)
+      out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", iface], timeout=1, text=True, stderr=subprocess.DEVNULL)
       parts = out.split()
       for i, part in enumerate(parts):
         if part == "inet" and i + 1 < len(parts):
