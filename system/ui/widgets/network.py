@@ -77,7 +77,7 @@ class NetworkUI(Widget):
     self._cellular_manager = CellularManager()
     self._wifi_panel = self._child(WifiManagerUI(wifi_manager))
     self._esim_panel = self._child(ESimManagerUI(self._cellular_manager))
-    self._advanced_panel = self._child(AdvancedNetworkSettings(wifi_manager))
+    self._advanced_panel = self._child(AdvancedNetworkSettings(wifi_manager, self._cellular_manager))
 
     self._toggle_button = self._child(NavButton(tr("eSIM")))
     self._toggle_button.set_click_callback(self._toggle_wifi_esim)
@@ -138,9 +138,10 @@ class NetworkUI(Widget):
 
 
 class AdvancedNetworkSettings(Widget):
-  def __init__(self, wifi_manager: WifiManager):
+  def __init__(self, wifi_manager: WifiManager, cellular_manager: CellularManager | None = None):
     super().__init__()
     self._wifi_manager = wifi_manager
+    self._cellular_manager = cellular_manager
     self._wifi_manager.add_callbacks(networks_updated=self._on_network_updated)
     self._params = Params()
 
@@ -179,6 +180,7 @@ class AdvancedNetworkSettings(Widget):
       tethering_btn,
       tethering_password_btn,
       text_item(lambda: tr("IP Address"), lambda: self._wifi_manager.ipv4_address),
+      text_item(lambda: tr("Modem IP Address"), lambda: self._cellular_manager.modem_ip or "—" if self._cellular_manager else "—"),
       self._roaming_btn,
       self._apn_btn,
       self._cellular_metered_btn,
