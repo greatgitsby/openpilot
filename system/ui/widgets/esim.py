@@ -126,10 +126,9 @@ class QRScannerDialog(Widget):
       rl.draw_rectangle_lines_ex(crop_rect, 3, rl.Color(255, 255, 255, 150))
 
       label_y = rect.y + rect.height * 3 / 4
-      label_rect = rl.Rectangle(rect.x, label_y + (rect.height - label_y) / 2 - 20, rect.width, 40)
-      gui_label(label_rect, "Hold QR code to camera", font_size=32, font_weight=FontWeight.MEDIUM,
-                alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
-                color=rl.Color(255, 255, 255, int(255 * 0.9)))
+      label_rect = rl.Rectangle(rect.x, label_y, rect.width, rect.y + rect.height - label_y)
+      gui_label(label_rect, "hold QR code to camera", font_size=64, font_weight=FontWeight.BOLD,
+                alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
 
     rl.end_scissor_mode()
 
