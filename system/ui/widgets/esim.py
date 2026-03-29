@@ -315,7 +315,7 @@ class ESimManagerUI(Widget):
     if profile is None:
       return
 
-    if profile.enabled:
+    if profile.enabled and not self._cellular_manager.is_comma_profile(iccid):
       # Edit nickname
       current_name = profile.nickname or ""
       self.keyboard.reset(min_text_size=0)
