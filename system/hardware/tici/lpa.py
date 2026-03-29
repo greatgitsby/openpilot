@@ -781,16 +781,22 @@ class TiciLPA(LPABase):
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def switch_profile(self, iccid: str) -> None:
-    code = self._enable_profile(iccid, refresh=True)
+    # EG25 handles UICC REFRESH properly; EG916Q needs refresh=False + modem reboot
+    use_refresh = self._is_eg25
+
+    code = self._enable_profile(iccid, refresh=use_refresh)
     if code == CAT_BUSY:
       self._clear_cat_busy()
-      code = self._enable_profile(iccid, refresh=True)
+      code = self._enable_profile(iccid, refresh=use_refresh)
     if code == CAT_BUSY:
       self._reboot_modem()
-      code = self._enable_profile(iccid, refresh=True)
+      code = self._enable_profile(iccid, refresh=use_refresh)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
       self._client.channel = None
-      self._wait_for_modem()
+      if use_refresh:
+        self._wait_for_modem()
+      else:
+        self._reboot_modem()
     process_notifications(self._client)
