@@ -166,7 +166,7 @@ class ESimProfileButton(BigButton):
   def __init__(self, profile: Profile, cellular_manager: CellularManager):
     self._cellular_manager = cellular_manager
     is_comma = cellular_manager.is_comma_profile(profile.iccid)
-    display_name = "comma.ai" if is_comma else _profile_display_name(profile)
+    display_name = "comma prime" if is_comma else _profile_display_name(profile)
     super().__init__(display_name, scroll=True)
 
     self._profile = profile
@@ -187,7 +187,7 @@ class ESimProfileButton(BigButton):
     self._profile = profile
     self._deleting = False
     is_comma = self._cellular_manager.is_comma_profile(profile.iccid)
-    self.set_text("comma.ai" if is_comma else _profile_display_name(profile))
+    self.set_text("comma prime" if is_comma else _profile_display_name(profile))
 
   @property
   def _show_delete_btn(self) -> bool:

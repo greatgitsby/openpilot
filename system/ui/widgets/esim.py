@@ -219,7 +219,7 @@ class ESimManagerUI(Widget):
 
     for p in self._profiles:
       is_comma = self._cellular_manager.is_comma_profile(p.iccid)
-      display = "comma.ai" if is_comma else _profile_display_name(p)
+      display = "comma prime" if is_comma else _profile_display_name(p)
       self._profile_buttons[p.iccid] = Button(display, partial(self._on_profile_clicked, p.iccid), font_size=55,
                                                 text_alignment=rl.GuiTextAlignment.TEXT_ALIGN_LEFT,
                                                 button_style=ButtonStyle.TRANSPARENT_WHITE_TEXT)
