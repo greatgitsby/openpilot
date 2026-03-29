@@ -181,6 +181,8 @@ class ESimManagerUI(Widget):
     self._profiles: list[Profile] = []
     self._profile_buttons: dict[str, Button] = {}
     self._forget_buttons: dict[str, Button] = {}
+    self._active_button = Button("Active", lambda: None, font_size=45, button_style=ButtonStyle.NORMAL)
+    self._active_button.set_enabled(False)
     self._add_button = Button("Add eSIM", self._on_add_profile, font_size=55, button_style=ButtonStyle.PRIMARY)
 
     self._installing_dialog: InstallingDialog | None = None
@@ -288,12 +290,12 @@ class ESimManagerUI(Widget):
     status_text = ""
     if self.state == UIState.SWITCHING and self._state_iccid == profile.iccid:
       self._profile_buttons[profile.iccid].set_enabled(False)
-      status_text = "SWITCHING..."
+      status_text = "Switching..."
     elif self.state == UIState.DELETING and self._state_iccid == profile.iccid:
       self._profile_buttons[profile.iccid].set_enabled(False)
-      status_text = "DELETING..."
+      status_text = "Deleting..."
     elif profile.enabled:
-      status_text = "ACTIVE"
+      pass
     else:
       self._profile_buttons[profile.iccid].set_enabled(True)
 
@@ -302,6 +304,13 @@ class ESimManagerUI(Widget):
     if status_text:
       status_rect = rl.Rectangle(rect.x + rect.width - 410 - spacing, rect.y, 410, ITEM_HEIGHT)
       gui_label(status_rect, status_text, font_size=48, alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+    elif profile.enabled:
+      active_rect = rl.Rectangle(
+        rect.x + rect.width - btn_width - spacing,
+        rect.y + (ITEM_HEIGHT - 80) / 2,
+        btn_width, 80,
+      )
+      self._active_button.render(active_rect)
     elif profile.iccid in self._forget_buttons:
       forget_rect = rl.Rectangle(
         rect.x + rect.width - btn_width - spacing,
@@ -312,7 +321,7 @@ class ESimManagerUI(Widget):
 
   def _on_profile_clicked(self, iccid: str):
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
-    if profile is None:
+    if profile is None or self._cellular_manager.is_comma_profile(iccid):
       return
 
     if profile.enabled and not self._cellular_manager.is_comma_profile(iccid):

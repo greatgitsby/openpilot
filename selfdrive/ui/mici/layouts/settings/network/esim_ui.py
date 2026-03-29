@@ -379,7 +379,7 @@ class ESimUIMici(NavScroller):
 
   def _on_profile_clicked(self, iccid: str):
     profile = next((p for p in self._cellular_manager.profiles if p.iccid == iccid), None)
-    if profile is None:
+    if profile is None or self._cellular_manager.is_comma_profile(iccid):
       return
 
     if profile.enabled and not self._cellular_manager.is_comma_profile(iccid):
