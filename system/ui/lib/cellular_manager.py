@@ -10,15 +10,16 @@ MODEM_IP_POLL_INTERVAL = 5.0
 DOWNLOAD_TIMEOUT = 120  # seconds
 
 
-def _get_ppp0_ip() -> str:
-  try:
-    out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", "ppp0"], timeout=1, text=True)
-    parts = out.split()
-    for i, part in enumerate(parts):
-      if part == "inet" and i + 1 < len(parts):
-        return parts[i + 1].split("/")[0]
-  except Exception:
-    pass
+def _get_modem_ip() -> str:
+  for iface in ("ppp0", "wwan0"):
+    try:
+      out = subprocess.check_output(["ip", "-4", "-o", "addr", "show", iface], timeout=1, text=True)
+      parts = out.split()
+      for i, part in enumerate(parts):
+        if part == "inet" and i + 1 < len(parts):
+          return parts[i + 1].split("/")[0]
+    except Exception:
+      pass
   return ""
 
 
@@ -87,7 +88,7 @@ class CellularManager:
     self._profiles_updated_cbs: list[Callable[[list[Profile]], None]] = []
     self._operation_error_cbs: list[Callable[[str], None]] = []
 
-    self._modem_ip: str = ""
+    self._modem_ip: str = _get_modem_ip()
     self._last_ip_poll: float = 0.0
 
   def add_callbacks(self, profiles_updated: Callable | None = None, operation_error: Callable | None = None):
@@ -108,7 +109,7 @@ class CellularManager:
     now = time.monotonic()
     if now - self._last_ip_poll >= MODEM_IP_POLL_INTERVAL:
       self._last_ip_poll = now
-      self._modem_ip = _get_ppp0_ip()
+      self._modem_ip = _get_modem_ip()
 
   def _enqueue_callbacks(self, cbs: list, *args):
     for cb in cbs:
