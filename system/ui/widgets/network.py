@@ -179,7 +179,7 @@ class AdvancedNetworkSettings(Widget):
     items: list[Widget] = [
       tethering_btn,
       tethering_password_btn,
-      text_item(lambda: tr("IP Address"), lambda: self._wifi_manager.ipv4_address),
+      text_item(lambda: tr("WiFi IP Address"), lambda: self._wifi_manager.ipv4_address),
       text_item(lambda: tr("Modem IP Address"), lambda: self._cellular_manager.modem_ip or "—" if self._cellular_manager else "—"),
       self._roaming_btn,
       self._apn_btn,
