@@ -781,26 +781,16 @@ class TiciLPA(LPABase):
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def switch_profile(self, iccid: str) -> None:
-    # EG25 handles UICC REFRESH properly; EG916Q needs refresh=False + modem reboot
-    # for ModemManager to re-establish the PPP bearer
-    use_refresh = self._is_eg25
-
-    code = self._enable_profile(iccid, refresh=use_refresh)
+    code = self._enable_profile(iccid, refresh=True)
     if code == CAT_BUSY:
       self._clear_cat_busy()
-      code = self._enable_profile(iccid, refresh=use_refresh)
+      code = self._enable_profile(iccid, refresh=True)
     if code == CAT_BUSY:
       self._reboot_modem()
-      code = self._enable_profile(iccid, refresh=use_refresh)
+      code = self._enable_profile(iccid, refresh=True)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
       self._client.channel = None
-      if use_refresh:
-        # refresh=True triggers an internal SIM refresh that temporarily
-        # drops the serial port — wait for it to come back
-        self._wait_for_modem()
-      else:
-        # EG916Q: modem reboot required for MM to rebuild the bearer
-        self._reboot_modem()
+      self._wait_for_modem()
     process_notifications(self._client)
