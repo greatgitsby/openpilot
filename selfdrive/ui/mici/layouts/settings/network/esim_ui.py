@@ -386,16 +386,17 @@ class ESimUIMici(NavScroller):
 
   def _on_profile_clicked(self, iccid: str):
     profile = next((p for p in self._cellular_manager.profiles if p.iccid == iccid), None)
-    if profile is None or self._cellular_manager.is_comma_profile(iccid):
+    if profile is None:
       return
 
     if profile.enabled:
-      # Edit nickname
-      current_name = profile.nickname or ""
-      dlg = BigInputDialog("enter nickname...", current_name, minimum_length=0,
-                           confirm_callback=lambda name: self._cellular_manager.nickname_profile(iccid, name))
-      gui_app.push_widget(dlg)
+      if not self._cellular_manager.is_comma_profile(iccid):
+        # Edit nickname
+        current_name = profile.nickname or ""
+        dlg = BigInputDialog("enter nickname...", current_name, minimum_length=0,
+                             confirm_callback=lambda name: self._cellular_manager.nickname_profile(iccid, name))
+        gui_app.push_widget(dlg)
     else:
-      # Switch to profile immediately
+      # Switch to profile
       self._cellular_manager.switch_profile(iccid)
       self._move_profile_to_front(iccid, scroll=True)

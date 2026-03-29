@@ -329,7 +329,7 @@ class ESimManagerUI(Widget):
 
   def _on_profile_clicked(self, iccid: str):
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
-    if profile is None or self._cellular_manager.is_comma_profile(iccid) or profile.enabled:
+    if profile is None or profile.enabled:
       return
 
     self.state = UIState.SWITCHING
