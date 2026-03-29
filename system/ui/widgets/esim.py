@@ -30,6 +30,7 @@ except Exception:
 
 ITEM_HEIGHT = 160
 ICON_SIZE = 50
+COMMA_ICON_SIZE = 40
 MAX_NICKNAME_LENGTH = 64
 
 
@@ -213,7 +214,8 @@ class ESimManagerUI(Widget):
     self._forget_buttons.clear()
 
     for p in self._profiles:
-      display = _profile_display_name(p)
+      is_comma = self._cellular_manager.is_comma_profile(p.iccid)
+      display = "comma.ai" if is_comma else _profile_display_name(p)
       self._profile_buttons[p.iccid] = Button(display, partial(self._on_profile_clicked, p.iccid), font_size=55,
                                                 text_alignment=rl.GuiTextAlignment.TEXT_ALIGN_LEFT,
                                                 button_style=ButtonStyle.TRANSPARENT_WHITE_TEXT)
@@ -270,7 +272,18 @@ class ESimManagerUI(Widget):
   def _draw_profile_item(self, rect: rl.Rectangle, profile: Profile):
     btn_width = 200
     spacing = 50
-    ssid_rect = rl.Rectangle(rect.x, rect.y, rect.width - btn_width * 2, ITEM_HEIGHT)
+    is_comma = self._cellular_manager.is_comma_profile(profile.iccid)
+
+    # Draw comma icon for comma profiles
+    icon_offset = 0
+    if is_comma:
+      icon = gui_app.texture("icons_mici/settings/comma_icon.png", COMMA_ICON_SIZE, COMMA_ICON_SIZE)
+      icon_x = rect.x + 10
+      icon_y = rect.y + (ITEM_HEIGHT - COMMA_ICON_SIZE) / 2
+      rl.draw_texture_v(icon, rl.Vector2(icon_x, icon_y), rl.WHITE)
+      icon_offset = COMMA_ICON_SIZE + 15
+
+    ssid_rect = rl.Rectangle(rect.x + icon_offset, rect.y, rect.width - btn_width * 2 - icon_offset, ITEM_HEIGHT)
 
     status_text = ""
     if self.state == UIState.SWITCHING and self._state_iccid == profile.iccid:

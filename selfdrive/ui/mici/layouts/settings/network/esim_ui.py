@@ -164,16 +164,18 @@ class ESimProfileButton(BigButton):
   SUB_LABEL_WIDTH = 402 - BigButton.LABEL_HORIZONTAL_PADDING * 2
 
   def __init__(self, profile: Profile, cellular_manager: CellularManager):
-    display_name = _profile_display_name(profile)
+    self._cellular_manager = cellular_manager
+    is_comma = cellular_manager.is_comma_profile(profile.iccid)
+    display_name = "comma.ai" if is_comma else _profile_display_name(profile)
     super().__init__(display_name, scroll=True)
 
     self._profile = profile
-    self._cellular_manager = cellular_manager
     self._deleting = False
 
     self._cell_full_txt = gui_app.texture("icons_mici/settings/network/cell_strength_full.png", 48, 36)
     self._cell_none_txt = gui_app.texture("icons_mici/settings/network/cell_strength_none.png", 48, 36)
     self._check_txt = gui_app.texture("icons_mici/setup/driver_monitoring/dm_check.png", 32, 32)
+    self._comma_txt = gui_app.texture("icons_mici/settings/comma_icon.png", 36, 36) if is_comma else None
 
     self._delete_btn = DeleteButton(self._on_delete)
 
@@ -184,7 +186,8 @@ class ESimProfileButton(BigButton):
   def update_profile(self, profile: Profile):
     self._profile = profile
     self._deleting = False
-    self.set_text(_profile_display_name(profile))
+    is_comma = self._cellular_manager.is_comma_profile(profile.iccid)
+    self.set_text("comma.ai" if is_comma else _profile_display_name(profile))
 
   @property
   def _show_delete_btn(self) -> bool:
@@ -226,9 +229,12 @@ class ESimProfileButton(BigButton):
       sub_label_rect = rl.Rectangle(sub_label_x, label_y - sub_label_height, sub_label_w, sub_label_height)
       self._sub_label.render(sub_label_rect)
 
-    # Cell icon
-    cell_icon = self._cell_full_txt if self._profile.enabled else self._cell_none_txt
-    rl.draw_texture_ex(cell_icon, (self._rect.x + 30, btn_y + 30, ), 0.0, 1.0, rl.WHITE)
+    # Cell icon (comma icon for comma profiles)
+    if self._comma_txt:
+      rl.draw_texture_ex(self._comma_txt, (self._rect.x + 36, btn_y + 30, ), 0.0, 1.0, rl.WHITE)
+    else:
+      cell_icon = self._cell_full_txt if self._profile.enabled else self._cell_none_txt
+      rl.draw_texture_ex(cell_icon, (self._rect.x + 30, btn_y + 30, ), 0.0, 1.0, rl.WHITE)
 
     # Delete button
     if self._show_delete_btn:
