@@ -181,6 +181,7 @@ class ESimManagerUI(Widget):
     self._profiles: list[Profile] = []
     self._profile_buttons: dict[str, Button] = {}
     self._forget_buttons: dict[str, Button] = {}
+    self._rename_buttons: dict[str, Button] = {}
     self._active_button = Button("Active", lambda: None, font_size=45, button_style=ButtonStyle.NORMAL)
     self._active_button.set_enabled(False)
     self._add_button = Button("Add eSIM", self._on_add_profile, font_size=55, button_style=ButtonStyle.PRIMARY)
@@ -214,6 +215,7 @@ class ESimManagerUI(Widget):
     self._profiles = profiles
     self._profile_buttons.clear()
     self._forget_buttons.clear()
+    self._rename_buttons.clear()
 
     for p in self._profiles:
       is_comma = self._cellular_manager.is_comma_profile(p.iccid)
@@ -223,7 +225,12 @@ class ESimManagerUI(Widget):
                                                 button_style=ButtonStyle.TRANSPARENT_WHITE_TEXT)
       self._profile_buttons[p.iccid].set_touch_valid_callback(lambda: self.scroll_panel.is_touch_valid())
 
-      if not p.enabled and not self._cellular_manager.is_comma_profile(p.iccid):
+      if not is_comma:
+        self._rename_buttons[p.iccid] = Button("Rename", partial(self._on_rename_clicked, p.iccid),
+                                                button_style=ButtonStyle.LIST_ACTION, font_size=45)
+        self._rename_buttons[p.iccid].set_touch_valid_callback(lambda: self.scroll_panel.is_touch_valid())
+
+      if not p.enabled and not is_comma:
         self._forget_buttons[p.iccid] = Button("Forget", partial(self._on_forget_clicked, p.iccid),
                                                 button_style=ButtonStyle.FORGET_WIFI, font_size=45)
         self._forget_buttons[p.iccid].set_touch_valid_callback(lambda: self.scroll_panel.is_touch_valid())
@@ -305,38 +312,40 @@ class ESimManagerUI(Widget):
       status_rect = rl.Rectangle(rect.x + rect.width - 410 - spacing, rect.y, 410, ITEM_HEIGHT)
       gui_label(status_rect, status_text, font_size=48, alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
     elif profile.enabled:
-      active_rect = rl.Rectangle(
-        rect.x + rect.width - btn_width - spacing,
-        rect.y + (ITEM_HEIGHT - 80) / 2,
-        btn_width, 80,
-      )
+      btn_x = rect.x + rect.width - btn_width - spacing
+      active_rect = rl.Rectangle(btn_x, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
       self._active_button.render(active_rect)
+      if profile.iccid in self._rename_buttons:
+        rename_rect = rl.Rectangle(btn_x - btn_width - 10, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
+        self._rename_buttons[profile.iccid].render(rename_rect)
     elif profile.iccid in self._forget_buttons:
-      forget_rect = rl.Rectangle(
-        rect.x + rect.width - btn_width - spacing,
-        rect.y + (ITEM_HEIGHT - 80) / 2,
-        btn_width, 80,
-      )
+      btn_x = rect.x + rect.width - btn_width - spacing
+      forget_rect = rl.Rectangle(btn_x, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
       self._forget_buttons[profile.iccid].render(forget_rect)
+      if profile.iccid in self._rename_buttons:
+        rename_rect = rl.Rectangle(btn_x - btn_width - 10, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
+        self._rename_buttons[profile.iccid].render(rename_rect)
 
   def _on_profile_clicked(self, iccid: str):
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
-    if profile is None or self._cellular_manager.is_comma_profile(iccid):
+    if profile is None or self._cellular_manager.is_comma_profile(iccid) or profile.enabled:
       return
 
-    if profile.enabled and not self._cellular_manager.is_comma_profile(iccid):
-      # Edit nickname
-      current_name = profile.nickname or ""
-      self.keyboard.reset(min_text_size=0)
-      self.keyboard.set_title("Enter nickname", f"for \"{_profile_display_name(profile)}\"")
-      self.keyboard.set_text(current_name)
-      self.keyboard.set_callback(lambda result: self._on_nickname_entered(iccid, result))
-      gui_app.push_widget(self.keyboard)
-    else:
-      # Switch to profile
-      self.state = UIState.SWITCHING
-      self._state_iccid = iccid
-      self._cellular_manager.switch_profile(iccid)
+    self.state = UIState.SWITCHING
+    self._state_iccid = iccid
+    self._cellular_manager.switch_profile(iccid)
+
+  def _on_rename_clicked(self, iccid: str):
+    profile = next((p for p in self._profiles if p.iccid == iccid), None)
+    if profile is None:
+      return
+
+    current_name = profile.nickname or ""
+    self.keyboard.reset(min_text_size=0)
+    self.keyboard.set_title("Enter nickname", f"for \"{_profile_display_name(profile)}\"")
+    self.keyboard.set_text(current_name)
+    self.keyboard.set_callback(lambda result: self._on_nickname_entered(iccid, result))
+    gui_app.push_widget(self.keyboard)
 
   def _on_nickname_entered(self, iccid: str, result: DialogResult):
     if result == DialogResult.CONFIRM:

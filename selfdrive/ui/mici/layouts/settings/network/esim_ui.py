@@ -382,7 +382,7 @@ class ESimUIMici(NavScroller):
     if profile is None or self._cellular_manager.is_comma_profile(iccid):
       return
 
-    if profile.enabled and not self._cellular_manager.is_comma_profile(iccid):
+    if profile.enabled:
       # Edit nickname
       current_name = profile.nickname or ""
       dlg = BigInputDialog("enter nickname...", current_name, minimum_length=0,
