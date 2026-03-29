@@ -90,10 +90,10 @@ class NetworkUI(Widget):
     self._set_current_panel(PanelType.WIFI)
 
   def _toggle_wifi_esim(self):
-    if self._current_panel == PanelType.WIFI:
-      self._set_current_panel(PanelType.ESIM)
-    else:
+    if self._current_panel == PanelType.ESIM:
       self._set_current_panel(PanelType.WIFI)
+    else:
+      self._set_current_panel(PanelType.ESIM)
 
   def _toggle_advanced(self):
     if self._current_panel == PanelType.ADVANCED:
