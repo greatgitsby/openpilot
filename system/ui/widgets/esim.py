@@ -347,6 +347,8 @@ class ESimManagerUI(Widget):
 
   def _on_qr_scanned(self, lpa_code: str):
     self._pending_lpa_code = lpa_code
+    self._installing_dialog = InstallingDialog()
+    gui_app.push_widget(self._installing_dialog)
 
     def check_connectivity():
       try:
@@ -356,12 +358,7 @@ class ESimManagerUI(Widget):
       except Exception:
         connected = False
       self._cellular_manager._callback_queue.append(
-        lambda: self._start_download() if connected else self._on_error("No internet connection.\nConnect to Wi-Fi or cellular to install.")
+        lambda: self._cellular_manager.download_profile(self._pending_lpa_code) if connected else self._on_error("No internet connection.\nConnect to Wi-Fi or cellular to install.")
       )
 
     threading.Thread(target=check_connectivity, daemon=True).start()
-
-  def _start_download(self):
-    self._installing_dialog = InstallingDialog()
-    gui_app.push_widget(self._installing_dialog)
-    self._cellular_manager.download_profile(self._pending_lpa_code)
