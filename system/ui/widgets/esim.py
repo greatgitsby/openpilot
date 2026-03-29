@@ -280,6 +280,7 @@ class ESimManagerUI(Widget):
 
   def _draw_profile_item(self, rect: rl.Rectangle, profile: Profile):
     btn_width = 200
+    rename_btn_width = 240
     spacing = 50
     is_comma = self._cellular_manager.is_comma_profile(profile.iccid)
 
@@ -316,14 +317,14 @@ class ESimManagerUI(Widget):
       active_rect = rl.Rectangle(btn_x, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
       self._active_button.render(active_rect)
       if profile.iccid in self._rename_buttons:
-        rename_rect = rl.Rectangle(btn_x - btn_width - 10, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
+        rename_rect = rl.Rectangle(btn_x - rename_btn_width - 10, rect.y + (ITEM_HEIGHT - 80) / 2, rename_btn_width, 80)
         self._rename_buttons[profile.iccid].render(rename_rect)
     elif profile.iccid in self._forget_buttons:
       btn_x = rect.x + rect.width - btn_width - spacing
       forget_rect = rl.Rectangle(btn_x, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
       self._forget_buttons[profile.iccid].render(forget_rect)
       if profile.iccid in self._rename_buttons:
-        rename_rect = rl.Rectangle(btn_x - btn_width - 10, rect.y + (ITEM_HEIGHT - 80) / 2, btn_width, 80)
+        rename_rect = rl.Rectangle(btn_x - rename_btn_width - 10, rect.y + (ITEM_HEIGHT - 80) / 2, rename_btn_width, 80)
         self._rename_buttons[profile.iccid].render(rename_rect)
 
   def _on_profile_clicked(self, iccid: str):
