@@ -353,6 +353,12 @@ class ESimUIMici(NavScroller):
 
   def _on_qr_scanned(self, lpa_code: str):
     self._pending_lpa_code = lpa_code
+    dlg = BigInputDialog("enter a nickname...", minimum_length=0,
+                         confirm_callback=self._on_nickname_for_new_profile)
+    gui_app.push_widget(dlg)
+
+  def _on_nickname_for_new_profile(self, nickname: str):
+    self._pending_nickname = nickname.strip() or None
     self._installing_dialog = InstallingProfileDialog()
     gui_app.push_widget(self._installing_dialog)
 
@@ -364,7 +370,8 @@ class ESimUIMici(NavScroller):
       except Exception:
         connected = False
       self._cellular_manager._callback_queue.append(
-        lambda: self._cellular_manager.download_profile(self._pending_lpa_code) if connected else self._on_error("no internet connection\nconnect to wifi or\ncellular to install")
+        lambda: self._cellular_manager.download_profile(self._pending_lpa_code, self._pending_nickname) if connected
+        else self._on_error("no internet connection\nconnect to wifi or\ncellular to install")
       )
 
     threading.Thread(target=check_connectivity, daemon=True).start()

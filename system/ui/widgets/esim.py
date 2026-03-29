@@ -379,6 +379,17 @@ class ESimManagerUI(Widget):
 
   def _on_qr_scanned(self, lpa_code: str):
     self._pending_lpa_code = lpa_code
+    self.keyboard.reset(min_text_size=0)
+    self.keyboard.set_title("Enter a nickname for this profile", lpa_code)
+    self.keyboard.set_text("")
+    self.keyboard.set_callback(self._on_nickname_for_new_profile)
+    gui_app.push_widget(self.keyboard)
+
+  def _on_nickname_for_new_profile(self, result: DialogResult):
+    if result != DialogResult.CONFIRM:
+      return
+
+    self._pending_nickname = self.keyboard.text.strip() or None
     self._installing_dialog = InstallingDialog()
     gui_app.push_widget(self._installing_dialog)
 
@@ -390,7 +401,8 @@ class ESimManagerUI(Widget):
       except Exception:
         connected = False
       self._cellular_manager._callback_queue.append(
-        lambda: self._cellular_manager.download_profile(self._pending_lpa_code) if connected else self._on_error("No internet connection.\nConnect to Wi-Fi or cellular to install.")
+        lambda: self._cellular_manager.download_profile(self._pending_lpa_code, self._pending_nickname) if connected
+        else self._on_error("No internet connection.\nConnect to Wi-Fi or cellular to install.")
       )
 
     threading.Thread(target=check_connectivity, daemon=True).start()
