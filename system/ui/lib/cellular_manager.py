@@ -7,6 +7,7 @@ from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.base import LPABase, Profile
 
 MODEM_IP_POLL_INTERVAL = 5.0
+DOWNLOAD_TIMEOUT = 120  # seconds
 
 
 def _get_ppp0_ip() -> str:
@@ -230,7 +231,16 @@ class CellularManager:
         error_msg = str(e)
         self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
 
-    threading.Thread(target=worker, daemon=True).start()
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    def watchdog():
+      t.join(timeout=DOWNLOAD_TIMEOUT)
+      if t.is_alive():
+        cloudlog.error("eSIM profile download timed out")
+        self._callback_queue.append(lambda: self._finish_operation(error="Profile download timed out. Please try again."))
+
+    threading.Thread(target=watchdog, daemon=True).start()
 
   def nickname_profile(self, iccid: str, nickname: str):
     self._busy = True
