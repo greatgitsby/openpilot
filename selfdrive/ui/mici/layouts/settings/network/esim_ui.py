@@ -119,7 +119,7 @@ class QRScannerDialog(NavWidget):
     self._camera_view._render(rect)
 
     if not self._camera_view.frame:
-      gui_label(rect, tr("camera starting"), font_size=100, font_weight=FontWeight.BOLD,
+      gui_label(rect, tr("camera starting"), font_size=54, font_weight=FontWeight.BOLD,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
     else:
       # Draw scan region border
