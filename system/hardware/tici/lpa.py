@@ -120,6 +120,8 @@ class AtClient:
   def __init__(self, device: str, baud: int, timeout: float, debug: bool) -> None:
     self.debug = debug
     self.channel: str | None = None
+    self._device = device
+    self._baud = baud
     self._timeout = timeout
     self._serial: serial.Serial | None = None
     try:
@@ -190,10 +192,26 @@ class AtClient:
         print(f"DBUS << {line}", file=sys.stderr)
     return lines
 
+  def _reconnect_serial(self) -> None:
+    """Reopen the serial port after it goes stale (e.g. modem reboot)."""
+    self.channel = None
+    try:
+      if self._serial:
+        self._serial.close()
+    except Exception:
+      pass
+    self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
+    self._disable_echo()
+
   def query(self, cmd: str) -> list[str]:
     if self._serial:
-      self._send(cmd)
-      return self._expect()
+      try:
+        self._send(cmd)
+        return self._expect()
+      except serial.SerialException:
+        self._reconnect_serial()
+        self._send(cmd)
+        return self._expect()
     return self._dbus_query(cmd)
 
   def _open_isdr_once(self, close_stale: bool = True) -> None:
