@@ -773,11 +773,10 @@ class TiciLPA(LPABase):
     return not self._is_eg25
 
   def switch_profile(self, iccid: str) -> None:
-    # mici does not have SIM presence pin wired to the modem so refresh flag
-    # does nothing — it doesn't cause the modem to hot-swap. we reboot instead.
-    refresh = self._is_eg25
+    # refresh=False avoids catBusy from active proactive sessions.
+    # modem re-reads the eUICC via CFUN cycle or REFRESH handled externally.
     for attempt in range(4):
-      code = self._enable_profile(iccid, refresh=refresh)
+      code = self._enable_profile(iccid, refresh=False)
       if code != CAT_BUSY:
         break
       self._clear_cat_busy()
