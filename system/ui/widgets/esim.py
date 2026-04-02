@@ -295,10 +295,10 @@ class ESimManagerUI(Widget):
     status_text = ""
     if self.state == UIState.SWITCHING and self._state_iccid == profile.iccid:
       self._profile_buttons[profile.iccid].set_enabled(False)
-      status_text = "Switching..."
+      status_text = "SWITCHING..."
     elif self.state == UIState.DELETING and self._state_iccid == profile.iccid:
       self._profile_buttons[profile.iccid].set_enabled(False)
-      status_text = "Deleting..."
+      status_text = "DELETING..."
     elif profile.enabled:
       pass
     else:

@@ -180,7 +180,7 @@ class AdvancedNetworkSettings(Widget):
       tethering_btn,
       tethering_password_btn,
       text_item(lambda: tr("WiFi IP Address"), lambda: self._wifi_manager.ipv4_address),
-      text_item(lambda: tr("Modem IP Address"), lambda: self._cellular_manager.modem_ip or "—" if self._cellular_manager else "—"),
+      text_item(lambda: tr("Modem IP Address"), lambda: self._cellular_manager.modem_ip if self._cellular_manager else ""),
       self._roaming_btn,
       self._apn_btn,
       self._cellular_metered_btn,
