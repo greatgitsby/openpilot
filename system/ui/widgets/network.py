@@ -88,6 +88,7 @@ class NetworkUI(Widget):
   def show_event(self):
     super().show_event()
     self._set_current_panel(PanelType.WIFI)
+    self._cellular_manager.refresh_profiles()
 
   def _toggle_wifi_esim(self):
     if self._current_panel == PanelType.ESIM:

@@ -91,8 +91,6 @@ class CellularManager:
     self._modem_ip: str = _get_modem_ip()
     self._last_ip_poll: float = 0.0
 
-    self.refresh_profiles()
-
   def add_callbacks(self, profiles_updated: Callable | None = None, operation_error: Callable | None = None):
     if profiles_updated:
       self._profiles_updated_cbs.append(profiles_updated)

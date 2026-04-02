@@ -230,7 +230,7 @@ class AtClient:
               if len(data) >= 2:
                 return data[:-2], data[-2], data[-1]
         raise RuntimeError("Missing +CGLA response")
-      except RuntimeError:
+      except (RuntimeError, ValueError):
         self.channel = None
         if attempt == max_retries - 1:
           raise
