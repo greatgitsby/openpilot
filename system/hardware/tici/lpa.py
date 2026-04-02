@@ -752,6 +752,20 @@ class TiciLPA(LPABase):
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
+  def _reset_modem(self) -> None:
+    """CFUN cycle to force the modem to re-read the eUICC after a profile switch."""
+    self._client.channel = None
+    try:
+      self._client.query('AT+CFUN=0')
+    except Exception:
+      pass
+    time.sleep(2)
+    try:
+      self._client.query('AT+CFUN=1')
+    except Exception:
+      pass
+    time.sleep(5)
+
   def switch_profile(self, iccid: str) -> None:
     for attempt in range(4):
       code = self._enable_profile(iccid, refresh=True)
@@ -762,4 +776,5 @@ class TiciLPA(LPABase):
       raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
       self._client.channel = None
-    process_notifications(self._client)
+      process_notifications(self._client)
+      self._reset_modem()
