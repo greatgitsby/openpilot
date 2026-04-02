@@ -760,6 +760,15 @@ class TiciLPA(LPABase):
       self._client._serial.close()
       self._client._serial = None
     subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+    # wait for modem to come back and reconnect serial
+    for _ in range(15):
+      time.sleep(2)
+      try:
+        self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
+        self._client._disable_echo()
+        return
+      except (serial.SerialException, OSError):
+        pass
 
   def switch_profile(self, iccid: str) -> None:
     for attempt in range(4):
