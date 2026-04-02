@@ -90,6 +90,7 @@ class CellularManager:
 
     self._modem_ip: str = _get_modem_ip()
     self._last_ip_poll: float = 0.0
+    self._modem_rebooting: bool = False
 
   def add_callbacks(self, profiles_updated: Callable | None = None, operation_error: Callable | None = None):
     if profiles_updated:
@@ -126,6 +127,10 @@ class CellularManager:
   @property
   def switching_iccid(self) -> str | None:
     return self._switching_iccid
+
+  @property
+  def modem_rebooting(self) -> bool:
+    return self._modem_rebooting
 
   def is_comma_profile(self, iccid: str) -> bool:
     return any(p.iccid == iccid and p.provider == 'Webbing' for p in self._profiles)
@@ -180,7 +185,14 @@ class CellularManager:
           lpa = self._ensure_lpa()
           lpa.switch_profile(iccid)
           profiles = lpa.list_profiles()
+          needs_reboot = lpa.needs_modem_reboot
         self._callback_queue.append(lambda: self._finish_switch(profiles=profiles))
+        if needs_reboot:
+          self._modem_rebooting = True
+          with self._lock:
+            lpa = self._ensure_lpa()
+            lpa.reset_modem()
+          self._modem_rebooting = False
       except Exception as e:
         cloudlog.exception("Failed to switch eSIM profile")
         error_msg = str(e)

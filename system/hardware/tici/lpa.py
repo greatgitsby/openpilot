@@ -753,7 +753,7 @@ class TiciLPA(LPABase):
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
-  def _reset_modem(self) -> None:
+  def reset_modem(self) -> None:
     """Full GPIO-based modem reboot to force re-read of eUICC after profile switch."""
     self._client.channel = None
     if self._client._serial:
@@ -770,6 +770,10 @@ class TiciLPA(LPABase):
       except (serial.SerialException, OSError):
         pass
 
+  @property
+  def needs_modem_reboot(self) -> bool:
+    return not self._is_eg25
+
   def switch_profile(self, iccid: str) -> None:
     for attempt in range(4):
       code = self._enable_profile(iccid, refresh=True)
@@ -781,5 +785,3 @@ class TiciLPA(LPABase):
     if code == 0x00:
       self._client.channel = None
       process_notifications(self._client)
-      if not self._is_eg25:
-        self._reset_modem()
