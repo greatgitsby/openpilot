@@ -7,6 +7,7 @@ import math
 import os
 import requests
 import serial
+import subprocess
 import sys
 import time
 
@@ -753,17 +754,12 @@ class TiciLPA(LPABase):
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def _reset_modem(self) -> None:
-    """CFUN cycle to force the modem to re-read the eUICC after a profile switch."""
+    """Full GPIO-based modem reboot to force re-read of eUICC after profile switch."""
     self._client.channel = None
-    try:
-      self._client.query('AT+CFUN=0')
-    except Exception:
-      pass
-    time.sleep(2)
-    try:
-      self._client.query('AT+CFUN=1')
-    except Exception:
-      pass
+    if self._client._serial:
+      self._client._serial.close()
+      self._client._serial = None
+    subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
 
   def switch_profile(self, iccid: str) -> None:
     for attempt in range(4):
