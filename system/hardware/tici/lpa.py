@@ -689,19 +689,23 @@ class TiciLPA(LPABase):
     process_notifications(self._client)
 
   def _clear_cat_busy(self) -> None:
-    """Graduated attempts to clear an active CAT session.
-    Does not re-open ISD-R — send_apdu will do that on the next call."""
-    # 1) wait — proactive sessions are typically short-lived
-    time.sleep(3)
+    """Attempt to clear an active CAT/proactive session so profile operations can proceed."""
+    # close our logical channel first — reduces contention on the SIM
+    if self._client.channel:
+      try:
+        self._client.query(f"AT+CCHC={self._client.channel}")
+      except Exception:
+        pass
+      self._client.channel = None
 
-    # 2) try to dismiss via Quectel STK terminate command
+    # try to dismiss via Quectel STK terminate command
     try:
       self._client.query('AT+QSTKRSP=254')
     except Exception:
       pass
-    time.sleep(1)
+    time.sleep(2)
 
-    # 3) light radio reset (clears SIM/STK state without full modem reboot)
+    # light radio reset — forces baseband to drop all SIM sessions
     try:
       self._client.query('AT+CFUN=4')
     except Exception:
@@ -711,7 +715,6 @@ class TiciLPA(LPABase):
       self._client.query('AT+CFUN=1')
     except Exception:
       pass
-    self._client.channel = None
     time.sleep(5)
 
   def _delete_profile(self, iccid: str) -> int:
@@ -723,10 +726,11 @@ class TiciLPA(LPABase):
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
-    code = self._delete_profile(iccid)
-    if code == CAT_BUSY:
-      self._clear_cat_busy()
+    for attempt in range(4):
       code = self._delete_profile(iccid)
+      if code != CAT_BUSY:
+        break
+      self._clear_cat_busy()
     if code != 0x00:
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
@@ -749,10 +753,11 @@ class TiciLPA(LPABase):
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def switch_profile(self, iccid: str) -> None:
-    code = self._enable_profile(iccid, refresh=True)
-    if code == CAT_BUSY:
-      self._clear_cat_busy()
+    for attempt in range(4):
       code = self._enable_profile(iccid, refresh=True)
+      if code != CAT_BUSY:
+        break
+      self._clear_cat_busy()
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
