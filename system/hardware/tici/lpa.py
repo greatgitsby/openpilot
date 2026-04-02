@@ -754,21 +754,19 @@ class TiciLPA(LPABase):
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def reset_modem(self) -> None:
-    """Full GPIO-based modem reboot to force re-read of eUICC after profile switch."""
+    """CFUN cycle + ModemManager restart to force re-read of eUICC after profile switch."""
     self._client.channel = None
-    if self._client._serial:
-      self._client._serial.close()
-      self._client._serial = None
-    subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
-    # wait for modem to come back and reconnect serial
-    for _ in range(15):
-      time.sleep(2)
-      try:
-        self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
-        self._client._disable_echo()
-        return
-      except (serial.SerialException, OSError):
-        pass
+    try:
+      self._client.query('AT+CFUN=0')
+    except Exception:
+      pass
+    time.sleep(2)
+    try:
+      self._client.query('AT+CFUN=1')
+    except Exception:
+      pass
+    time.sleep(3)
+    subprocess.run(['sudo', 'systemctl', 'restart', 'ModemManager'], capture_output=True)
 
   @property
   def needs_modem_reboot(self) -> bool:
