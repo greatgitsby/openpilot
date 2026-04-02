@@ -671,11 +671,7 @@ class TiciLPA(LPABase):
     self._is_eg25 = get_device_type() in ("tizi",)
 
   def list_profiles(self) -> list[Profile]:
-    try:
-      profiles = list_profiles(self._client)
-    except serial.serialutil.SerialException:
-      self._wait_for_modem()
-      profiles = list_profiles(self._client)
+    profiles = list_profiles(self._client)
     return [
       Profile(
         iccid=p.get("iccid", ""),
@@ -718,31 +714,6 @@ class TiciLPA(LPABase):
     self._client.channel = None
     time.sleep(5)
 
-  def _reboot_modem(self) -> None:
-    """Reboot modem via AT commands and re-open ISD-R."""
-    for cmd in ('AT+CFUN=0', 'AT+CFUN=1,1'):
-      try:
-        self._client.query(cmd)
-      except Exception:
-        pass
-    self._client.channel = None
-    self._wait_for_modem()
-
-  def _wait_for_modem(self, timeout: float = 45.0) -> None:
-    """Wait for modem to be ready and ISD-R to be accessible."""
-    start = time.monotonic()
-    while time.monotonic() - start < timeout:
-      try:
-        self._client._serial.close()
-        self._client._serial = serial.Serial(DEFAULT_DEVICE, DEFAULT_BAUD, timeout=DEFAULT_TIMEOUT)
-        self._client._disable_echo()
-        self._client._open_isdr_once(close_stale=False)
-        return
-      except Exception:
-        self._client.channel = None
-        time.sleep(2)
-    raise RuntimeError("Modem did not recover after reboot")
-
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
     response = es10x_command(self._client, request)
@@ -756,11 +727,8 @@ class TiciLPA(LPABase):
     if code == CAT_BUSY:
       self._clear_cat_busy()
       code = self._delete_profile(iccid)
-    if code == CAT_BUSY:
-      self._reboot_modem()
-      code = self._delete_profile(iccid)
     if code != 0x00:
-      raise RuntimeError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+      raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
@@ -788,15 +756,8 @@ class TiciLPA(LPABase):
     if code == CAT_BUSY:
       self._clear_cat_busy()
       code = self._enable_profile(iccid, refresh=use_refresh)
-    if code == CAT_BUSY:
-      self._reboot_modem()
-      code = self._enable_profile(iccid, refresh=use_refresh)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
-      raise RuntimeError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+      raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
       self._client.channel = None
-      if use_refresh:
-        self._wait_for_modem()
-      else:
-        self._reboot_modem()
     process_notifications(self._client)
