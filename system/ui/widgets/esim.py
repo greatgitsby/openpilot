@@ -42,9 +42,7 @@ class UIState(IntEnum):
 
 
 def _profile_display_name(profile: Profile) -> str:
-  name = profile.nickname or profile.provider or profile.iccid[:12]
-  suffix = profile.iccid[-4:]
-  return f"{name} (...{suffix})"
+  return profile.nickname or profile.provider or profile.iccid[:12]
 
 
 def _is_valid_lpa_code(text: str) -> bool:
