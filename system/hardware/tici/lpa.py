@@ -764,7 +764,6 @@ class TiciLPA(LPABase):
       self._client.query('AT+CFUN=1')
     except Exception:
       pass
-    time.sleep(5)
 
   def switch_profile(self, iccid: str) -> None:
     for attempt in range(4):
@@ -777,4 +776,5 @@ class TiciLPA(LPABase):
     if code == 0x00:
       self._client.channel = None
       process_notifications(self._client)
-      self._reset_modem()
+      if not self._is_eg25:
+        self._reset_modem()
