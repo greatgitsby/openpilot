@@ -275,14 +275,6 @@ class ESimManagerUI(Widget):
 
     rl.end_scissor_mode()
 
-    # Modem rebooting indicator — bouncing dots in bottom right
-    if self._cellular_manager.modem_rebooting:
-      t = rl.get_time()
-      dots = "." * (int(t * 3) % 4)
-      dot_rect = rl.Rectangle(rect.x + rect.width - 150, rect.y + rect.height - 60, 140, 50)
-      gui_label(dot_rect, dots, font_size=60, alignment=rl.GuiTextAlignment.TEXT_ALIGN_LEFT,
-                color=rl.Color(180, 180, 180, 255))
-
   def _draw_profile_item(self, rect: rl.Rectangle, profile: Profile):
     btn_width = 200
     rename_btn_width = 240
