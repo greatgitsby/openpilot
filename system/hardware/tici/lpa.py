@@ -708,13 +708,13 @@ class TiciLPA(LPABase):
 
   def _prepare_for_profile_switch(self) -> None:
     """SGP.22 §3.2.1 step 1: terminate active sessions before EnableProfile/DeleteProfile."""
-    # Close all logical channels to end application sessions
-    for ch in range(1, 5):
+    # Close our logical channel to end the application session
+    if self._client.channel:
       try:
-        self._client.query(f"AT+CCHC={ch}")
+        self._client.query(f"AT+CCHC={self._client.channel}")
       except (RuntimeError, TimeoutError):
         pass
-    self._client.channel = None
+      self._client.channel = None
     # CFUN cycle to kill any proactive command session
     try:
       self._client.query('AT+CFUN=4')
