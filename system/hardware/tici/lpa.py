@@ -686,8 +686,7 @@ class TiciLPA(LPABase):
     self._client.open_isdr()
     atexit.register(self._client.close)
 
-    from openpilot.system.hardware.tici.hardware import get_device_type
-    self._is_eg25 = get_device_type() in ("tizi",)
+
 
   def list_profiles(self) -> list[Profile]:
     profiles = list_profiles(self._client)
@@ -708,26 +707,25 @@ class TiciLPA(LPABase):
     process_notifications(self._client)
 
   def _prepare_for_profile_switch(self) -> None:
-    """SGP.22 §3.2.1 step 1: prepare the device before calling EnableProfile/DeleteProfile.
-
-    Terminates application sessions, closes logical channels, and dismisses
-    any ongoing proactive command session to prevent catBusy errors."""
-    # (a)+(b) Close all logical channels (1-4) to terminate application sessions
-    #         per ETSI TS 102 221 and release SIM applet selections
+    """SGP.22 §3.2.1 step 1: terminate active sessions before EnableProfile/DeleteProfile."""
+    # Close all logical channels to end application sessions
     for ch in range(1, 5):
       try:
         self._client.query(f"AT+CCHC={ch}")
       except (RuntimeError, TimeoutError):
         pass
     self._client.channel = None
-
-    # (c) Terminate ongoing proactive command session via Quectel STK dismiss
+    # CFUN cycle to kill any proactive command session
     try:
-      self._client.query('AT+QSTKRSP=254')
+      self._client.query('AT+CFUN=4')
     except (RuntimeError, TimeoutError):
       pass
-
-    time.sleep(1)
+    time.sleep(0.5)
+    try:
+      self._client.query('AT+CFUN=1')
+    except (RuntimeError, TimeoutError):
+      pass
+    time.sleep(0.5)
 
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
