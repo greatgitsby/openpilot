@@ -224,7 +224,10 @@ class AtClient:
       self.channel = None
     # drain any unsolicited responses before opening
     if self._serial:
-      self._serial.reset_input_buffer()
+      try:
+        self._serial.reset_input_buffer()
+      except (OSError, serial.SerialException):
+        self._reconnect_serial()
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
@@ -243,6 +246,7 @@ class AtClient:
           # SIM may be stuck (CME ERROR 13) — reset modem via lte.sh
           subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
           time.sleep(5)
+          self._reconnect_serial()
         else:
           time.sleep(2.0)
     raise RuntimeError("Failed to open ISD-R after retries")
