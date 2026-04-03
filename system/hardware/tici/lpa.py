@@ -786,10 +786,6 @@ class TiciLPA(LPABase):
     time.sleep(3)
     subprocess.run(['sudo', 'systemctl', 'restart', 'ModemManager'], capture_output=True)
 
-  @property
-  def needs_modem_reboot(self) -> bool:
-    return not self._is_eg25
-
   def switch_profile(self, iccid: str) -> None:
     # refresh=False avoids catBusy from active proactive sessions.
     # modem re-reads the eUICC via CFUN cycle or REFRESH handled externally.

@@ -181,18 +181,24 @@ class CellularManager:
           lpa = self._ensure_lpa()
           lpa.switch_profile(iccid)
           profiles = lpa.list_profiles()
-          needs_reboot = lpa.needs_modem_reboot
         self._callback_queue.append(lambda: self._finish_switch(profiles=profiles))
-        if needs_reboot:
-          with self._lock:
-            lpa = self._ensure_lpa()
-            lpa.reset_modem()
+        # CFUN cycle + ModemManager restart in background after UI is updated
+        threading.Thread(target=self._background_modem_reset, daemon=True).start()
       except Exception as e:
         cloudlog.exception("Failed to switch eSIM profile")
         error_msg = str(e)
         self._callback_queue.append(lambda: self._finish_switch(error=error_msg))
 
     threading.Thread(target=worker, daemon=True).start()
+
+  def _background_modem_reset(self):
+    """Non-blocking CFUN cycle + ModemManager restart after profile switch."""
+    try:
+      with self._lock:
+        lpa = self._ensure_lpa()
+        lpa.reset_modem()
+    except Exception:
+      cloudlog.exception("Background modem reset failed")
 
   def _finish_operation(self, profiles: list[Profile] | None = None, error: str | None = None):
     """Called on UI thread via callback queue to atomically clear busy state."""
