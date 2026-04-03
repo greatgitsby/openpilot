@@ -214,16 +214,17 @@ class AtClient:
         return self._expect()
     return self._dbus_query(cmd)
 
-  def _open_isdr_once(self, close_stale: bool = True) -> None:
+  def _open_isdr_once(self) -> None:
     """Try once to open ISD-R. Raises on failure."""
-    if close_stale:
-      # close any stale logical channels from previous crashed sessions
-      for ch in range(1, 5):
-        try:
-          self.query(f"AT+CCHC={ch}")
-        except RuntimeError:
-          pass
-      time.sleep(0.5)
+    if self.channel:
+      try:
+        self.query(f"AT+CCHC={self.channel}")
+      except RuntimeError:
+        pass
+      self.channel = None
+    # drain any unsolicited responses before opening
+    if self._serial:
+      self._serial.reset_input_buffer()
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
