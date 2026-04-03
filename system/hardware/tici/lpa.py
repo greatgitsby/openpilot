@@ -240,17 +240,10 @@ class AtClient:
         if self.debug:
           print(f"open_isdr failed, trying again", file=sys.stderr)
         if attempt == 3:
-          # SIM may be stuck (CME ERROR 13) — CFUN cycle to recover
-          try:
-            self.query('AT+CFUN=0')
-          except (RuntimeError, TimeoutError):
-            pass
-          time.sleep(0.5)
-          try:
-            self.query('AT+CFUN=1')
-          except (RuntimeError, TimeoutError):
-            pass
-          time.sleep(3)
+          # SIM may be stuck (CME ERROR 13) — restart ModemManager to recover
+          # (serial CFUN is blocked by MM with CME ERROR 302)
+          subprocess.run(['sudo', 'systemctl', 'restart', 'ModemManager'], capture_output=True)
+          time.sleep(5)
         else:
           time.sleep(2.0)
     raise RuntimeError("Failed to open ISD-R after retries")
