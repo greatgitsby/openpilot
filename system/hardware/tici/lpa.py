@@ -732,16 +732,6 @@ class TiciLPA(LPABase):
       except (RuntimeError, TimeoutError):
         pass
       self._client.channel = None
-    # CFUN cycle to kill any proactive command session
-    try:
-      self._client.query('AT+CFUN=0')
-    except (RuntimeError, TimeoutError):
-      pass
-    time.sleep(0.5)
-    try:
-      self._client.query('AT+CFUN=1')
-    except (RuntimeError, TimeoutError):
-      pass
     time.sleep(0.5)
 
   def _delete_profile(self, iccid: str) -> int:
