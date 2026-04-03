@@ -707,34 +707,27 @@ class TiciLPA(LPABase):
   def process_notifications(self) -> None:
     process_notifications(self._client)
 
-  def _clear_cat_busy(self) -> None:
-    """Attempt to clear an active CAT/proactive session so profile operations can proceed."""
-    # close our logical channel first — reduces contention on the SIM
-    if self._client.channel:
-      try:
-        self._client.query(f"AT+CCHC={self._client.channel}")
-      except Exception:
-        pass
-      self._client.channel = None
+  def _prepare_for_profile_switch(self) -> None:
+    """SGP.22 §3.2.1 step 1: prepare the device before calling EnableProfile/DeleteProfile.
 
-    # try to dismiss via Quectel STK terminate command
+    Terminates application sessions, closes logical channels, and dismisses
+    any ongoing proactive command session to prevent catBusy errors."""
+    # (a)+(b) Close all logical channels (1-4) to terminate application sessions
+    #         per ETSI TS 102 221 and release SIM applet selections
+    for ch in range(1, 5):
+      try:
+        self._client.query(f"AT+CCHC={ch}")
+      except (RuntimeError, TimeoutError):
+        pass
+    self._client.channel = None
+
+    # (c) Terminate ongoing proactive command session via Quectel STK dismiss
     try:
       self._client.query('AT+QSTKRSP=254')
-    except Exception:
+    except (RuntimeError, TimeoutError):
       pass
-    time.sleep(2)
 
-    # light radio reset — forces baseband to drop all SIM sessions
-    try:
-      self._client.query('AT+CFUN=4')
-    except Exception:
-      pass
-    time.sleep(2)
-    try:
-      self._client.query('AT+CFUN=1')
-    except Exception:
-      pass
-    time.sleep(5)
+    time.sleep(1)
 
   def _delete_profile(self, iccid: str) -> int:
     request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
@@ -745,11 +738,12 @@ class TiciLPA(LPABase):
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
+    self._prepare_for_profile_switch()
     for attempt in range(4):
       code = self._delete_profile(iccid)
       if code != CAT_BUSY:
         break
-      self._clear_cat_busy()
+      self._prepare_for_profile_switch()
     if code != 0x00:
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     process_notifications(self._client)
@@ -789,11 +783,12 @@ class TiciLPA(LPABase):
   def switch_profile(self, iccid: str) -> None:
     # refresh=False avoids catBusy from active proactive sessions.
     # modem re-reads the eUICC via CFUN cycle or REFRESH handled externally.
+    self._prepare_for_profile_switch()
     for attempt in range(4):
       code = self._enable_profile(iccid, refresh=False)
       if code != CAT_BUSY:
         break
-      self._clear_cat_busy()
+      self._prepare_for_profile_switch()
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
