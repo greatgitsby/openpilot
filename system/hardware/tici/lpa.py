@@ -231,9 +231,29 @@ class AtClient:
         return
     raise RuntimeError("Failed to open ISD-R application")
 
-  @retry(attempts=10, delay=2.0)
   def open_isdr(self) -> None:
-    self._open_isdr_once()
+    for attempt in range(10):
+      try:
+        self._open_isdr_once()
+        return
+      except (RuntimeError, TimeoutError) as e:
+        if self.debug:
+          print(f"open_isdr failed, trying again", file=sys.stderr)
+        if attempt == 3:
+          # SIM may be stuck (CME ERROR 13) — CFUN cycle to recover
+          try:
+            self.query('AT+CFUN=4')
+          except (RuntimeError, TimeoutError):
+            pass
+          time.sleep(0.5)
+          try:
+            self.query('AT+CFUN=1')
+          except (RuntimeError, TimeoutError):
+            pass
+          time.sleep(3)
+        else:
+          time.sleep(2.0)
+    raise RuntimeError("Failed to open ISD-R after retries")
 
   def send_apdu(self, apdu: bytes, max_retries: int = 3) -> tuple[bytes, int, int]:
     for attempt in range(max_retries):
