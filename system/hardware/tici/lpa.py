@@ -240,9 +240,8 @@ class AtClient:
         if self.debug:
           print(f"open_isdr failed, trying again", file=sys.stderr)
         if attempt == 3:
-          # SIM may be stuck (CME ERROR 13) — restart ModemManager to recover
-          # (serial CFUN is blocked by MM with CME ERROR 302)
-          subprocess.run(['sudo', 'systemctl', 'restart', 'ModemManager'], capture_output=True)
+          # SIM may be stuck (CME ERROR 13) — reset modem via lte.sh
+          subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
           time.sleep(5)
         else:
           time.sleep(2.0)
