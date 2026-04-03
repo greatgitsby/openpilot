@@ -242,7 +242,7 @@ class AtClient:
         if attempt == 3:
           # SIM may be stuck (CME ERROR 13) — CFUN cycle to recover
           try:
-            self.query('AT+CFUN=4')
+            self.query('AT+CFUN=0')
           except (RuntimeError, TimeoutError):
             pass
           time.sleep(0.5)
@@ -738,7 +738,7 @@ class TiciLPA(LPABase):
       self._client.channel = None
     # CFUN cycle to kill any proactive command session
     try:
-      self._client.query('AT+CFUN=4')
+      self._client.query('AT+CFUN=0')
     except (RuntimeError, TimeoutError):
       pass
     time.sleep(0.5)
