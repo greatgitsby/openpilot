@@ -744,11 +744,9 @@ class TiciLPA(LPABase):
       self._prepare_for_profile_switch()
     if code != 0x00:
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    process_notifications(self._client)
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
     iccid = download_profile(self._client, qr)
-    process_notifications(self._client)
     if nickname and iccid:
       self.nickname_profile(iccid, nickname)
 
@@ -791,4 +789,3 @@ class TiciLPA(LPABase):
       raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
       self._client.channel = None
-      process_notifications(self._client)
