@@ -30,7 +30,7 @@ ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 MM = "org.freedesktop.ModemManager1"
 MM_MODEM = MM + ".Modem"
 ES10X_MSS = 120
-DEBUG = os.environ.get("DEBUG") == "1"
+DEBUG = True
 
 # TLV Tags
 TAG_ICCID = 0x5A
