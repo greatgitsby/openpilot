@@ -10,6 +10,7 @@ import requests
 import serial
 import subprocess
 import sys
+import termios
 import time
 
 from collections.abc import Callable, Generator
@@ -228,7 +229,7 @@ class AtClient:
     if self._serial:
       try:
         self._serial.reset_input_buffer()
-      except (OSError, serial.SerialException):
+      except (OSError, serial.SerialException, termios.error):
         self._reconnect_serial()
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
@@ -241,7 +242,7 @@ class AtClient:
       try:
         self._open_isdr_once()
         return
-      except (RuntimeError, TimeoutError) as e:
+      except (RuntimeError, TimeoutError, termios.error) as e:
         if self.debug:
           print(f"open_isdr failed, trying again", file=sys.stderr)
         if attempt == 3:
@@ -718,6 +719,12 @@ class TiciLPA(LPABase):
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
+  def _reset_modem(self) -> None:
+    """Reset modem via lte.sh to force re-read of eUICC after profile switch."""
+    subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+    time.sleep(5)
+    self._client._reconnect_serial()
+
   def list_profiles(self) -> list[Profile]:
     with self._channel():
       profiles = list_profiles(self._client)
@@ -741,13 +748,17 @@ class TiciLPA(LPABase):
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
-    with self._channel():
-      request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-      response = es10x_command(self._client, request)
-      root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
-      code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
-      if code != 0x00:
-        raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    for attempt in range(4):
+      with self._channel():
+        request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+        response = es10x_command(self._client, request)
+        root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+        code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+      if code != CAT_BUSY:
+        break
+      time.sleep(0.5)
+    if code != 0x00:
+      raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
     with self._channel():
@@ -760,12 +771,18 @@ class TiciLPA(LPABase):
       set_profile_nickname(self._client, iccid, nickname)
 
   def switch_profile(self, iccid: str) -> None:
-    with self._channel():
-      inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-      inner += b'\x01\x01\x00'  # refreshFlag = FALSE
-      request = encode_tlv(TAG_ENABLE_PROFILE, inner)
-      response = es10x_command(self._client, request)
-      root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
-      code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
-      if code not in (0x00, 0x02):  # 0x02 = already enabled
-        raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    for attempt in range(4):
+      with self._channel():
+        inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+        inner += b'\x01\x01\x00'  # refreshFlag = FALSE
+        request = encode_tlv(TAG_ENABLE_PROFILE, inner)
+        response = es10x_command(self._client, request)
+        root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+        code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+      if code != CAT_BUSY:
+        break
+      time.sleep(0.5)
+    if code not in (0x00, 0x02):  # 0x02 = already enabled
+      raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    if code == 0x00:
+      self._reset_modem()
