@@ -691,7 +691,7 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
 
 
-LOCK_PATH = '/tmp/.lpa_channel.lock'
+LOCK_PATH = '/tmp/.lpa_acquire_channel.lock'
 
 
 class TiciLPA(LPABase):
@@ -700,8 +700,15 @@ class TiciLPA(LPABase):
     atexit.register(self._client.close)
 
   @contextmanager
-  def _channel(self):
-    """Acquire filesystem lock, open ISD-R channel, and close it on exit."""
+  def _acquire_channel(self, inhibit: bool = False):
+    """Acquire filesystem lock, open ISD-R channel, and close it on exit.
+    If inhibit=True, also inhibit ModemManager for the duration."""
+    inhibit_proc = None
+    if inhibit:
+      inhibit_proc = subprocess.Popen(
+        ['sudo', 'mmcli', '--inhibit-device=/sys/devices/platform/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb1/1-1'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+      time.sleep(1)
     fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR)
     try:
       fcntl.flock(fd, fcntl.LOCK_EX)
@@ -718,15 +725,12 @@ class TiciLPA(LPABase):
       finally:
         fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
-
-  def _reset_modem(self) -> None:
-    """Reset modem via lte.sh to force re-read of eUICC after profile switch."""
-    subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
-    time.sleep(5)
-    self._client._reconnect_serial()
+        if inhibit_proc:
+          inhibit_proc.terminate()
+          inhibit_proc.wait(timeout=5)
 
   def list_profiles(self) -> list[Profile]:
-    with self._channel():
+    with self._acquire_channel():
       profiles = list_profiles(self._client)
       return [
         Profile(
@@ -742,14 +746,14 @@ class TiciLPA(LPABase):
     return None
 
   def process_notifications(self) -> None:
-    with self._channel():
+    with self._acquire_channel():
       process_notifications(self._client)
 
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
     for attempt in range(4):
-      with self._channel():
+      with self._acquire_channel():
         request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
         response = es10x_command(self._client, request)
         root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
@@ -761,28 +765,26 @@ class TiciLPA(LPABase):
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
-    with self._channel():
+    with self._acquire_channel():
       iccid = download_profile(self._client, qr)
       if nickname and iccid:
         set_profile_nickname(self._client, iccid, nickname)
 
   def nickname_profile(self, iccid: str, nickname: str) -> None:
-    with self._channel():
+    with self._acquire_channel():
       set_profile_nickname(self._client, iccid, nickname)
 
   def switch_profile(self, iccid: str) -> None:
-    for attempt in range(4):
-      with self._channel():
-        inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-        inner += b'\x01\x01\x00'  # refreshFlag = FALSE
-        request = encode_tlv(TAG_ENABLE_PROFILE, inner)
-        response = es10x_command(self._client, request)
-        root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
-        code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
-      if code != CAT_BUSY:
-        break
-      time.sleep(0.5)
-    if code not in (0x00, 0x02):  # 0x02 = already enabled
-      raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    with self._acquire_channel(inhibit=True):
+      inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+      inner += b'\x01\x01\x00'  # refreshFlag = FALSE
+      request = encode_tlv(TAG_ENABLE_PROFILE, inner)
+      response = es10x_command(self._client, request)
+      root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+      code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+      if code not in (0x00, 0x02):  # 0x02 = already enabled
+        raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
-      self._reset_modem()
+      subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+      time.sleep(5)
+      self._client._reconnect_serial()
