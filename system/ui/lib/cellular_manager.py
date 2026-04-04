@@ -180,7 +180,6 @@ class CellularManager:
         with self._lock:
           lpa = self._ensure_lpa()
           lpa.switch_profile(iccid)
-          lpa.reset_modem()
           profiles = lpa.list_profiles()
         self._callback_queue.append(lambda: self._finish_switch(profiles=profiles))
       except Exception as e:

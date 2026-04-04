@@ -723,32 +723,13 @@ class TiciLPA(LPABase):
   def process_notifications(self) -> None:
     process_notifications(self._client)
 
-  def _prepare_for_profile_switch(self) -> None:
-    """SGP.22 §3.2.1 step 1: terminate active sessions before EnableProfile/DeleteProfile."""
-    # Close our logical channel to end the application session
-    if self._client.channel:
-      try:
-        self._client.query(f"AT+CCHC={self._client.channel}")
-      except (RuntimeError, TimeoutError):
-        pass
-      self._client.channel = None
-    time.sleep(0.5)
-
-  def _delete_profile(self, iccid: str) -> int:
-    request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    response = es10x_command(self._client, request)
-    root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
-    return require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
-
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
-    self._prepare_for_profile_switch()
-    for attempt in range(4):
-      code = self._delete_profile(iccid)
-      if code != CAT_BUSY:
-        break
-      self._prepare_for_profile_switch()
+    request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+    response = es10x_command(self._client, request)
+    root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+    code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
     if code != 0x00:
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
@@ -768,30 +749,8 @@ class TiciLPA(LPABase):
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
-  def reset_modem(self) -> None:
-    """CFUN cycle + ModemManager restart to force re-read of eUICC after profile switch."""
-    self._client.channel = None
-    try:
-      self._client.query('AT+CFUN=0')
-    except Exception:
-      pass
-    time.sleep(2)
-    try:
-      self._client.query('AT+CFUN=1')
-    except Exception:
-      pass
-    time.sleep(3)
-    subprocess.run(['sudo', 'systemctl', 'restart', 'ModemManager'], capture_output=True)
-
   def switch_profile(self, iccid: str) -> None:
-    # refresh=False avoids catBusy from active proactive sessions.
-    # modem re-reads the eUICC via CFUN cycle or REFRESH handled externally.
-    self._prepare_for_profile_switch()
-    for attempt in range(4):
-      code = self._enable_profile(iccid, refresh=False)
-      if code != CAT_BUSY:
-        break
-      self._prepare_for_profile_switch()
+    code = self._enable_profile(iccid, refresh=False)
     if code not in (0x00, 0x02):  # 0x02 = already enabled
       raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
