@@ -23,50 +23,6 @@ def _get_modem_ip() -> str:
   return ""
 
 
-class MockLPA(LPABase):
-  """Mock LPA for desktop development with fake profiles."""
-
-  def __init__(self):
-    self._profiles: list[Profile] = [
-      Profile(iccid="8901234567890123456", nickname="", enabled=True, provider="Webbing"),
-      Profile(iccid="8904567890123456789", nickname="Personal", enabled=False, provider="T-Mobile"),
-      Profile(iccid="8907890123456789012", nickname="Travel eSIM", enabled=False, provider="Airalo"),
-    ]
-
-  def list_profiles(self) -> list[Profile]:
-    return list(self._profiles)
-
-  def get_active_profile(self) -> Profile | None:
-    return next((p for p in self._profiles if p.enabled), None)
-
-  def delete_profile(self, iccid: str) -> None:
-    time.sleep(2)
-    self._profiles = [p for p in self._profiles if p.iccid != iccid]
-
-  def download_profile(self, qr: str, nickname: str | None = None) -> None:
-    time.sleep(2)
-    self._profiles.append(Profile(
-      iccid=f"890{int(time.time())}",
-      nickname=nickname or "",
-      enabled=False,
-      provider="New Profile",
-    ))
-
-  def nickname_profile(self, iccid: str, nickname: str) -> None:
-    time.sleep(1)
-    self._profiles = [
-      Profile(iccid=p.iccid, nickname=nickname if p.iccid == iccid else p.nickname, enabled=p.enabled, provider=p.provider)
-      for p in self._profiles
-    ]
-
-  def switch_profile(self, iccid: str) -> None:
-    time.sleep(2)
-    self._profiles = [
-      Profile(iccid=p.iccid, nickname=p.nickname, enabled=(p.iccid == iccid), provider=p.provider)
-      for p in self._profiles
-    ]
-
-
 LPA_RETRY_INTERVAL = 5.0
 
 
@@ -111,10 +67,6 @@ class CellularManager:
       self._last_ip_poll = now
       self._modem_ip = _get_modem_ip()
 
-  def _enqueue_callbacks(self, cbs: list, *args):
-    for cb in cbs:
-      self._callback_queue.append(lambda _cb=cb, _args=args: _cb(*_args))
-
   @property
   def profiles(self) -> list[Profile]:
     return self._profiles
@@ -127,7 +79,6 @@ class CellularManager:
   def switching_iccid(self) -> str | None:
     return self._switching_iccid
 
-
   def is_comma_profile(self, iccid: str) -> bool:
     return any(p.iccid == iccid and p.provider == 'Webbing' for p in self._profiles)
 
@@ -136,6 +87,34 @@ class CellularManager:
       self._lpa = _get_lpa()
     return self._lpa
 
+  def _finish(self, profiles: list[Profile] | None = None, error: str | None = None):
+    self._busy = False
+    self._switching_iccid = None
+    if profiles is not None:
+      self._profiles = profiles
+      for cb in self._profiles_updated_cbs:
+        cb(profiles)
+    if error is not None:
+      for cb in self._operation_error_cbs:
+        cb(error)
+
+  def _run_operation(self, fn: Callable, error_msg: str):
+    self._busy = True
+
+    def worker():
+      try:
+        with self._lock:
+          lpa = self._ensure_lpa()
+          fn(lpa)
+          profiles = lpa.list_profiles()
+        self._callback_queue.append(lambda: self._finish(profiles=profiles))
+      except Exception as e:
+        cloudlog.exception(error_msg)
+        err = str(e)
+        self._callback_queue.append(lambda: self._finish(error=err))
+
+    threading.Thread(target=worker, daemon=True).start()
+
   def refresh_profiles(self):
     def worker():
       try:
@@ -143,7 +122,7 @@ class CellularManager:
           lpa = self._ensure_lpa()
           lpa.process_notifications()
           profiles = lpa.list_profiles()
-        self._callback_queue.append(lambda: self._finish_refresh(profiles))
+        self._callback_queue.append(lambda: self._finish(profiles=profiles))
       except Exception:
         cloudlog.exception("Failed to list eSIM profiles")
         time.sleep(LPA_RETRY_INTERVAL)
@@ -151,72 +130,12 @@ class CellularManager:
 
     threading.Thread(target=worker, daemon=True).start()
 
-  def _finish_refresh(self, profiles: list[Profile]):
-    """Update profile list without clearing busy state or installing dialog."""
-    self._profiles = profiles
-    if not self._busy:
-      for cb in self._profiles_updated_cbs:
-        cb(profiles)
-
-  def _finish_switch(self, profiles: list[Profile] | None = None, error: str | None = None):
-    """Called on UI thread via callback queue to atomically clear switch state."""
-    self._busy = False
-    self._switching_iccid = None
-
-    if profiles is not None:
-      self._profiles = profiles
-      for cb in self._profiles_updated_cbs:
-        cb(profiles)
-    if error is not None:
-      for cb in self._operation_error_cbs:
-        cb(error)
-
   def switch_profile(self, iccid: str):
-    self._busy = True
     self._switching_iccid = iccid
-
-    def worker():
-      try:
-        with self._lock:
-          lpa = self._ensure_lpa()
-          lpa.switch_profile(iccid)
-          profiles = lpa.list_profiles()
-        self._callback_queue.append(lambda: self._finish_switch(profiles=profiles))
-      except Exception as e:
-        cloudlog.exception("Failed to switch eSIM profile")
-        error_msg = str(e)
-        self._callback_queue.append(lambda: self._finish_switch(error=error_msg))
-
-    threading.Thread(target=worker, daemon=True).start()
-
-  def _finish_operation(self, profiles: list[Profile] | None = None, error: str | None = None):
-    """Called on UI thread via callback queue to atomically clear busy state."""
-    self._busy = False
-
-    if profiles is not None:
-      self._profiles = profiles
-      for cb in self._profiles_updated_cbs:
-        cb(profiles)
-    if error is not None:
-      for cb in self._operation_error_cbs:
-        cb(error)
+    self._run_operation(lambda lpa: lpa.switch_profile(iccid), "Failed to switch eSIM profile")
 
   def delete_profile(self, iccid: str):
-    self._busy = True
-
-    def worker():
-      try:
-        with self._lock:
-          lpa = self._ensure_lpa()
-          lpa.delete_profile(iccid)
-          profiles = lpa.list_profiles()
-        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
-      except Exception as e:
-        cloudlog.exception("Failed to delete eSIM profile")
-        error_msg = str(e)
-        self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
-
-    threading.Thread(target=worker, daemon=True).start()
+    self._run_operation(lambda lpa: lpa.delete_profile(iccid), "Failed to delete eSIM profile")
 
   def download_profile(self, qr: str, nickname: str | None = None):
     self._busy = True
@@ -227,11 +146,11 @@ class CellularManager:
           lpa = self._ensure_lpa()
           lpa.download_profile(qr, nickname)
           profiles = lpa.list_profiles()
-        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
+        self._callback_queue.append(lambda: self._finish(profiles=profiles))
       except Exception as e:
         cloudlog.exception("Failed to download eSIM profile")
-        error_msg = str(e)
-        self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
+        err = str(e)
+        self._callback_queue.append(lambda: self._finish(error=err))
 
     t = threading.Thread(target=worker, daemon=True)
     t.start()
@@ -240,23 +159,9 @@ class CellularManager:
       t.join(timeout=DOWNLOAD_TIMEOUT)
       if t.is_alive():
         cloudlog.error("eSIM profile download timed out")
-        self._callback_queue.append(lambda: self._finish_operation(error="Profile download timed out. Please try again."))
+        self._callback_queue.append(lambda: self._finish(error="Profile download timed out. Please try again."))
 
     threading.Thread(target=watchdog, daemon=True).start()
 
   def nickname_profile(self, iccid: str, nickname: str):
-    self._busy = True
-
-    def worker():
-      try:
-        with self._lock:
-          lpa = self._ensure_lpa()
-          lpa.nickname_profile(iccid, nickname)
-          profiles = lpa.list_profiles()
-        self._callback_queue.append(lambda: self._finish_operation(profiles=profiles))
-      except Exception as e:
-        cloudlog.exception("Failed to update eSIM profile nickname")
-        error_msg = str(e)
-        self._callback_queue.append(lambda: self._finish_operation(error=error_msg))
-
-    threading.Thread(target=worker, daemon=True).start()
+    self._run_operation(lambda lpa: lpa.nickname_profile(iccid, nickname), "Failed to update eSIM profile nickname")
