@@ -55,12 +55,10 @@ TAG_AUTH_SERVER = 0xBF38
 TAG_CANCEL_SESSION = 0xBF41
 TAG_OK = 0xA0
 
-CAT_BUSY = 0x05
-
 PROFILE_ERROR_CODES = {
   0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
   0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
-  CAT_BUSY: "catBusy", 0x06: "undefinedError",
+  0x05: "catBusy", 0x06: "undefinedError",
 }
 
 AUTH_SERVER_ERROR_CODES = {
@@ -146,7 +144,6 @@ class AtClient:
         self._serial.close()
 
   def _disable_echo(self) -> None:
-    """Disable command echo and drain any stale data from the serial buffer."""
     self._serial.reset_input_buffer()
     self._serial.write(b"ATE0\r")
     time.sleep(0.1)
@@ -196,7 +193,6 @@ class AtClient:
     return lines
 
   def _reconnect_serial(self) -> None:
-    """Reopen the serial port after it goes stale (e.g. modem reboot)."""
     self.channel = None
     try:
       if self._serial:
@@ -218,7 +214,6 @@ class AtClient:
     return self._dbus_query(cmd)
 
   def _open_isdr_once(self) -> None:
-    """Try once to open ISD-R. Raises on failure."""
     if self.channel:
       try:
         self.query(f"AT+CCHC={self.channel}")
@@ -691,7 +686,8 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
 
 
-LOCK_PATH = '/tmp/.lpa_acquire_channel.lock'
+MM_DEVICE_UID = '/sys/devices/platform/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb1/1-1'
+LOCK_FILE = '/tmp/.lpa.lock'
 
 
 class TiciLPA(LPABase):
@@ -701,37 +697,31 @@ class TiciLPA(LPABase):
 
   @contextmanager
   def _acquire_channel(self, inhibit: bool = False):
-    """Acquire filesystem lock, open ISD-R channel, and close it on exit.
-    If inhibit=True, also inhibit ModemManager for the duration."""
     inhibit_proc = None
     if inhibit:
-      inhibit_proc = subprocess.Popen(
-        ['sudo', 'mmcli', '--inhibit-device=/sys/devices/platform/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb1/1-1'],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+      inhibit_proc = subprocess.Popen(['sudo', 'mmcli', f'--inhibit-device={MM_DEVICE_UID}'],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
       time.sleep(1)
-    fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR)
+    fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
     try:
       fcntl.flock(fd, fcntl.LOCK_EX)
       self._client.open_isdr()
       yield
     finally:
-      try:
-        if self._client.channel:
-          try:
-            self._client.query(f"AT+CCHC={self._client.channel}")
-          except (RuntimeError, TimeoutError):
-            pass
-          self._client.channel = None
-      finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
-        if inhibit_proc:
-          inhibit_proc.terminate()
-          inhibit_proc.wait(timeout=5)
+      if self._client.channel:
+        try:
+          self._client.query(f"AT+CCHC={self._client.channel}")
+        except (RuntimeError, TimeoutError):
+          pass
+        self._client.channel = None
+      fcntl.flock(fd, fcntl.LOCK_UN)
+      os.close(fd)
+      if inhibit_proc:
+        inhibit_proc.terminate()
+        inhibit_proc.wait(timeout=5)
 
   def list_profiles(self) -> list[Profile]:
     with self._acquire_channel():
-      profiles = list_profiles(self._client)
       return [
         Profile(
           iccid=p.get("iccid", ""),
@@ -739,7 +729,7 @@ class TiciLPA(LPABase):
           enabled=p.get("profileState") == "enabled",
           provider=p.get("serviceProviderName") or "",
         )
-        for p in profiles
+        for p in list_profiles(self._client)
       ]
 
   def get_active_profile(self) -> Profile | None:
@@ -752,15 +742,11 @@ class TiciLPA(LPABase):
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
-    for attempt in range(4):
-      with self._acquire_channel():
-        request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-        response = es10x_command(self._client, request)
-        root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
-        code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
-      if code != CAT_BUSY:
-        break
-      time.sleep(0.5)
+    with self._acquire_channel(inhibit=True):
+      request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+      response = es10x_command(self._client, request)
+      root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+      code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
     if code != 0x00:
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
@@ -778,11 +764,10 @@ class TiciLPA(LPABase):
     with self._acquire_channel(inhibit=True):
       inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
       inner += b'\x01\x01\x00'  # refreshFlag = FALSE
-      request = encode_tlv(TAG_ENABLE_PROFILE, inner)
-      response = es10x_command(self._client, request)
+      response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
       root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
       code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
-      if code not in (0x00, 0x02):  # 0x02 = already enabled
+      if code not in (0x00, 0x02):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     if code == 0x00:
       subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
