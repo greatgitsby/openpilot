@@ -2,6 +2,7 @@
 
 import atexit
 import base64
+import fcntl
 import hashlib
 import math
 import os
@@ -12,6 +13,7 @@ import sys
 import time
 
 from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from typing import Any
 from pathlib import Path
 
@@ -688,70 +690,82 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
 
 
+LOCK_PATH = '/tmp/.lpa_channel.lock'
+
+
 class TiciLPA(LPABase):
-  _instance = None
-
-  def __new__(cls):
-    if cls._instance is None:
-      cls._instance = super().__new__(cls)
-    return cls._instance
-
   def __init__(self):
-    if hasattr(self, '_client'):
-      return
     self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT, debug=DEBUG)
-    self._client.open_isdr()
     atexit.register(self._client.close)
 
-
+  @contextmanager
+  def _channel(self):
+    """Acquire filesystem lock, open ISD-R channel, and close it on exit."""
+    fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR)
+    try:
+      fcntl.flock(fd, fcntl.LOCK_EX)
+      self._client.open_isdr()
+      yield
+    finally:
+      try:
+        if self._client.channel:
+          try:
+            self._client.query(f"AT+CCHC={self._client.channel}")
+          except (RuntimeError, TimeoutError):
+            pass
+          self._client.channel = None
+      finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
   def list_profiles(self) -> list[Profile]:
-    profiles = list_profiles(self._client)
-    return [
-      Profile(
-        iccid=p.get("iccid", ""),
-        nickname=p.get("profileNickname") or "",
-        enabled=p.get("profileState") == "enabled",
-        provider=p.get("serviceProviderName") or "",
-      )
-      for p in profiles
-    ]
+    with self._channel():
+      profiles = list_profiles(self._client)
+      return [
+        Profile(
+          iccid=p.get("iccid", ""),
+          nickname=p.get("profileNickname") or "",
+          enabled=p.get("profileState") == "enabled",
+          provider=p.get("serviceProviderName") or "",
+        )
+        for p in profiles
+      ]
 
   def get_active_profile(self) -> Profile | None:
     return None
 
   def process_notifications(self) -> None:
-    process_notifications(self._client)
+    with self._channel():
+      process_notifications(self._client)
 
   def delete_profile(self, iccid: str) -> None:
     if self.is_comma_profile(iccid):
       raise LPAError("refusing to delete a comma profile")
-    request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    response = es10x_command(self._client, request)
-    root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
-    code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
-    if code != 0x00:
-      raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    with self._channel():
+      request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+      response = es10x_command(self._client, request)
+      root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+      code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+      if code != 0x00:
+        raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
-    iccid = download_profile(self._client, qr)
-    if nickname and iccid:
-      self.nickname_profile(iccid, nickname)
+    with self._channel():
+      iccid = download_profile(self._client, qr)
+      if nickname and iccid:
+        set_profile_nickname(self._client, iccid, nickname)
 
   def nickname_profile(self, iccid: str, nickname: str) -> None:
-    set_profile_nickname(self._client, iccid, nickname)
-
-  def _enable_profile(self, iccid: str, refresh: bool = True) -> int:
-    inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    inner += b'\x01\x01' + (b'\xFF' if refresh else b'\x00')  # refreshFlag BOOLEAN
-    request = encode_tlv(TAG_ENABLE_PROFILE, inner)
-    response = es10x_command(self._client, request)
-    root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
-    return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+    with self._channel():
+      set_profile_nickname(self._client, iccid, nickname)
 
   def switch_profile(self, iccid: str) -> None:
-    code = self._enable_profile(iccid, refresh=False)
-    if code not in (0x00, 0x02):  # 0x02 = already enabled
-      raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    if code == 0x00:
-      self._client.channel = None
+    with self._channel():
+      inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+      inner += b'\x01\x01\x00'  # refreshFlag = FALSE
+      request = encode_tlv(TAG_ENABLE_PROFILE, inner)
+      response = es10x_command(self._client, request)
+      root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+      code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+      if code not in (0x00, 0x02):  # 0x02 = already enabled
+        raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
