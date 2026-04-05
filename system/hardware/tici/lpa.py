@@ -33,6 +33,7 @@ ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 MM = "org.freedesktop.ModemManager1"
 MM_MODEM = MM + ".Modem"
 ES10X_MSS = 120
+LOCK_FILE = '/tmp/.lpa.lock'
 DEBUG = True
 
 # TLV Tags
@@ -128,7 +129,13 @@ class AtClient:
     self._use_dbus = False
     try:
       self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
-      self._disable_echo()
+      fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
+      try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        self._disable_echo()
+      finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
       if self.debug:
         print("AtClient: using serial transport", file=sys.stderr)
     except (serial.SerialException, PermissionError, OSError) as e:
@@ -692,7 +699,6 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
 
 
 MM_DEVICE_UID = '/sys/devices/platform/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb1/1-1'
-LOCK_FILE = '/tmp/.lpa.lock'
 
 
 class TiciLPA(LPABase):
