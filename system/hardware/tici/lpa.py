@@ -127,15 +127,10 @@ class AtClient:
     self._baud = baud
     self._timeout = timeout
     self._serial: serial.Serial | None = None
-    self._use_dbus = False
-    try:
-      self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
-      if self.debug:
-        print("AtClient: using serial transport", file=sys.stderr)
-    except (serial.SerialException, PermissionError, OSError) as e:
-      if self.debug:
-        print(f"AtClient: serial unavailable ({e}), falling back to DBUS", file=sys.stderr)
-      self._use_dbus = True
+    self._use_dbus = not os.path.exists(device)
+    if self.debug:
+      transport = "DBUS" if self._use_dbus else "serial"
+      print(f"AtClient: using {transport} transport", file=sys.stderr)
 
   def close(self) -> None:
     try:
@@ -204,6 +199,8 @@ class AtClient:
   def query(self, cmd: str) -> list[str]:
     if self._use_dbus:
       return self._dbus_query(cmd)
+    if not self._serial:
+      self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
     try:
       self._send(cmd)
       return self._expect()
