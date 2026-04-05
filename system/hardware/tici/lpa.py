@@ -760,13 +760,22 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       set_profile_nickname(self._client, iccid, nickname)
 
+  def _enable_profile(self, iccid: str) -> int:
+    inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+    inner += b'\x01\x01\x00'  # refreshFlag = FALSE
+    response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
+    root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+    return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+
   def switch_profile(self, iccid: str) -> None:
     with self._acquire_channel(inhibit=True):
-      inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-      inner += b'\x01\x01\x00'  # refreshFlag = FALSE
-      response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
-      root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
-      code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+      code = self._enable_profile(iccid)
+      if code == 0x05:  # catBusy — reset modem and retry
+        subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+        time.sleep(5)
+        self._client._reconnect_serial()
+        self._client.open_isdr()
+        code = self._enable_profile(iccid)
       if code not in (0x00, 0x02):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
       if code == 0x00:
