@@ -191,7 +191,7 @@ class ESimProfileButton(BigButton):
 
   @property
   def _show_delete_btn(self) -> bool:
-    if self._deleting or self._profile.enabled:
+    if self._deleting or self._profile.enabled or self._cellular_manager.busy:
       return False
     return not self._cellular_manager.is_comma_profile(self._profile.iccid)
 
