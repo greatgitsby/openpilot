@@ -751,7 +751,12 @@ class TiciLPA(LPABase):
         code = self._enable_profile(iccid, refresh=refresh)
       if code not in (0x00, 0x02):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-      if code == 0x00 and not refresh:
-        self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
-        time.sleep(2)
-        self._client._serial.reset_input_buffer()
+      if code == 0x00:
+        if refresh:
+          # SIM toolkit refresh briefly disrupts the modem — wait for it to settle
+          time.sleep(1)
+          self._client._serial.reset_input_buffer()
+        else:
+          self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
+          time.sleep(2)
+          self._client._serial.reset_input_buffer()
