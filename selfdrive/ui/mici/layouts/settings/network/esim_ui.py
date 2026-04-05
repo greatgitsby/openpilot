@@ -67,8 +67,6 @@ class QRScannerDialog(NavWidget):
     self._on_qr_detected = on_qr_detected
     self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_DRIVER)
     self._detected = False
-    self._scan_thread: threading.Thread | None = None
-    self._scan_result: str | None = None
     self.set_rect(rl.Rectangle(0, 0, gui_app.width, gui_app.height))
 
   def show_event(self):
@@ -89,29 +87,14 @@ class QRScannerDialog(NavWidget):
     if self._detected or not self._camera_view.frame:
       return
 
-    # Check for result from background scan
-    if self._scan_result is not None:
-      data = self._scan_result
-      self._scan_result = None
+    frame = self._camera_view.frame
+    gray = frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width]
+    results = zxingcpp.read_barcodes(gray)
+    if results:
+      data = results[0].text
       if _is_valid_lpa_code(data):
         self._detected = True
         self.dismiss(lambda: self._on_qr_detected(data))
-        return
-
-    # Launch scan in background if not already running
-    if self._scan_thread is None or not self._scan_thread.is_alive():
-      frame = self._camera_view.frame
-      gray = frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width]
-      h, w = gray.shape
-      gray = gray[h // 4 : 3 * h // 4, w // 4 : 3 * w // 4].copy()
-
-      def scan():
-        results = zxingcpp.read_barcodes(gray)
-        if results:
-          self._scan_result = results[0].text
-
-      self._scan_thread = threading.Thread(target=scan, daemon=True)
-      self._scan_thread.start()
 
   def _render(self, rect):
     rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
@@ -121,11 +104,6 @@ class QRScannerDialog(NavWidget):
       gui_label(rect, tr("camera starting"), font_size=54, font_weight=FontWeight.BOLD,
                 alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
     else:
-      # Draw scan region border
-      crop_rect = rl.Rectangle(rect.x + rect.width / 4, rect.y + rect.height / 4,
-                                rect.width / 2, rect.height / 2)
-      rl.draw_rectangle_lines_ex(crop_rect, 3, rl.Color(255, 255, 255, 150))
-
       label_y = rect.y + rect.height * 3 / 4
       label_rect = rl.Rectangle(rect.x, label_y + (rect.height - label_y) / 2 - 20, rect.width, 40)
       gui_label(label_rect, "hold QR code to camera", font_size=32, font_weight=FontWeight.MEDIUM,
