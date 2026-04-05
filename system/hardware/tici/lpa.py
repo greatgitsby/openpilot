@@ -771,4 +771,5 @@ class TiciLPA(LPABase):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
       if code == 0x00:
         self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
+        time.sleep(2)
         self._client._serial.reset_input_buffer()

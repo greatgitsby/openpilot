@@ -122,13 +122,20 @@ class CellularManager:
           lpa = self._ensure_lpa()
           lpa.process_notifications()
           profiles = lpa.list_profiles()
-        self._callback_queue.append(lambda: self._finish(profiles=profiles))
+        self._callback_queue.append(lambda: self._finish_refresh(profiles))
       except Exception:
         cloudlog.exception("Failed to list eSIM profiles")
         time.sleep(LPA_RETRY_INTERVAL)
         self._callback_queue.append(lambda: self.refresh_profiles())
 
     threading.Thread(target=worker, daemon=True).start()
+
+  def _finish_refresh(self, profiles: list[Profile]):
+    if self._busy:
+      return
+    self._profiles = profiles
+    for cb in self._profiles_updated_cbs:
+      cb(profiles)
 
   def switch_profile(self, iccid: str):
     self._switching_iccid = iccid
