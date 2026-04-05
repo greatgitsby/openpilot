@@ -32,6 +32,7 @@ DEFAULT_TIMEOUT = 5.0
 ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 MM = "org.freedesktop.ModemManager1"
 MM_MODEM = MM + ".Modem"
+MM_DEVICE_UID = '/sys/devices/platform/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb1/1-1'
 ES10X_MSS = 120
 LOCK_FILE = '/tmp/.lpa.lock'
 DEBUG = True
@@ -683,8 +684,6 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
   if code != 0x00:
     raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
 
-
-MM_DEVICE_UID = '/sys/devices/platform/soc/a800000.ssusb/a800000.dwc3/xhci-hcd.0.auto/usb1/1-1'
 
 
 class TiciLPA(LPABase):
