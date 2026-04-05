@@ -129,13 +129,6 @@ class AtClient:
     self._use_dbus = False
     try:
       self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
-      fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
-      try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        self._disable_echo()
-      finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
       if self.debug:
         print("AtClient: using serial transport", file=sys.stderr)
     except (serial.SerialException, PermissionError, OSError) as e:
@@ -154,12 +147,6 @@ class AtClient:
     finally:
       if self._serial:
         self._serial.close()
-
-  def _disable_echo(self) -> None:
-    self._serial.reset_input_buffer()
-    self._serial.write(b"ATE0\r")
-    time.sleep(0.1)
-    self._serial.reset_input_buffer()
 
   def _send(self, cmd: str) -> None:
     if self.debug:
@@ -191,7 +178,6 @@ class AtClient:
     except Exception:
       pass
     self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
-    self._disable_echo()
 
   def _get_modem(self):
     import dbus
