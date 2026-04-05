@@ -4,7 +4,6 @@ import atexit
 import base64
 import fcntl
 import hashlib
-import math
 import os
 import requests
 import serial
@@ -30,8 +29,6 @@ DEFAULT_BAUD = 9600
 DEFAULT_TIMEOUT = 5.0
 # https://euicc-manual.osmocom.org/docs/lpa/applet-id/
 ISDR_AID = "A0000005591010FFFFFFFF8900000100"
-MM = "org.freedesktop.ModemManager1"
-MM_MODEM = MM + ".Modem"
 ES10X_MSS = 120
 DEBUG = True
 
@@ -124,12 +121,8 @@ class AtClient:
     self._device = device
     self._baud = baud
     self._timeout = timeout
-    self._serial: serial.Serial | None = None
-    try:
-      self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
-      self._disable_echo()
-    except (serial.SerialException, PermissionError, OSError):
-      pass
+    self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
+    self._disable_echo()
 
   def close(self) -> None:
     try:
@@ -140,8 +133,7 @@ class AtClient:
           pass
         self.channel = None
     finally:
-      if self._serial:
-        self._serial.close()
+      self._serial.close()
 
   def _disable_echo(self) -> None:
     self._serial.reset_input_buffer()
@@ -171,27 +163,6 @@ class AtClient:
         raise RuntimeError(f"AT command failed: {line}")
       lines.append(line)
 
-  def _get_modem(self):
-    import dbus
-    bus = dbus.SystemBus()
-    mm = bus.get_object(MM, '/org/freedesktop/ModemManager1')
-    objects = mm.GetManagedObjects(dbus_interface="org.freedesktop.DBus.ObjectManager", timeout=self._timeout)
-    modem_path = list(objects.keys())[0]
-    return bus.get_object(MM, modem_path)
-
-  def _dbus_query(self, cmd: str) -> list[str]:
-    if self.debug:
-      print(f"DBUS >> {cmd}", file=sys.stderr)
-    try:
-      result = str(self._get_modem().Command(cmd, math.ceil(self._timeout), dbus_interface=MM_MODEM, timeout=self._timeout))
-    except Exception as e:
-      raise RuntimeError(f"AT command failed: {e}") from e
-    lines = [line.strip() for line in result.splitlines() if line.strip()]
-    if self.debug:
-      for line in lines:
-        print(f"DBUS << {line}", file=sys.stderr)
-    return lines
-
   def _reconnect_serial(self) -> None:
     self.channel = None
     try:
@@ -203,15 +174,13 @@ class AtClient:
     self._disable_echo()
 
   def query(self, cmd: str) -> list[str]:
-    if self._serial:
-      try:
-        self._send(cmd)
-        return self._expect()
-      except serial.SerialException:
-        self._reconnect_serial()
-        self._send(cmd)
-        return self._expect()
-    return self._dbus_query(cmd)
+    try:
+      self._send(cmd)
+      return self._expect()
+    except serial.SerialException:
+      self._reconnect_serial()
+      self._send(cmd)
+      return self._expect()
 
   def _open_isdr_once(self) -> None:
     if self.channel:
@@ -221,11 +190,10 @@ class AtClient:
         pass
       self.channel = None
     # drain any unsolicited responses before opening
-    if self._serial:
-      try:
-        self._serial.reset_input_buffer()
-      except (OSError, serial.SerialException, termios.error):
-        self._reconnect_serial()
+    try:
+      self._serial.reset_input_buffer()
+    except (OSError, serial.SerialException, termios.error):
+      self._reconnect_serial()
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
