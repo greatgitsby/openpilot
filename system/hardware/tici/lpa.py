@@ -701,7 +701,7 @@ class TiciLPA(LPABase):
     if inhibit:
       inhibit_proc = subprocess.Popen(['sudo', 'mmcli', f'--inhibit-device={MM_DEVICE_UID}'],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-      time.sleep(1)
+      time.sleep(0.5)
     fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
     try:
       fcntl.flock(fd, fcntl.LOCK_EX)
@@ -769,7 +769,6 @@ class TiciLPA(LPABase):
       code = require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
       if code not in (0x00, 0x02):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    if code == 0x00:
-      subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
-      time.sleep(5)
-      self._client._reconnect_serial()
+      if code == 0x00:
+        self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
+        self._client._serial.reset_input_buffer()
