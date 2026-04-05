@@ -9,6 +9,7 @@ import serial
 import subprocess
 import sys
 import termios
+import time
 
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
