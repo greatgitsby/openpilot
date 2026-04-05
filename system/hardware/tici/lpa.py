@@ -748,5 +748,14 @@ class TiciLPA(LPABase):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
       if code == 0x00:
         self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
-        time.sleep(2)
+        time.sleep(0.5)
         self._client._serial.reset_input_buffer()
+        # wait for modem to become ready after CFUN cycle
+        for _ in range(20):
+          try:
+            self._client._open_isdr_once()
+            self._client.query(f"AT+CCHC={self._client.channel}")
+            self._client.channel = None
+            break
+          except (RuntimeError, TimeoutError, termios.error):
+            time.sleep(0.5)
