@@ -1,7 +1,7 @@
 import threading
 import urllib.request
 
-from pyzbar.pyzbar import decode as pyzbar_decode
+import zxingcpp
 import pyray as rl
 from collections.abc import Callable
 from msgq.visionipc import VisionStreamType
@@ -107,9 +107,9 @@ class QRScannerDialog(NavWidget):
       gray = gray[::2, ::2].copy()
 
       def scan():
-        results = pyzbar_decode(gray)
+        results = zxingcpp.read_barcodes(gray)
         if results:
-          self._scan_result = results[0].data.decode('utf-8')
+          self._scan_result = results[0].text
 
       self._scan_thread = threading.Thread(target=scan, daemon=True)
       self._scan_thread.start()

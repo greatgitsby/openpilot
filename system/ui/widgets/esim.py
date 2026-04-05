@@ -16,13 +16,13 @@ from openpilot.system.ui.widgets.keyboard import Keyboard
 from openpilot.system.ui.widgets.label import gui_label
 
 try:
-  from pyzbar.pyzbar import decode as pyzbar_decode
+  import zxingcpp
   from msgq.visionipc import VisionStreamType
   from openpilot.selfdrive.ui.onroad.cameraview import CameraView
   from openpilot.common.params import Params
   from openpilot.selfdrive.ui.ui_state import device
 except Exception:
-  pyzbar_decode = None
+  zxingcpp = None
   VisionStreamType = None
   CameraView = None
   Params = None
@@ -102,9 +102,9 @@ class QRScannerDialog(Widget):
       gray = gray[::2, ::2].copy()
 
       def scan():
-        results = pyzbar_decode(gray)
+        results = zxingcpp.read_barcodes(gray)
         if results:
-          self._scan_result = results[0].data.decode('utf-8')
+          self._scan_result = results[0].text
 
       self._scan_thread = threading.Thread(target=scan, daemon=True)
       self._scan_thread.start()
@@ -367,7 +367,7 @@ class ESimManagerUI(Widget):
       self._cellular_manager.delete_profile(iccid)
 
   def _on_add_profile(self):
-    if not CameraView or not pyzbar_decode:
+    if not CameraView or not zxingcpp:
       gui_app.push_widget(alert_dialog("QR scanning not available on this platform"))
       return
 
