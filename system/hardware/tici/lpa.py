@@ -728,34 +728,30 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       set_profile_nickname(self._client, iccid, nickname)
 
-  def _enable_profile(self, iccid: str) -> int:
+  def _enable_profile(self, iccid: str, refresh: bool = False) -> int:
     inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    inner += b'\x01\x01\x00'  # refreshFlag = FALSE
+    inner += b'\x01\x01\x01' if refresh else b'\x01\x01\x00'
     response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
+  def _has_sim_presence(self) -> bool:
+    from openpilot.system.hardware.tici.hardware import get_device_type
+    return get_device_type() == "tizi"
+
   def switch_profile(self, iccid: str) -> None:
+    refresh = self._has_sim_presence()
     with self._acquire_channel(inhibit=True):
-      code = self._enable_profile(iccid)
+      code = self._enable_profile(iccid, refresh=refresh)
       if code == 0x05:  # catBusy — reset modem and retry
         subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
         time.sleep(5)
         self._client._reconnect_serial()
         self._client.open_isdr()
-        code = self._enable_profile(iccid)
+        code = self._enable_profile(iccid, refresh=refresh)
       if code not in (0x00, 0x02):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-      if code == 0x00:
+      if code == 0x00 and not refresh:
         self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
-        time.sleep(0.5)
+        time.sleep(2)
         self._client._serial.reset_input_buffer()
-        # wait for modem to become ready after CFUN cycle
-        for _ in range(20):
-          try:
-            self._client._open_isdr_once()
-            self._client.query(f"AT+CCHC={self._client.channel}")
-            self._client.channel = None
-            break
-          except (RuntimeError, TimeoutError, termios.error):
-            time.sleep(0.5)
