@@ -840,6 +840,7 @@ dependencies = [
     { name = "zeromq" },
     { name = "zstandard" },
     { name = "zstd" },
+    { name = "zxing-cpp" },
 ]
 
 [package.optional-dependencies]
@@ -935,6 +936,7 @@ requires-dist = [
     { name = "zeromq", git = "https://github.com/commaai/dependencies.git?subdirectory=zeromq&rev=release-zeromq" },
     { name = "zstandard" },
     { name = "zstd", git = "https://github.com/commaai/dependencies.git?subdirectory=zstd&rev=release-zstd" },
+    { name = "zxing-cpp", specifier = "==3.0.0" },
 ]
 provides-extras = ["docs", "testing", "dev", "tools"]
 
@@ -1703,3 +1705,17 @@ wheels = [
 name = "zstd"
 version = "1.5.6"
 source = { git = "https://github.com/commaai/dependencies.git?subdirectory=zstd&rev=release-zstd#b2b10636beba0384eada30979651b4ca7cf919ff" }
+
+[[package]]
+name = "zxing-cpp"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/c6/ac2a12cdc2b1c296804fc6a65bf112b607825ca7f47742a5aca541134711/zxing_cpp-3.0.0.tar.gz", hash = "sha256:703353304de24d947bd68044fac4e062953a7b64029de6941ba8ffeb4476b60d", size = 1197544, upload-time = "2026-02-10T12:50:11.252Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/7f/32b4cc8545da72061d360aca9d96c51738d48e2f3a8eebe06a47f4103dd6/zxing_cpp-3.0.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:8b76fac77c94545c5a6e2e6184a121c09409fff29f9c7557e350c16b78025d74", size = 914798, upload-time = "2026-02-10T12:49:43.556Z" },
+    { url = "https://files.pythonhosted.org/packages/df/21/5ba18d19383fe5f044fefa79640f4234665bc77057cf3d584e5eb979685f/zxing_cpp-3.0.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:0bf58043c543d3440f1cbef6bfa9e5ad7139c39c90955d1f294f4778f0cd1ec0", size = 867437, upload-time = "2026-02-10T12:49:45.424Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/2a/94d98c5b728e1dfeec3a343f2581bf7f372ca448cefff50076cab0c6e0c4/zxing_cpp-3.0.0-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:548cc0e767f24193038031c76f60f2de0965ab5b05106dff6095bcae89607748", size = 995650, upload-time = "2026-02-10T12:49:47.222Z" },
+    { url = "https://files.pythonhosted.org/packages/39/0f/03f09d048b7dde279a5bed8839ffbb21f7e8995747afa17970791c0356ff/zxing_cpp-3.0.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:cfdf7a393541f4cd7c7c9329ec5d56b49a5cfc91bf24cdc53ec301d41c2afd68", size = 1074289, upload-time = "2026-02-10T12:49:48.804Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/74/b8ad4faba8798991ef710107758fc7df36fb0f6b9ff6092f89e3039d1381/zxing_cpp-3.0.0-cp312-cp312-win32.whl", hash = "sha256:5193b305f317eed0e55963e33ccac33c6ffa12a225bc68c6363ae62ae49a10a3", size = 828198, upload-time = "2026-02-10T12:49:50.615Z" },
+    { url = "https://files.pythonhosted.org/packages/99/35/4ad2b3731fd03b245dd3987bd8b16e1b8d9ae0f60d178eecc73b1c6fa19c/zxing_cpp-3.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:e92d64ab213bb9be0734ad10a5409ae258eb413e0569d8a6d61d483558ab16e6", size = 909267, upload-time = "2026-02-10T12:49:52.022Z" },
+]
