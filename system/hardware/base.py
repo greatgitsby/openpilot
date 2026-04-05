@@ -91,8 +91,12 @@ class LPABase(ABC):
   def switch_profile(self, iccid: str) -> None:
     pass
 
+  def process_notifications(self) -> None:
+    pass
+
   def is_comma_profile(self, iccid: str) -> bool:
-    return any(iccid.startswith(prefix) for prefix in ('8985235',))
+    profiles = self.list_profiles()
+    return any(p.iccid == iccid and p.provider == 'Webbing' for p in profiles)
 
 class HardwareBase(ABC):
   @staticmethod

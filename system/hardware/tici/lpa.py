@@ -5,14 +5,17 @@ import base64
 import math
 import os
 import serial
+import subprocess
 import sys
+import termios
+import time
 
 from collections.abc import Generator
 
 from openpilot.system.hardware.base import LPABase, Profile
 
 
-DEFAULT_DEVICE = "/dev/ttyUSB2"
+DEFAULT_DEVICE = "/dev/modem_at0"
 DEFAULT_BAUD = 9600
 DEFAULT_TIMEOUT = 5.0
 # https://euicc-manual.osmocom.org/docs/lpa/applet-id/
@@ -20,7 +23,7 @@ ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 MM = "org.freedesktop.ModemManager1"
 MM_MODEM = MM + ".Modem"
 ES10X_MSS = 120
-DEBUG = os.environ.get("DEBUG") == "1"
+DEBUG = True
 
 # TLV Tags
 TAG_ICCID = 0x5A
@@ -39,18 +42,22 @@ class AtClient:
   def __init__(self, device: str, baud: int, timeout: float, debug: bool) -> None:
     self.debug = debug
     self.channel: str | None = None
+    self._device = device
+    self._baud = baud
     self._timeout = timeout
     self._serial: serial.Serial | None = None
-    try:
-      self._serial = serial.Serial(device, baudrate=baud, timeout=timeout)
-      self._serial.reset_input_buffer()
-    except (serial.SerialException, PermissionError, OSError):
-      pass
+    self._use_dbus = not os.path.exists(device)
+    if self.debug:
+      transport = "DBUS" if self._use_dbus else "serial"
+      print(f"AtClient: using {transport} transport", file=sys.stderr)
 
   def close(self) -> None:
     try:
       if self.channel:
-        self.query(f"AT+CCHC={self.channel}")
+        try:
+          self.query(f"AT+CCHC={self.channel}")
+        except (RuntimeError, TimeoutError):
+          pass
         self.channel = None
     finally:
       if self._serial:
@@ -78,6 +85,15 @@ class AtClient:
         raise RuntimeError(f"AT command failed: {line}")
       lines.append(line)
 
+  def _reconnect_serial(self) -> None:
+    self.channel = None
+    try:
+      if self._serial:
+        self._serial.close()
+    except Exception:
+      pass
+    self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
+
   def _get_modem(self):
     import dbus
     bus = dbus.SystemBus()
@@ -100,35 +116,74 @@ class AtClient:
     return lines
 
   def query(self, cmd: str) -> list[str]:
-    if self._serial:
+    if self._use_dbus:
+      return self._dbus_query(cmd)
+    if not self._serial:
+      self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
+    try:
       self._send(cmd)
       return self._expect()
-    return self._dbus_query(cmd)
+    except serial.SerialException:
+      self._reconnect_serial()
+      self._send(cmd)
+      return self._expect()
 
-  def open_isdr(self) -> None:
-    # close any stale logical channel from a previous crashed session
-    try:
-      self.query("AT+CCHC=1")
-    except RuntimeError:
-      pass
+  def _open_isdr_once(self) -> None:
+    if self.channel:
+      try:
+        self.query(f"AT+CCHC={self.channel}")
+      except RuntimeError:
+        pass
+      self.channel = None
+    # drain any unsolicited responses before opening
+    if self._serial and not self._use_dbus:
+      try:
+        self._serial.reset_input_buffer()
+      except (OSError, serial.SerialException, termios.error):
+        self._reconnect_serial()
     for line in self.query(f'AT+CCHO="{ISDR_AID}"'):
       if line.startswith("+CCHO:") and (ch := line.split(":", 1)[1].strip()):
         self.channel = ch
         return
     raise RuntimeError("Failed to open ISD-R application")
 
-  def send_apdu(self, apdu: bytes) -> tuple[bytes, int, int]:
-    if not self.channel:
-      raise RuntimeError("Logical channel is not open")
-    hex_payload = apdu.hex().upper()
-    for line in self.query(f'AT+CGLA={self.channel},{len(hex_payload)},"{hex_payload}"'):
-      if line.startswith("+CGLA:"):
-        parts = line.split(":", 1)[1].split(",", 1)
-        if len(parts) == 2:
-          data = bytes.fromhex(parts[1].strip().strip('"'))
-          if len(data) >= 2:
-            return data[:-2], data[-2], data[-1]
-    raise RuntimeError("Missing +CGLA response")
+  def open_isdr(self) -> None:
+    for attempt in range(10):
+      try:
+        self._open_isdr_once()
+        return
+      except (RuntimeError, TimeoutError, termios.error) as e:
+        if self.debug:
+          print(f"open_isdr failed, trying again", file=sys.stderr)
+        if attempt == 3:
+          # SIM may be stuck (CME ERROR 13) — reset modem via lte.sh
+          subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+          time.sleep(5)
+          self._reconnect_serial()
+        else:
+          time.sleep(2.0)
+    raise RuntimeError("Failed to open ISD-R after retries")
+
+  def send_apdu(self, apdu: bytes, max_retries: int = 3) -> tuple[bytes, int, int]:
+    for attempt in range(max_retries):
+      try:
+        if not self.channel:
+          self.open_isdr()
+        hex_payload = apdu.hex().upper()
+        for line in self.query(f'AT+CGLA={self.channel},{len(hex_payload)},"{hex_payload}"'):
+          if line.startswith("+CGLA:"):
+            parts = line.split(":", 1)[1].split(",", 1)
+            if len(parts) == 2:
+              data = bytes.fromhex(parts[1].strip().strip('"'))
+              if len(data) >= 2:
+                return data[:-2], data[-2], data[-1]
+        raise RuntimeError("Missing +CGLA response")
+      except (RuntimeError, ValueError):
+        self.channel = None
+        if attempt == max_retries - 1:
+          raise
+        time.sleep(1 + attempt)
+    raise RuntimeError("send_apdu failed")
 
 
 # --- TLV utilities ---
