@@ -302,7 +302,6 @@ class TiciLPA(LPABase):
     if hasattr(self, '_client'):
       return
     self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT)
-    self._client.open_isdr()
     atexit.register(self._client.close)
 
   def list_profiles(self) -> list[Profile]:
