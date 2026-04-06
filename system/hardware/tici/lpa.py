@@ -81,6 +81,10 @@ class AtClient:
         raise RuntimeError(f"AT command failed: {line}")
       lines.append(line)
 
+  def _ensure_serial(self) -> None:
+    if self._serial is None:
+      self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
+
   def _reconnect_serial(self) -> None:
     self.channel = None
     try:
@@ -88,7 +92,8 @@ class AtClient:
         self._serial.close()
     except Exception:
       pass
-    self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
+    self._serial = None
+    self._ensure_serial()
 
   def _get_modem(self):
     import dbus
@@ -114,8 +119,7 @@ class AtClient:
   def query(self, cmd: str) -> list[str]:
     if self._use_dbus:
       return self._dbus_query(cmd)
-    if not self._serial:
-      self._serial = serial.Serial(self._device, baudrate=self._baud, timeout=self._timeout)
+    self._ensure_serial()
     try:
       self._send(cmd)
       return self._expect()
