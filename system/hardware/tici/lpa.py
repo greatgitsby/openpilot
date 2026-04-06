@@ -47,9 +47,6 @@ class AtClient:
     self._timeout = timeout
     self._serial: serial.Serial | None = None
     self._use_dbus = not os.path.exists(device)
-    if self.debug:
-      transport = "DBUS" if self._use_dbus else "serial"
-      print(f"AtClient: using {transport} transport", file=sys.stderr)
 
   def close(self) -> None:
     try:
@@ -152,9 +149,9 @@ class AtClient:
       try:
         self._open_isdr_once()
         return
-      except (RuntimeError, TimeoutError, termios.error) as e:
+      except (RuntimeError, TimeoutError, termios.error):
         if self.debug:
-          print(f"open_isdr failed, trying again", file=sys.stderr)
+          print("open_isdr failed, trying again", file=sys.stderr)
         if attempt == 3:
           # SIM may be stuck (CME ERROR 13) — reset modem via lte.sh
           subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
