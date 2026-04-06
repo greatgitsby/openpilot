@@ -12,7 +12,6 @@ import time
 
 from collections.abc import Generator
 
-from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.base import LPABase, Profile
 
 
@@ -150,6 +149,7 @@ class AtClient:
         self._open_isdr_once()
         return
       except (RuntimeError, TimeoutError, termios.error):
+        from openpilot.common.swaglog import cloudlog
         cloudlog.warning("open_isdr attempt %d failed, retrying", attempt + 1)
         if attempt == 3:
           # SIM may be stuck (CME ERROR 13) — reset modem via lte.sh
