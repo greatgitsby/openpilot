@@ -12,6 +12,7 @@ import time
 
 from collections.abc import Generator
 
+from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.base import LPABase, Profile
 
 
@@ -39,8 +40,7 @@ def b64e(data: bytes) -> str:
 
 
 class AtClient:
-  def __init__(self, device: str, baud: int, timeout: float, debug: bool) -> None:
-    self.debug = debug
+  def __init__(self, device: str, baud: int, timeout: float) -> None:
     self.channel: str | None = None
     self._device = device
     self._baud = baud
@@ -61,7 +61,7 @@ class AtClient:
         self._serial.close()
 
   def _send(self, cmd: str) -> None:
-    if self.debug:
+    if DEBUG:
       print(f"SER >> {cmd}", file=sys.stderr)
     self._serial.write((cmd + "\r").encode("ascii"))
 
@@ -74,7 +74,7 @@ class AtClient:
       line = raw.decode(errors="ignore").strip()
       if not line:
         continue
-      if self.debug:
+      if DEBUG:
         print(f"SER << {line}", file=sys.stderr)
       if line == "OK":
         return lines
@@ -100,14 +100,14 @@ class AtClient:
     return bus.get_object(MM, modem_path)
 
   def _dbus_query(self, cmd: str) -> list[str]:
-    if self.debug:
+    if DEBUG:
       print(f"DBUS >> {cmd}", file=sys.stderr)
     try:
       result = str(self._get_modem().Command(cmd, math.ceil(self._timeout), dbus_interface=MM_MODEM, timeout=self._timeout))
     except Exception as e:
       raise RuntimeError(f"AT command failed: {e}") from e
     lines = [line.strip() for line in result.splitlines() if line.strip()]
-    if self.debug:
+    if DEBUG:
       for line in lines:
         print(f"DBUS << {line}", file=sys.stderr)
     return lines
@@ -150,8 +150,7 @@ class AtClient:
         self._open_isdr_once()
         return
       except (RuntimeError, TimeoutError, termios.error):
-        if self.debug:
-          print("open_isdr failed, trying again", file=sys.stderr)
+        cloudlog.warning("open_isdr attempt %d failed, retrying", attempt + 1)
         if attempt == 3:
           # SIM may be stuck (CME ERROR 13) — reset modem via lte.sh
           subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
@@ -302,7 +301,7 @@ class TiciLPA(LPABase):
   def __init__(self):
     if hasattr(self, '_client'):
       return
-    self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT, debug=DEBUG)
+    self._client = AtClient(DEFAULT_DEVICE, DEFAULT_BAUD, DEFAULT_TIMEOUT)
     self._client.open_isdr()
     atexit.register(self._client.close)
 
