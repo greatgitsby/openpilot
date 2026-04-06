@@ -1,5 +1,7 @@
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.layouts.settings.network import WifiNetworkButton
+from openpilot.selfdrive.ui.mici.layouts.settings.network import ESimNetworkButton, WifiNetworkButton
+from openpilot.system.ui.lib.cellular_manager import CellularManager
+from openpilot.selfdrive.ui.mici.layouts.settings.network.esim_ui import ESimUIMici
 from openpilot.selfdrive.ui.mici.layouts.settings.network.wifi_ui import WifiUIMici
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigMultiToggle, BigParamControl, BigToggle
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigInputDialog
@@ -64,6 +66,12 @@ class NetworkLayoutMici(NavScroller):
     self._wifi_button = WifiNetworkButton(self._wifi_manager)
     self._wifi_button.set_click_callback(lambda: gui_app.push_widget(self._wifi_ui))
 
+    # ******** eSIM ********
+    self._cellular_manager = CellularManager()
+    self._esim_ui = ESimUIMici(self._cellular_manager)
+    self._esim_button = ESimNetworkButton(self._cellular_manager)
+    self._esim_button.set_click_callback(lambda: gui_app.push_widget(self._esim_ui))
+
     # ******** Advanced settings ********
     # ******** Roaming toggle ********
     self._roaming_btn = BigParamControl("enable roaming", "GsmRoaming", toggle_callback=self._toggle_roaming)
@@ -78,6 +86,7 @@ class NetworkLayoutMici(NavScroller):
     # Main scroller ----------------------------------
     self._scroller.add_widgets([
       self._wifi_button,
+      self._esim_button,
       self._network_metered_btn,
       self._tethering_toggle_btn,
       self._tethering_password_btn,
@@ -99,22 +108,25 @@ class NetworkLayoutMici(NavScroller):
     # If not using prime SIM, show GSM settings and enable IPv4 forwarding
     show_cell_settings = ui_state.prime_state.get_type() in (PrimeType.NONE, PrimeType.LITE)
     self._wifi_manager.set_ipv4_forward(show_cell_settings)
-    self._roaming_btn.set_visible(show_cell_settings)
+    self._roaming_btn.set_visible(True)
     self._apn_btn.set_visible(show_cell_settings)
     self._cellular_metered_btn.set_visible(show_cell_settings)
 
   def show_event(self):
     super().show_event()
     self._wifi_manager.set_active(True)
+    self._cellular_manager.refresh_profiles()
 
-    # Process wifi callbacks while at any point in the nav stack
+    # Process wifi and esim callbacks while at any point in the nav stack
     gui_app.add_nav_stack_tick(self._wifi_manager.process_callbacks)
+    gui_app.add_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def hide_event(self):
     super().hide_event()
     self._wifi_manager.set_active(False)
 
     gui_app.remove_nav_stack_tick(self._wifi_manager.process_callbacks)
+    gui_app.remove_nav_stack_tick(self._cellular_manager.process_callbacks)
 
   def _toggle_roaming(self, checked: bool):
     self._wifi_manager.update_gsm_settings(checked, ui_state.params.get("GsmApn") or "", ui_state.params.get_bool("GsmMetered"))
