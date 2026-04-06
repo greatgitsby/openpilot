@@ -33,12 +33,25 @@ SEND_APDU_RETRIES = 3
 LOCK_FILE = '/dev/shm/modem_lpa.lock'
 DEBUG = os.environ.get("DEBUG") == "1"
 
+
+def reset_modem():
+  subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+
+
 # TLV Tags
 TAG_ICCID = 0x5A
 TAG_STATUS = 0x80
 TAG_PROFILE_INFO_LIST = 0xBF2D
 TAG_SET_NICKNAME = 0xBF29
+TAG_ENABLE_PROFILE = 0xBF31
+TAG_DELETE_PROFILE = 0xBF33
 TAG_OK = 0xA0
+
+PROFILE_ERROR_CODES = {
+  0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
+  0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
+  0x05: "catBusy", 0x06: "undefinedError",
+}
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
 ICON_LABELS = {0: "jpeg", 1: "png", 255: "unknown"}
@@ -68,6 +81,11 @@ class AtClient:
     self._timeout = timeout
     self._serial: serial.Serial | None = None
     self._use_dbus = not os.path.exists(device)
+
+  def reset(self) -> None:
+    reset_modem()
+    self._serial = None
+    self.open_isdr()
 
   def close(self) -> None:
     try:
@@ -175,9 +193,8 @@ class AtClient:
       except (RuntimeError, TimeoutError, termios.error, serial.SerialException):
         time.sleep(OPEN_ISDR_RETRY_DELAY_S)
         if attempt == OPEN_ISDR_RESET_ATTEMPT:
-          # reset modem via lte.sh
-          subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
-          self._serial = None  # serial port will be re-opened on next attempt
+          reset_modem()
+          self._serial = None
     raise RuntimeError("Failed to open ISD-R after retries")
 
   def send_apdu(self, apdu: bytes) -> tuple[bytes, int, int]:
@@ -385,7 +402,15 @@ class TiciLPA(LPABase):
     return None
 
   def delete_profile(self, iccid: str) -> None:
-    return None
+    if self.is_comma_profile(iccid):
+      raise LPAError("refusing to delete a comma profile")
+    with self._acquire_channel():
+      request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+      response = es10x_command(self._client, request)
+      root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
+      code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+    if code != 0x00:
+      raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
     return None
@@ -394,5 +419,27 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       set_profile_nickname(self._client, iccid, nickname)
 
+  def _enable_profile(self, iccid: str, refresh: bool = False) -> int:
+    inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
+    inner += b'\x01\x01\x01' if refresh else b'\x01\x01\x00'
+    response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
+    root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
+    return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+
   def switch_profile(self, iccid: str) -> None:
-    return None
+    from openpilot.system.hardware.tici.hardware import get_device_type
+    refresh = get_device_type() == "tizi"
+    with self._acquire_channel():
+      code = self._enable_profile(iccid, refresh=refresh)
+      if code == 0x05:  # catBusy — reset modem and retry once
+        self._client.reset()
+        code = self._enable_profile(iccid, refresh=refresh)
+      if code not in (0x00, 0x02):
+        raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
+    # tell modem to re-read SIM outside the channel lock
+    if refresh:
+      time.sleep(0.2)
+    else:
+      self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
+      time.sleep(0.5)
+      self._client._serial.reset_input_buffer()
