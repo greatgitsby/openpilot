@@ -15,7 +15,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 
-from openpilot.system.hardware.base import LPABase, Profile
+from openpilot.system.hardware.base import LPABase, LPAError, Profile
 
 
 DEFAULT_DEVICE = "/dev/modem_at0"
@@ -37,6 +37,7 @@ DEBUG = os.environ.get("DEBUG") == "1"
 TAG_ICCID = 0x5A
 TAG_STATUS = 0x80
 TAG_PROFILE_INFO_LIST = 0xBF2D
+TAG_SET_NICKNAME = 0xBF29
 TAG_OK = 0xA0
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
@@ -330,6 +331,20 @@ def list_profiles(client: AtClient) -> list[dict]:
   return decode_profiles(es10x_command(client, TAG_PROFILE_INFO_LIST.to_bytes(2, "big") + b"\x00"))
 
 
+def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
+  nickname_bytes = nickname.encode("utf-8")
+  if len(nickname_bytes) > 64:
+    raise ValueError("Profile nickname must be 64 bytes or less")
+  content = encode_tlv(TAG_ICCID, string_to_tbcd(iccid)) + encode_tlv(0x90, nickname_bytes)
+  response = es10x_command(client, encode_tlv(TAG_SET_NICKNAME, content))
+  root = require_tag(response, TAG_SET_NICKNAME, "SetNicknameResponse")
+  code = require_tag(root, TAG_STATUS, "status in SetNicknameResponse")[0]
+  if code == 0x01:
+    raise LPAError(f"profile {iccid} not found")
+  if code != 0x00:
+    raise RuntimeError(f"SetNickname failed with status 0x{code:02X}")
+
+
 class TiciLPA(LPABase):
   def __init__(self):
     if hasattr(self, '_client'):
@@ -376,7 +391,8 @@ class TiciLPA(LPABase):
     return None
 
   def nickname_profile(self, iccid: str, nickname: str) -> None:
-    return None
+    with self._acquire_channel():
+      set_profile_nickname(self._client, iccid, nickname)
 
   def switch_profile(self, iccid: str) -> None:
     return None
