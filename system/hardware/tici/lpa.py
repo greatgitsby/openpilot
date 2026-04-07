@@ -23,6 +23,10 @@ ISDR_AID = "A0000005591010FFFFFFFF8900000100"
 MM = "org.freedesktop.ModemManager1"
 MM_MODEM = MM + ".Modem"
 ES10X_MSS = 120
+OPEN_ISDR_RETRIES = 10
+OPEN_ISDR_RETRY_DELAY_S = 0.25
+OPEN_ISDR_RESET_ATTEMPT = 5
+SEND_APDU_RETRIES = 3
 DEBUG = os.environ.get("DEBUG") == "1"
 
 # TLV Tags
@@ -146,24 +150,20 @@ class AtClient:
     raise RuntimeError("Failed to open ISD-R application")
 
   def open_isdr(self) -> None:
-    for attempt in range(10):
+    for attempt in range(OPEN_ISDR_RETRIES):
       try:
         self._open_isdr_once()
         return
-      except (RuntimeError, TimeoutError, termios.error):
-        from openpilot.common.swaglog import cloudlog
-        cloudlog.warning("open_isdr attempt %d failed, retrying", attempt + 1)
-        if attempt == 3:
-          # SIM may be stuck (CME ERROR 13) — reset modem via lte.sh
+      except (RuntimeError, TimeoutError, termios.error, serial.SerialException):
+        time.sleep(OPEN_ISDR_RETRY_DELAY_S)
+        if attempt == OPEN_ISDR_RESET_ATTEMPT:
+          # reset modem via lte.sh
           subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
-          time.sleep(5)
-          self._ensure_serial(reconnect=True)
-        else:
-          time.sleep(2.0)
+          self._serial = None  # serial port will be re-opened on next attempt
     raise RuntimeError("Failed to open ISD-R after retries")
 
-  def send_apdu(self, apdu: bytes, max_retries: int = 3) -> tuple[bytes, int, int]:
-    for attempt in range(max_retries):
+  def send_apdu(self, apdu: bytes) -> tuple[bytes, int, int]:
+    for attempt in range(SEND_APDU_RETRIES):
       try:
         if not self.channel:
           self.open_isdr()
@@ -178,9 +178,8 @@ class AtClient:
         raise RuntimeError("Missing +CGLA response")
       except (RuntimeError, ValueError):
         self.channel = None
-        if attempt == max_retries - 1:
+        if attempt == SEND_APDU_RETRIES - 1:
           raise
-        time.sleep(1 + attempt)
     raise RuntimeError("send_apdu failed")
 
 
