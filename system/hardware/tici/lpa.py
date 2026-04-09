@@ -33,9 +33,11 @@ SEND_APDU_RETRIES = 3
 LOCK_FILE = '/dev/shm/modem_lpa.lock'
 DEBUG = os.environ.get("DEBUG") == "1"
 
-
-def reset_modem():
-  subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+# post-switch settle: tizi (EG25) needs a CFUN cycle after EnableProfile to force a SIM
+# re-read — without it, list_profiles returns stale data (0/15 in stress tests). mici
+# (EG916Q) doesn't need CFUN; the eUICC state is immediately correct via APDU.
+# 0s CFUN settle was unreliable (modem hangs), 0.1s was 15/15 reliable.
+SWITCH_SETTLE_CFUN_S = 0.1
 
 
 # TLV Tags
@@ -47,10 +49,14 @@ TAG_ENABLE_PROFILE = 0xBF31
 TAG_DELETE_PROFILE = 0xBF33
 TAG_OK = 0xA0
 
+PROFILE_OK = 0x00
+PROFILE_NOT_IN_DISABLED_STATE = 0x02
+PROFILE_CAT_BUSY = 0x05
+
 PROFILE_ERROR_CODES = {
-  0x01: "iccidOrAidNotFound", 0x02: "profileNotInDisabledState",
+  0x01: "iccidOrAidNotFound", PROFILE_NOT_IN_DISABLED_STATE: "profileNotInDisabledState",
   0x03: "disallowedByPolicy", 0x04: "wrongProfileReenabling",
-  0x05: "catBusy", 0x06: "undefinedError",
+  PROFILE_CAT_BUSY: "catBusy", 0x06: "undefinedError",
 }
 
 STATE_LABELS = {0: "disabled", 1: "enabled", 255: "unknown"}
@@ -83,9 +89,15 @@ class AtClient:
     self._use_dbus = not os.path.exists(device)
 
   def reset(self) -> None:
-    reset_modem()
-    self._serial = None
-    self.open_isdr()
+    self.open_isdr(reset_modem=True)
+
+  def send_raw(self, data: bytes) -> None:
+    self._ensure_serial()
+    self._serial.write(data)
+
+  def flush_input(self) -> None:
+    self._ensure_serial()
+    self._serial.reset_input_buffer()
 
   def close(self) -> None:
     try:
@@ -185,7 +197,13 @@ class AtClient:
         return
     raise RuntimeError("Failed to open ISD-R application")
 
-  def open_isdr(self) -> None:
+  def _reset_modem(self) -> None:
+    subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
+    self._serial = None
+
+  def open_isdr(self, reset_modem: bool = False) -> None:
+    if reset_modem:
+      self._reset_modem()
     for attempt in range(OPEN_ISDR_RETRIES):
       try:
         self._open_isdr_once()
@@ -193,8 +211,7 @@ class AtClient:
       except (RuntimeError, TimeoutError, termios.error, serial.SerialException):
         time.sleep(OPEN_ISDR_RETRY_DELAY_S)
         if attempt == OPEN_ISDR_RESET_ATTEMPT:
-          reset_modem()
-          self._serial = None
+          self._reset_modem()
     raise RuntimeError("Failed to open ISD-R after retries")
 
   def send_apdu(self, apdu: bytes) -> tuple[bytes, int, int]:
@@ -409,7 +426,7 @@ class TiciLPA(LPABase):
       response = es10x_command(self._client, request)
       root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
       code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
-    if code != 0x00:
+    if code != PROFILE_OK:
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
   def download_profile(self, qr: str, nickname: str | None = None) -> None:
@@ -419,27 +436,24 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       set_profile_nickname(self._client, iccid, nickname)
 
-  def _enable_profile(self, iccid: str, refresh: bool = False) -> int:
+  def _enable_profile(self, iccid: str) -> int:
     inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    inner += b'\x01\x01\x01' if refresh else b'\x01\x01\x00'
+    inner += b'\x01\x01\x00'  # refreshFlag=0
     response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def switch_profile(self, iccid: str) -> None:
-    from openpilot.system.hardware.tici.hardware import get_device_type
-    refresh = get_device_type() == "tizi"
+    from openpilot.system.hardware import HARDWARE
     with self._acquire_channel():
-      code = self._enable_profile(iccid, refresh=refresh)
-      if code == 0x05:  # catBusy — reset modem and retry once
+      code = self._enable_profile(iccid)
+      if code == PROFILE_CAT_BUSY:  # reset modem and retry once
         self._client.reset()
-        code = self._enable_profile(iccid, refresh=refresh)
-      if code not in (0x00, 0x02):
+        code = self._enable_profile(iccid)
+      if code not in (PROFILE_OK, PROFILE_NOT_IN_DISABLED_STATE):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    # tell modem to re-read SIM outside the channel lock
-    if refresh:
-      time.sleep(0.2)
-    else:
-      self._client._serial.write(b'AT+CFUN=0\rAT+CFUN=1\r')
-      time.sleep(0.5)
-      self._client._serial.reset_input_buffer()
+    # tizi (EG25) needs CFUN cycle to force SIM re-read; mici picks it up on its own
+    if HARDWARE.get_device_type() == "tizi":
+      self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')
+      time.sleep(SWITCH_SETTLE_CFUN_S)
+      self._client.flush_input()
