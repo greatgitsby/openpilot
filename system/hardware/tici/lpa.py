@@ -452,8 +452,7 @@ class TiciLPA(LPABase):
         code = self._enable_profile(iccid)
       if code not in (PROFILE_OK, PROFILE_NOT_IN_DISABLED_STATE):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    # tizi (EG25) needs CFUN cycle to force SIM re-read; mici picks it up on its own
-    if HARDWARE.get_device_type() == "tizi":
-      self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')
-      time.sleep(SWITCH_SETTLE_CFUN_S)
-      self._client.flush_input()
+    # CFUN cycle forces SIM re-read so list_profiles returns fresh data
+    self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')
+    time.sleep(SWITCH_SETTLE_CFUN_S)
+    self._client.flush_input()
