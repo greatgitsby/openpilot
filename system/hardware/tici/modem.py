@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import fcntl
 import json
 import os
 import serial
@@ -11,6 +12,7 @@ import threading
 AT_PORT = "/dev/modem_at0"
 PPP_PORT = "/dev/modem_at1"
 STATE_PATH = "/dev/shm/modem"
+AT_LOCK = "/dev/shm/modem_lpa.lock"  # shared with LPA
 CREG = {0: "not_registered", 1: "home", 2: "searching", 3: "denied", 4: "unknown", 5: "roaming"}
 PPPD = [
   "sudo", "pppd", PPP_PORT, "460800", "noauth", "nodetach", "noipdefault", "usepeerdns",
@@ -60,7 +62,13 @@ class Modem:
     self._ser = serial.Serial(AT_PORT, 9600, timeout=5)
 
   def _at(self, cmd):
-    """Send AT command, return response lines. [] on error."""
+    """Send AT command, return response lines. [] on error or if LPA holds port."""
+    fd = os.open(AT_LOCK, os.O_CREAT | os.O_RDWR)
+    try:
+      fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+      os.close(fd)
+      return []  # LPA is using the port
     try:
       t = time.monotonic()
       self._ser.write((cmd + "\r").encode())
@@ -82,6 +90,9 @@ class Modem:
     except (RuntimeError, TimeoutError, OSError, serial.SerialException) as e:
       print(f"[at] {cmd} FAIL: {e}")
       return []
+    finally:
+      fcntl.flock(fd, fcntl.LOCK_UN)
+      os.close(fd)
 
   def _atv(self, cmd, pfx):
     for line in self._at(cmd):
