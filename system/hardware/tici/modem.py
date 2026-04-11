@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 import json, os, serial, signal, subprocess, sys, termios, time, threading
 
-sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
-from system.hardware.tici.lpa import AtClient
-
 AT_PORT, PPP_PORT, STATE_PATH = "/dev/modem_at0", "/dev/modem_at1", "/dev/shm/modem"
 CREG = {0: "not_registered", 1: "home", 2: "searching", 3: "denied", 4: "unknown", 5: "roaming"}
 PPPD = ["sudo", "pppd", PPP_PORT, "460800", "noauth", "nodetach", "noipdefault", "usepeerdns",
@@ -15,7 +12,7 @@ CHAT = "ABORT 'NO CARRIER'\nABORT 'NO DIALTONE'\nABORT 'BUSY'\nABORT 'NO ANSWER'
 
 class Modem:
   def __init__(self):
-    self.at, self.running, self._t0 = None, True, time.monotonic()
+    self.ser, self.running, self._t0 = None, True, time.monotonic()
     self._ppp, self._reset = None, threading.Event()
     self._cid, self._reconnect_count = 1, 0
     self.S = {"state": "init", "connected": False, "ip_address": "", "iccid": "", "imei": "",
@@ -28,18 +25,29 @@ class Modem:
     os.rename(STATE_PATH + ".tmp", STATE_PATH)
 
   def _open(self):
-    if self.at:
-      try: self.at.close()
+    if self.ser:
+      try: self.ser.close()
       except Exception: pass
-    self.at = AtClient(AT_PORT, 9600, 5.0)
+    self.ser = serial.Serial(AT_PORT, 9600, timeout=5)
 
   def _at(self, cmd):
+    """Send AT command, return response lines. [] on error."""
     try:
       t = time.monotonic()
-      r = self.at.query(cmd)
-      print(f"[at] {cmd} -> {len(r)} ({(time.monotonic()-t)*1000:.0f}ms)")
-      return r
-    except (RuntimeError, TimeoutError, OSError) as e:
+      self.ser.write((cmd + "\r").encode())
+      lines = []
+      while True:
+        raw = self.ser.readline()
+        if not raw: raise TimeoutError("AT timeout")
+        line = raw.decode(errors="ignore").strip()
+        if not line: continue
+        if line == "OK": break
+        if line == "ERROR" or line.startswith("+CME ERROR"):
+          raise RuntimeError(line)
+        lines.append(line)
+      print(f"[at] {cmd} -> {len(lines)} ({(time.monotonic()-t)*1000:.0f}ms)")
+      return lines
+    except (RuntimeError, TimeoutError, OSError, serial.SerialException) as e:
       print(f"[at] {cmd} FAIL: {e}")
       return []
 
@@ -76,7 +84,6 @@ class Modem:
       print(f"[pdp] APN '{best[1]}' CID {self._cid}")
     else:
       self._at('AT+CGDCONT=1,"IP",""')
-    # deactivate stale data sessions — ATD will activate the context for PPP
     self._at(f'AT+CGACT=0,{self._cid}')
 
   def _wait_reg(self, timeout=60):
@@ -102,7 +109,6 @@ class Modem:
     """Flash data port (drop DTR per MM's mm-port-serial.c) then run AT init sequence."""
     try:
       s = serial.Serial(PPP_PORT, 460800, timeout=1)
-      # drop DTR by setting baud to B0 — signals modem to exit PPP data mode
       attrs = termios.tcgetattr(s.fd)
       attrs[4] = attrs[5] = termios.B0
       termios.tcsetattr(s.fd, termios.TCSANOW, attrs)
@@ -110,7 +116,6 @@ class Modem:
       attrs[4] = attrs[5] = termios.B460800
       termios.tcsetattr(s.fd, termios.TCSANOW, attrs)
       s.reset_input_buffer()
-      # run init sequence (ATE0 ATV1 +CMEE=1 X4 &C1)
       for cmd in ["ATE0", "ATV1", "AT+CMEE=1", "ATX4", "AT&C1"]:
         s.write((cmd + "\r").encode()); time.sleep(0.1); s.read(100)
       s.close()
@@ -133,14 +138,14 @@ class Modem:
     return False
 
   def _hw_reset(self):
-    if self.at:
-      try: self.at.close()
+    if self.ser:
+      try: self.ser.close()
       except Exception: pass
-      self.at = None
+      self.ser = None
     try: subprocess.run(["sudo", "/usr/comma/lte/lte.sh", "start"], capture_output=True, timeout=30)
     except Exception: pass
     self._wait_port()
-    self._stop_mm()  # re-mask after hw reset
+    self._stop_mm()
 
   # -- PPP --
 
@@ -153,8 +158,7 @@ class Modem:
     def run():
       fails = 0
       while self.running and not self._reset.is_set():
-        if fails > 0:
-          self._reset_data_port()
+        if fails > 0: self._reset_data_port()
         print(f"[ppp] dial (T+{self._ms():.0f}ms)")
         try:
           proc = subprocess.Popen(PPPD, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -184,7 +188,6 @@ class Modem:
   def _healthy(self):
     if not os.path.exists(AT_PORT): return False
     if self._reset.is_set(): return False
-    # check ICCID for profile switch — +QUSIM URC not emitted without CFUN
     if self.S["iccid"]:
       v = self._atv("AT+QCCID", "+QCCID:")
       if v and v != self.S["iccid"]:
@@ -199,11 +202,11 @@ class Modem:
     self._reset.set()
     os.system("sudo killall -9 pppd 2>/dev/null")
     if self._ppp and self._ppp.is_alive(): self._ppp.join(timeout=3)
-    if self.at:
+    if self.ser:
       self._at(f"AT+CGACT=0,{self._cid}")
-      try: self.at.close()
+      try: self.ser.close()
       except Exception: pass
-      self.at = None
+      self.ser = None
     if self._reconnect_count >= 2:
       print("[reset] escalating to hardware reset")
       self._hw_reset()
@@ -266,7 +269,7 @@ class Modem:
 
   def stop(self):
     self.running = False; self._reset.set(); self._kill_ppp()
-    if self.at: self.at.close()
+    if self.ser: self.ser.close()
 
 
 if __name__ == "__main__":
