@@ -28,6 +28,7 @@ from system.hardware.tici.lpa import AtClient
 AT_PORT = "/dev/modem_at0"
 PPP_PORT = "/dev/modem_at1"
 STATE_PATH = "/dev/shm/modem"
+SWITCH_SIGNAL = "/dev/shm/modem_switch"
 POLL_INTERVAL = 10
 
 # pppd args for cellular connection via ATD*99***1#
@@ -41,9 +42,6 @@ PPPD_ARGS = [
   "usepeerdns",       # use carrier DNS
   "defaultroute",     # add default route
   "replacedefaultroute",
-  "persist",          # reconnect on drop
-  "maxfail", "0",     # retry forever
-  "holdoff", "5",     # 5s between retries
   "connect", f"/usr/sbin/chat -v -f /dev/shm/modem_chat",
   "lcp-echo-interval", "30",
   "lcp-echo-failure", "4",
@@ -117,13 +115,39 @@ class ModemState:
     os.rename(tmp, STATE_PATH)
 
 
+def timed(label):
+  """Decorator that logs elapsed time for a method call."""
+  def decorator(fn):
+    def wrapper(self, *args, **kwargs):
+      t0 = time.monotonic()
+      result = fn(self, *args, **kwargs)
+      elapsed = (time.monotonic() - t0) * 1000
+      print(f"[timing] {label}: {elapsed:.1f}ms")
+      return result
+    return wrapper
+  return decorator
+
+
 class Modem:
   def __init__(self):
-    self.at = AtClient(AT_PORT, 9600, 5.0)
+    self.at: AtClient | None = None
     self.state = ModemState()
     self.pppd_proc: subprocess.Popen | None = None
     self.inhibit_proc: subprocess.Popen | None = None
     self.running = True
+    self.boot_start: float = 0.0
+    self._ppp_connect_time: float | None = None
+    self._ppp_thread: threading.Thread | None = None
+    self._needs_reset = threading.Event()
+
+  def _open_at(self):
+    """Open or reopen the AT command port."""
+    if self.at is not None:
+      try:
+        self.at.close()
+      except Exception:
+        pass
+    self.at = AtClient(AT_PORT, 9600, 5.0)
 
   def at_query(self, cmd: str) -> list[str]:
     """Send AT command and return response lines."""
@@ -132,15 +156,22 @@ class Modem:
   def at_query_safe(self, cmd: str) -> list[str]:
     """Send AT command, return [] on error."""
     try:
-      return self.at.query(cmd)
+      t0 = time.monotonic()
+      result = self.at.query(cmd)
+      elapsed = (time.monotonic() - t0) * 1000
+      print(f"[at] {cmd} -> {len(result)} lines ({elapsed:.1f}ms)")
+      return result
     except (RuntimeError, TimeoutError, OSError) as e:
-      print(f"AT command failed ({cmd}): {e}")
+      print(f"[at] {cmd} FAILED: {e}")
       return []
 
   # -- inhibit modem manager --
 
+  @timed("inhibit_modem_manager")
   def start_inhibit(self):
     """Run mmcli --inhibit in a background thread to keep MM away from the modem."""
+    inhibit_ready = threading.Event()
+
     def _inhibit_thread():
       while self.running:
         print("[inhibit] starting mmcli inhibit...")
@@ -150,30 +181,38 @@ class Modem:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
           )
+          # read first line to confirm inhibit is active
+          line = self.inhibit_proc.stdout.readline()
+          if line:
+            print(f"[inhibit] {line.decode().strip()}")
+          inhibit_ready.set()
           self.inhibit_proc.wait()
           if self.running:
-            print("[inhibit] mmcli inhibit exited, restarting in 2s...")
-            time.sleep(2)
+            print("[inhibit] mmcli inhibit exited, restarting in 5s...")
+            time.sleep(5)
         except Exception as e:
           print(f"[inhibit] error: {e}")
-          time.sleep(2)
+          inhibit_ready.set()
+          time.sleep(5)
 
     t = threading.Thread(target=_inhibit_thread, daemon=True)
     t.start()
-    # wait for inhibit to take effect
-    time.sleep(2)
+    # wait for inhibit to confirm, with timeout
+    if not inhibit_ready.wait(timeout=5):
+      print("[inhibit] WARNING: timed out waiting for inhibit confirmation")
 
   # -- tear down existing MM connection --
 
+  @timed("teardown_existing")
   def teardown_existing(self):
     """Disconnect any existing MM bearers and kill pppd."""
     print("[setup] tearing down existing connections...")
     # kill any existing pppd
     os.system("sudo killall pppd 2>/dev/null")
-    time.sleep(1)
 
   # -- modem init --
 
+  @timed("init_modem")
   def init_modem(self):
     """Initialize modem with basic AT commands."""
     print("[setup] initializing modem...")
@@ -205,28 +244,33 @@ class Modem:
 
   # -- PDP context setup --
 
+  @timed("setup_pdp")
   def setup_pdp(self):
-    """Ensure PDP context 1 is configured for IPV4V6 with empty APN (carrier default)."""
+    """Ensure PDP context 1 is configured and activated."""
     print("[setup] configuring PDP context...")
     self.at_query_safe('AT+CGDCONT=1,"IPV4V6",""')
+    # activate the PDP context — needed after CFUN cycle / profile switch
+    self.at_query_safe('AT+CGACT=1,1')
 
   # -- registration --
 
   def wait_for_registration(self, timeout=60):
     """Wait until modem is registered on a network."""
     print("[setup] waiting for network registration...")
-    start = time.monotonic()
-    while time.monotonic() - start < timeout:
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < timeout:
       reg = self._get_registration()
       if reg in ("home", "roaming"):
-        print(f"[setup] registered: {reg}")
+        elapsed = (time.monotonic() - t0) * 1000
+        print(f"[timing] wait_for_registration: {elapsed:.1f}ms (status: {reg})")
         self.state.registration = reg
         self.state.state = "registered"
         self.state.write()
         return True
-      time.sleep(2)
+      time.sleep(0.1)
 
-    print("[setup] registration timeout")
+    elapsed = (time.monotonic() - t0) * 1000
+    print(f"[timing] wait_for_registration: {elapsed:.1f}ms (TIMEOUT)")
     self.state.error = "registration timeout"
     self.state.write()
     return False
@@ -250,25 +294,39 @@ class Modem:
     with open("/dev/shm/modem_chat", "w") as f:
       f.write(CHAT_SCRIPT)
 
+  def kill_ppp(self):
+    """Kill any running pppd process."""
+    os.system("sudo killall pppd 2>/dev/null")
+    if self._ppp_thread and self._ppp_thread.is_alive():
+      # wait for thread to notice pppd died
+      self._ppp_thread.join(timeout=5)
+    self.pppd_proc = None
+
   def start_ppp(self):
-    """Start pppd in a background thread."""
+    """Start pppd in a background thread. Signals _needs_reset on repeated failures."""
     print("[ppp] starting pppd...")
     self.write_chat_script()
+    self._ppp_connect_time = time.monotonic()
 
     def _ppp_thread():
-      while self.running:
-        print("[ppp] launching pppd...")
+      consecutive_failures = 0
+      while self.running and not self._needs_reset.is_set():
+        ppp_start = time.monotonic()
+        print(f"[ppp] launching pppd... (T+{(ppp_start - self.boot_start)*1000:.0f}ms)")
         try:
           self.pppd_proc = subprocess.Popen(
             PPPD_ARGS,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
           )
+          connected_this_session = False
           # read pppd output
           for raw_line in self.pppd_proc.stdout:
             line = raw_line.decode(errors="ignore").strip()
             if line:
-              print(f"[pppd] {line}")
+              elapsed_boot = (time.monotonic() - self.boot_start) * 1000
+              elapsed_ppp = (time.monotonic() - ppp_start) * 1000
+              print(f"[pppd T+{elapsed_boot:.0f}ms] {line}")
               # detect IP assignment
               if "local  IP address" in line:
                 ip = line.split("local  IP address")[-1].strip()
@@ -276,9 +334,10 @@ class Modem:
                 self.state.connected = True
                 self.state.state = "connected"
                 self.state.write()
-                print(f"[ppp] connected with IP: {ip}")
-              elif "remote IP address" in line:
-                pass  # peer IP, not needed
+                connected_this_session = True
+                consecutive_failures = 0
+                print(f"[timing] ppp_connect: {elapsed_ppp:.1f}ms (IP: {ip})")
+                print(f"[timing] TOTAL_BOOT_TO_DATA: {elapsed_boot:.1f}ms")
               elif "Connection terminated" in line or "Modem hangup" in line:
                 self.state.connected = False
                 self.state.state = "disconnected"
@@ -286,20 +345,204 @@ class Modem:
                 self.state.write()
 
           self.pppd_proc.wait()
-          print(f"[ppp] pppd exited with code {self.pppd_proc.returncode}")
+          rc = self.pppd_proc.returncode
+          print(f"[ppp] pppd exited with code {rc}")
+
+          if not connected_this_session:
+            consecutive_failures += 1
+            print(f"[ppp] consecutive dial failures: {consecutive_failures}")
+          else:
+            consecutive_failures = 0
+
         except Exception as e:
           print(f"[ppp] error: {e}")
+          consecutive_failures += 1
 
         self.state.connected = False
         self.state.state = "reconnecting"
         self.state.write()
 
-        if self.running:
-          print("[ppp] restarting in 5s...")
-          time.sleep(5)
+        if consecutive_failures >= 3:
+          print(f"[ppp] {consecutive_failures} consecutive failures, triggering modem reset")
+          self._needs_reset.set()
+          return
 
-    t = threading.Thread(target=_ppp_thread, daemon=True)
-    t.start()
+        if self.running and not self._needs_reset.is_set():
+          print("[ppp] retrying...")
+
+    self._ppp_thread = threading.Thread(target=_ppp_thread, daemon=True)
+    self._ppp_thread.start()
+
+  # -- modem reset / recovery --
+
+  def _port_responsive(self) -> bool:
+    """Check if the AT port is actually responsive (not a stale symlink)."""
+    try:
+      import serial as ser
+      s = ser.Serial(AT_PORT, 9600, timeout=2)
+      s.reset_input_buffer()
+      s.write(b"AT\r")
+      resp = s.read(50)
+      s.close()
+      return b"OK" in resp
+    except Exception:
+      return False
+
+  def _has_signal(self) -> bool:
+    """Check if the modem has actual radio signal (CSQ != 99)."""
+    try:
+      import serial as ser
+      s = ser.Serial(AT_PORT, 9600, timeout=2)
+      s.reset_input_buffer()
+      s.write(b"AT+CSQ\r")
+      resp = s.read(100).decode(errors="ignore")
+      s.close()
+      if "+CSQ:" in resp:
+        rssi = int(resp.split("+CSQ:")[1].strip().split(",")[0])
+        return rssi != 99
+    except Exception:
+      pass
+    return False
+
+  def wait_for_modem_port(self, timeout=30):
+    """Wait for modem USB to re-enumerate and port to become responsive with signal."""
+    t0 = time.monotonic()
+
+    # wait for port to disappear (USB re-enumeration from CFUN cycle)
+    print("[reset] waiting for modem USB to re-enumerate...")
+    while time.monotonic() - t0 < 10:
+      if not os.path.exists(AT_PORT):
+        elapsed = (time.monotonic() - t0) * 1000
+        print(f"[reset] port disappeared ({elapsed:.0f}ms)")
+        break
+      time.sleep(0.2)
+
+    # wait for port to come back and respond to AT
+    print("[reset] waiting for port to reappear...")
+    while time.monotonic() - t0 < timeout:
+      if os.path.exists(AT_PORT) and self._port_responsive():
+        elapsed = (time.monotonic() - t0) * 1000
+        print(f"[reset] port responsive ({elapsed:.0f}ms)")
+
+        # wait for actual signal before proceeding
+        print("[reset] waiting for radio signal...")
+        while time.monotonic() - t0 < timeout:
+          if self._has_signal():
+            elapsed = (time.monotonic() - t0) * 1000
+            print(f"[timing] modem_ready_with_signal: {elapsed:.1f}ms")
+            return True
+          time.sleep(0.5)
+      time.sleep(0.5)
+
+    print(f"[reset] modem did not become ready within {timeout}s")
+    return False
+
+  def reset_and_reconnect(self):
+    """Fast modem reconnect after profile switch.
+
+    No CFUN cycle needed — the modem detects the eSIM profile change
+    automatically and re-attaches to the network. We just need to kill
+    PPP (which is on the old profile's PDP context), re-init, and redial.
+    """
+    reset_start = time.monotonic()
+    triggered_by = "profile switch" if os.path.exists(SWITCH_SIGNAL) else "ppp failure"
+
+    # consume the signal file
+    try:
+      os.remove(SWITCH_SIGNAL)
+    except FileNotFoundError:
+      pass
+
+    print(f"\n{'=' * 60}")
+    print(f"[reset] triggered by {triggered_by}, reconnecting...")
+    print(f"{'=' * 60}")
+
+    self.state.state = "reconnecting"
+    self.state.connected = False
+    self.state.ip_address = ""
+    self.state.write()
+
+    # kill pppd hard — the process and any lingering thread
+    self._needs_reset.set()  # signal ppp thread to stop retrying
+    os.system("sudo killall -9 pppd 2>/dev/null")
+    if self._ppp_thread and self._ppp_thread.is_alive():
+      self._ppp_thread.join(timeout=3)
+    self.pppd_proc = None
+
+    # reopen AT client (old serial may have buffered URCs from profile switch)
+    self._open_at()
+
+    # wait briefly for modem to settle after profile switch
+    # (URCs like +CPIN: READY, +CGEV: ME PDN ACT fire within ~1s)
+    time.sleep(1)
+
+    # re-init modem
+    self.state.state = "initializing"
+    self.state.write()
+    self.init_modem()
+
+    # setup PDP
+    self.setup_pdp()
+
+    # wait for registration
+    if not self.wait_for_registration(timeout=30):
+      print("[reset] registration failed, trying hardware reset...")
+      # fallback to lte.sh if modem is truly stuck
+      try:
+        if self.at:
+          self.at.close()
+          self.at = None
+        subprocess.run(["sudo", "/usr/comma/lte/lte.sh", "start"],
+                        capture_output=True, timeout=30)
+        self.wait_for_modem_port(timeout=30)
+        self._open_at()
+        self.init_modem()
+        self.setup_pdp()
+        if not self.wait_for_registration(timeout=30):
+          self.state.error = "registration failed after hardware reset"
+          self.state.write()
+          return False
+      except Exception as e:
+        print(f"[reset] hardware reset failed: {e}")
+        return False
+
+    # restart PPP
+    self._needs_reset.clear()
+    self.state.state = "connecting"
+    self.state.write()
+    self.start_ppp()
+
+    # wait for connection
+    ppp_wait_start = time.monotonic()
+    while not self.state.connected and (time.monotonic() - ppp_wait_start) < 30:
+      time.sleep(0.2)
+
+    elapsed = (time.monotonic() - reset_start) * 1000
+    if self.state.connected:
+      print(f"\n[timing] reset_and_reconnect: {elapsed:.1f}ms (success)")
+      return True
+    else:
+      print(f"\n[timing] reset_and_reconnect: {elapsed:.1f}ms (PPP failed)")
+      return False
+
+  def check_modem_health(self) -> bool:
+    """Check if modem needs a reset. Returns True if healthy."""
+    # check if LPA signaled a profile switch (fastest path)
+    if os.path.exists(SWITCH_SIGNAL):
+      print("[health] profile switch signal detected")
+      return False
+
+    # check if port still exists
+    if not os.path.exists(AT_PORT):
+      print("[health] modem port disappeared")
+      return False
+
+    # check if ppp thread signaled a reset
+    if self._needs_reset.is_set():
+      print("[health] PPP thread signaled reset needed")
+      return False
+
+    return True
 
   # -- status polling --
 
@@ -387,50 +630,85 @@ class Modem:
   # -- main loop --
 
   def run(self):
+    self.boot_start = time.monotonic()
+
     print("=" * 60)
     print("modem.py - modem manager replacement")
+    print(f"boot started at {time.strftime('%H:%M:%S')}")
     print("=" * 60)
 
     # step 1: inhibit ModemManager
-    print("\n[1/5] inhibiting ModemManager...")
+    t0 = time.monotonic()
+    print(f"\n[1/5 T+{(t0 - self.boot_start)*1000:.0f}ms] inhibiting ModemManager...")
     self.state.state = "inhibiting"
     self.state.write()
     self.start_inhibit()
 
     # step 2: tear down existing connections
-    print("\n[2/5] tearing down existing connections...")
+    t0 = time.monotonic()
+    print(f"\n[2/5 T+{(t0 - self.boot_start)*1000:.0f}ms] tearing down existing connections...")
     self.teardown_existing()
 
     # step 3: initialize modem
-    print("\n[3/5] initializing modem...")
+    t0 = time.monotonic()
+    print(f"\n[3/5 T+{(t0 - self.boot_start)*1000:.0f}ms] initializing modem...")
     self.state.state = "initializing"
     self.state.write()
+    self._open_at()
     self.init_modem()
 
     # step 4: setup PDP and wait for registration
-    print("\n[4/5] setting up PDP and waiting for registration...")
+    t0 = time.monotonic()
+    print(f"\n[4/5 T+{(t0 - self.boot_start)*1000:.0f}ms] setting up PDP and waiting for registration...")
     self.setup_pdp()
     if not self.wait_for_registration():
       print("[error] failed to register, continuing anyway...")
 
     # step 5: start PPP
-    print("\n[5/5] starting PPP connection...")
+    t0 = time.monotonic()
+    print(f"\n[5/5 T+{(t0 - self.boot_start)*1000:.0f}ms] starting PPP connection...")
     self.state.state = "connecting"
     self.state.write()
     self.start_ppp()
 
+    # wait for PPP to connect before entering poll loop, with timeout
+    ppp_wait_start = time.monotonic()
+    while not self.state.connected and (time.monotonic() - ppp_wait_start) < 30:
+      time.sleep(0.2)
+
+    if self.state.connected:
+      total = (time.monotonic() - self.boot_start) * 1000
+      print(f"\n{'=' * 60}")
+      print(f"BOOT COMPLETE - data connection established")
+      print(f"Total time: {total:.0f}ms ({total/1000:.1f}s)")
+      print(f"{'=' * 60}")
+    else:
+      print(f"\n[warning] PPP did not connect within 30s, entering poll loop anyway")
+
     # poll loop
     print("\n[running] entering poll loop...")
+    last_poll = 0.0
     while self.running:
       try:
-        self.poll_status()
+        # check for profile switch signal every iteration (fast path)
+        if os.path.exists(SWITCH_SIGNAL) or self._needs_reset.is_set() or not os.path.exists(AT_PORT):
+          if not self.check_modem_health():
+            self.reset_and_reconnect()
+            last_poll = time.monotonic()
+            continue
+
+        # full status poll every POLL_INTERVAL
+        if time.monotonic() - last_poll >= POLL_INTERVAL:
+          self.poll_status()
+          last_poll = time.monotonic()
       except Exception as e:
         print(f"[poll] error: {e}")
-      time.sleep(POLL_INTERVAL)
+      time.sleep(0.5)  # check signal file every 500ms
 
   def stop(self):
     print("\n[shutdown] stopping...")
     self.running = False
+    self._needs_reset.set()  # unblock ppp thread if waiting
 
     if self.pppd_proc:
       print("[shutdown] killing pppd...")
@@ -440,7 +718,8 @@ class Modem:
       print("[shutdown] killing mmcli inhibit...")
       self.inhibit_proc.terminate()
 
-    self.at.close()
+    if self.at:
+      self.at.close()
     print("[shutdown] done.")
 
 
