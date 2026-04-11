@@ -379,7 +379,7 @@ class TiciLPA(LPABase):
 
   @contextmanager
   def _acquire_channel(self):
-    fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR)
+    fd = os.open(LOCK_FILE, os.O_RDONLY)
     try:
       fcntl.flock(fd, fcntl.LOCK_EX)
       self._client.open_isdr()
