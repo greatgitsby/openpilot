@@ -10,7 +10,7 @@ PPPD = ["sudo", "pppd", PPP_PORT, "460800", "noauth", "nodetach", "noipdefault",
         "defaultroute", "replacedefaultroute", "connect", "/usr/sbin/chat -v -f /dev/shm/modem_chat",
         "lcp-echo-interval", "30", "lcp-echo-failure", "4", "mtu", "1500", "mru", "1500",
         "novj", "novjccomp", "ipcp-accept-local", "ipcp-accept-remote", "nomagic", "user", '""', "password", '""']
-CHAT = "ABORT 'NO CARRIER'\nABORT 'NO DIALTONE'\nABORT 'BUSY'\nABORT 'NO ANSWER'\nABORT 'ERROR'\nTIMEOUT 30\n'' AT\nOK ATD*99***{cid}#\nCONNECT ''\n"
+CHAT = "ABORT 'NO CARRIER'\nABORT 'NO DIALTONE'\nABORT 'BUSY'\nABORT 'NO ANSWER'\nABORT 'ERROR'\nTIMEOUT 5\n'' AT\nOK ATD*99***{cid}#\nCONNECT ''\n"
 
 
 class Modem:
@@ -168,6 +168,8 @@ class Modem:
     def run():
       fails = 0
       while self.running and not self._reset.is_set():
+        if fails > 0:
+          self._flash_port(PPP_PORT)
         print(f"[ppp] dial (T+{self._ms():.0f}ms)")
         try:
           proc = subprocess.Popen(PPPD, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
