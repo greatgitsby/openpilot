@@ -49,9 +49,15 @@ class Modem:
     return (time.monotonic() - self._t0) * 1000
 
   def _ws(self):
-    with open(STATE_PATH + ".tmp", "w") as f:
-      json.dump(self.S, f)
-    os.rename(STATE_PATH + ".tmp", STATE_PATH)
+    import tempfile
+    fd = tempfile.NamedTemporaryFile(mode="w", dir="/dev/shm", delete=False)
+    json.dump(self.S, fd)
+    fd.flush()
+    os.fsync(fd.fileno())
+    os.chmod(fd.name, 0o644)
+    tmp = fd.name
+    fd.close()
+    os.replace(tmp, STATE_PATH)
 
   def _open(self):
     if self._ser:
