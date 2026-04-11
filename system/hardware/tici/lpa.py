@@ -451,6 +451,8 @@ class TiciLPA(LPABase):
     # the modem can reply with OK. tizi (EG25) doesn't need this; the refresh flag triggers
     # a proper SIM REFRESH that MM picks up automatically.
     if get_device_type() == "mici":
-      self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')
+      self._client.send_raw(b'AT+CFUN=0\r')
+      time.sleep(0.5)
+      self._client.send_raw(b'AT+CFUN=1\r')
       time.sleep(0.5)
       self._client.flush_input()
