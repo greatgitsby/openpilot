@@ -27,6 +27,8 @@ from system.hardware.tici.lpa import AtClient
 
 AT_PORT = "/dev/modem_at0"
 PPP_PORT = "/dev/modem_at1"
+QMI_DEV = "/dev/cdc-wdm0"
+QMI_IFACE = "wwan0"
 STATE_PATH = "/dev/shm/modem"
 SWITCH_SIGNAL = "/dev/shm/modem_switch"
 POLL_INTERVAL = 10
@@ -56,7 +58,7 @@ PPPD_ARGS = [
   "password", '""',   # empty password for PAP
 ]
 
-CHAT_SCRIPT = """\
+CHAT_SCRIPT_TEMPLATE = """\
 ABORT 'NO CARRIER'
 ABORT 'NO DIALTONE'
 ABORT 'BUSY'
@@ -64,7 +66,7 @@ ABORT 'NO ANSWER'
 ABORT 'ERROR'
 TIMEOUT 30
 '' AT
-OK ATD*99***1#
+OK ATD*99***{cid}#
 CONNECT ''
 """
 
@@ -137,8 +139,12 @@ class Modem:
     self.running = True
     self.boot_start: float = 0.0
     self._ppp_connect_time: float | None = None
-    self._ppp_thread: threading.Thread | None = None
+    self._data_thread: threading.Thread | None = None
     self._needs_reset = threading.Event()
+    self._dial_cid = 1
+    with open("/sys/firmware/devicetree/base/model") as f:
+      self._device_type = f.read().strip('\x00').split('comma ')[-1]
+    print(f"[init] device: {self._device_type}")
 
   def _open_at(self):
     """Open or reopen the AT command port."""
@@ -167,9 +173,16 @@ class Modem:
 
   # -- inhibit modem manager --
 
-  @timed("inhibit_modem_manager")
-  def start_inhibit(self):
-    """Run mmcli --inhibit in a background thread to keep MM away from the modem."""
+  @timed("stop_modem_manager")
+  def stop_modem_manager(self):
+    """Stop ModemManager. On mici we use inhibit (keeps MM alive for LPA), on tizi we fully stop it."""
+    if self._device_type == "tizi":
+      # fully stop MM so we own the QMI device
+      os.system("sudo systemctl stop ModemManager 2>/dev/null")
+      print("[mm] ModemManager stopped")
+      return
+
+    # mici: use inhibit to keep MM process alive for LPA dbus queries
     inhibit_ready = threading.Event()
 
     def _inhibit_thread():
@@ -181,7 +194,6 @@ class Modem:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
           )
-          # read first line to confirm inhibit is active
           line = self.inhibit_proc.stdout.readline()
           if line:
             print(f"[inhibit] {line.decode().strip()}")
@@ -197,7 +209,6 @@ class Modem:
 
     t = threading.Thread(target=_inhibit_thread, daemon=True)
     t.start()
-    # wait for inhibit to confirm, with timeout
     if not inhibit_ready.wait(timeout=5):
       print("[inhibit] WARNING: timed out waiting for inhibit confirmation")
 
@@ -205,10 +216,11 @@ class Modem:
 
   @timed("teardown_existing")
   def teardown_existing(self):
-    """Disconnect any existing MM bearers and kill pppd."""
+    """Disconnect any existing data connections."""
     print("[setup] tearing down existing connections...")
-    # kill any existing pppd
     os.system("sudo killall pppd 2>/dev/null")
+    if self._device_type == "tizi":
+      os.system(f"sudo ip link set {QMI_IFACE} down 2>/dev/null")
 
   # -- modem init --
 
@@ -246,11 +258,14 @@ class Modem:
 
   @timed("setup_pdp")
   def setup_pdp(self):
-    """Ensure PDP context 1 is configured and activated."""
+    """Configure PDP context and set dial CID based on device type."""
     print("[setup] configuring PDP context...")
     self.at_query_safe('AT+CGDCONT=1,"IPV4V6",""')
-    # activate the PDP context — needed after CFUN cycle / profile switch
+    # activate the PDP context — needed after profile switch
     self.at_query_safe('AT+CGACT=1,1')
+    # EG916 (mici) dials on CID 1, EG25 (tizi) on CID 3
+    self._dial_cid = 3 if self._device_type == "tizi" else 1
+    print(f"[setup] using CID {self._dial_cid} for PPP dial")
 
   # -- registration --
 
@@ -287,25 +302,200 @@ class Modem:
                   3: "denied", 4: "unknown", 5: "roaming"}.get(stat, "unknown")
     return "unknown"
 
-  # -- PPP --
+  # -- data connection (PPP for mici, QMI for tizi) --
 
-  def write_chat_script(self):
-    """Write the chat script for pppd connect."""
-    with open("/dev/shm/modem_chat", "w") as f:
-      f.write(CHAT_SCRIPT)
-
-  def kill_ppp(self):
-    """Kill any running pppd process."""
-    os.system("sudo killall pppd 2>/dev/null")
-    if self._ppp_thread and self._ppp_thread.is_alive():
-      # wait for thread to notice pppd died
-      self._ppp_thread.join(timeout=5)
+  def kill_data(self):
+    """Kill the active data connection."""
+    if self._device_type == "tizi":
+      os.system(f"sudo ip link set {QMI_IFACE} down 2>/dev/null")
+    else:
+      os.system("sudo killall pppd 2>/dev/null")
+    if self._data_thread and self._data_thread.is_alive():
+      self._data_thread.join(timeout=5)
     self.pppd_proc = None
 
-  def start_ppp(self):
-    """Start pppd in a background thread. Signals _needs_reset on repeated failures."""
+  def start_data(self):
+    """Start the data connection in a background thread."""
+    if self._device_type == "tizi":
+      self._start_qmi()
+    else:
+      self._start_ppp()
+
+  def _qmi_cmd(self, args: str) -> subprocess.CompletedProcess:
+    """Run a qmicli command."""
+    return subprocess.run(
+      ["sudo", "qmicli", "-d", QMI_DEV] + args.split(),
+      capture_output=True, text=True, timeout=10,
+    )
+
+  def _qmi_configure_interface(self) -> str | None:
+    """Get IP settings from QMI WDS and configure wwan0 statically. Returns IP or None."""
+    result = self._qmi_cmd("--wds-get-current-settings")
+    if result.returncode != 0:
+      print(f"[qmi] get-current-settings failed: {result.stderr.strip()}")
+      return None
+
+    ip, prefix, gw, dns1, dns2, mtu = None, "29", None, None, None, "1500"
+    for line in result.stdout.splitlines():
+      line = line.strip()
+      if "IPv4 address:" in line:
+        ip = line.split(":")[-1].strip()
+      elif "IPv4 subnet mask:" in line:
+        # convert mask to prefix
+        mask = line.split(":")[-1].strip()
+        prefix = str(sum(bin(int(x)).count('1') for x in mask.split('.')))
+      elif "IPv4 gateway address:" in line:
+        gw = line.split(":")[-1].strip()
+      elif "IPv4 primary DNS:" in line:
+        dns1 = line.split(":")[-1].strip()
+      elif "IPv4 secondary DNS:" in line:
+        dns2 = line.split(":")[-1].strip()
+      elif "MTU:" in line:
+        mtu = line.split(":")[-1].strip()
+
+    if not ip or not gw:
+      print(f"[qmi] incomplete IP settings: ip={ip} gw={gw}")
+      return None
+
+    print(f"[qmi] IP: {ip}/{prefix} gw: {gw} dns: {dns1},{dns2} mtu: {mtu}")
+
+    # configure interface
+    subprocess.run(["sudo", "ip", "addr", "flush", "dev", QMI_IFACE], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "ip", "addr", "add", f"{ip}/{prefix}", "dev", QMI_IFACE], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "ip", "link", "set", QMI_IFACE, "mtu", mtu], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "ip", "link", "set", QMI_IFACE, "up"], capture_output=True, timeout=5)
+    subprocess.run(["sudo", "ip", "route", "replace", "default", "dev", QMI_IFACE, "metric", "100"], capture_output=True, timeout=5)
+
+    # set DNS
+    dns_lines = []
+    if dns1:
+      dns_lines.append(f"nameserver {dns1}")
+    if dns2:
+      dns_lines.append(f"nameserver {dns2}")
+    if dns_lines:
+      try:
+        with open("/tmp/resolv_modem.conf", "w") as f:
+          f.write("\n".join(dns_lines) + "\n")
+      except Exception:
+        pass
+
+    return ip
+
+  def _start_qmi(self):
+    """Start QMI data connection for tizi (EG25)."""
+    print("[qmi] starting QMI data connection...")
+
+    def _qmi_thread():
+      consecutive_failures = 0
+      while self.running and not self._needs_reset.is_set():
+        qmi_start = time.monotonic()
+        elapsed_boot = (qmi_start - self.boot_start) * 1000
+        print(f"[qmi] connecting... (T+{elapsed_boot:.0f}ms)")
+        try:
+          # set raw_ip mode (must be done while interface is down)
+          subprocess.run(["sudo", "ip", "link", "set", QMI_IFACE, "down"], capture_output=True, timeout=5)
+          try:
+            with open(f"/sys/class/net/{QMI_IFACE}/qmi/raw_ip", "w") as f:
+              f.write("Y")
+          except Exception:
+            pass
+
+          # deactivate stale PDP contexts from modem autoconnect
+          self.at_query_safe("AT+CGACT=0,1")
+          self.at_query_safe("AT+CGACT=0,3")
+
+          # start QMI WDS network
+          result = self._qmi_cmd("--wds-start-network=ip-type=4 --client-no-release-cid")
+          if result.returncode == 0:
+            print(f"[qmi] network started")
+          elif "interface-in-use" in result.stderr or "already-started" in (result.stderr + result.stdout).lower():
+            print(f"[qmi] data call already active")
+          elif "CallFailed" in result.stderr:
+            print(f"[qmi] call failed: {result.stderr.strip()}")
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+              self._needs_reset.set()
+              return
+            time.sleep(1)
+            continue
+          else:
+            print(f"[qmi] error: {result.stderr.strip()}")
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+              self._needs_reset.set()
+              return
+            time.sleep(1)
+            continue
+
+          # bring up interface first, then try DHCP as fallback for static config
+          subprocess.run(["sudo", "ip", "link", "set", QMI_IFACE, "up"], capture_output=True, timeout=5)
+
+          # try static config from QMI first
+          ip = self._qmi_configure_interface()
+
+          # fallback to DHCP if static config fails
+          if not ip:
+            print("[qmi] static config failed, trying DHCP...")
+            dhcp = subprocess.run(
+              ["sudo", "udhcpc", "-q", "-f", "-n", "-i", QMI_IFACE],
+              capture_output=True, text=True, timeout=15,
+            )
+            for line in dhcp.stdout.splitlines():
+              if "lease of" in line:
+                ip = line.split("lease of")[1].split("obtained")[0].strip()
+          if ip:
+            elapsed = (time.monotonic() - qmi_start) * 1000
+            elapsed_boot = (time.monotonic() - self.boot_start) * 1000
+            self.state.ip_address = ip
+            self.state.connected = True
+            self.state.state = "connected"
+            self.state.write()
+            consecutive_failures = 0
+            print(f"[timing] qmi_connect: {elapsed:.1f}ms (IP: {ip})")
+            print(f"[timing] TOTAL_BOOT_TO_DATA: {elapsed_boot:.1f}ms")
+
+            # monitor — wait until interface loses IP or reset signaled
+            while self.running and not self._needs_reset.is_set():
+              r = subprocess.run(["ip", "-4", "addr", "show", QMI_IFACE],
+                                 capture_output=True, text=True, timeout=2)
+              if "inet " not in r.stdout:
+                print("[qmi] interface lost IP, reconnecting...")
+                self.state.connected = False
+                self.state.state = "disconnected"
+                self.state.ip_address = ""
+                self.state.write()
+                break
+              time.sleep(5)
+          else:
+            consecutive_failures += 1
+            print(f"[qmi] IP config failed, consecutive failures: {consecutive_failures}")
+
+        except Exception as e:
+          print(f"[qmi] error: {e}")
+          consecutive_failures += 1
+
+        if consecutive_failures >= 3:
+          print(f"[qmi] {consecutive_failures} consecutive failures, triggering modem reset")
+          self._needs_reset.set()
+          return
+
+        self.state.connected = False
+        self.state.state = "reconnecting"
+        self.state.write()
+
+        if self.running and not self._needs_reset.is_set():
+          print("[qmi] retrying...")
+          time.sleep(1)
+
+    self._data_thread = threading.Thread(target=_qmi_thread, daemon=True)
+    self._data_thread.start()
+
+  def _start_ppp(self):
+    """Start PPP data connection for mici (EG916)."""
     print("[ppp] starting pppd...")
-    self.write_chat_script()
+    cid = getattr(self, '_dial_cid', 1)
+    with open("/dev/shm/modem_chat", "w") as f:
+      f.write(CHAT_SCRIPT_TEMPLATE.format(cid=cid))
     self._ppp_connect_time = time.monotonic()
 
     def _ppp_thread():
@@ -320,14 +510,12 @@ class Modem:
             stderr=subprocess.STDOUT,
           )
           connected_this_session = False
-          # read pppd output
           for raw_line in self.pppd_proc.stdout:
             line = raw_line.decode(errors="ignore").strip()
             if line:
               elapsed_boot = (time.monotonic() - self.boot_start) * 1000
               elapsed_ppp = (time.monotonic() - ppp_start) * 1000
               print(f"[pppd T+{elapsed_boot:.0f}ms] {line}")
-              # detect IP assignment
               if "local  IP address" in line:
                 ip = line.split("local  IP address")[-1].strip()
                 self.state.ip_address = ip
@@ -370,8 +558,8 @@ class Modem:
         if self.running and not self._needs_reset.is_set():
           print("[ppp] retrying...")
 
-    self._ppp_thread = threading.Thread(target=_ppp_thread, daemon=True)
-    self._ppp_thread.start()
+    self._data_thread = threading.Thread(target=_ppp_thread, daemon=True)
+    self._data_thread.start()
 
   # -- modem reset / recovery --
 
@@ -462,11 +650,14 @@ class Modem:
     self.state.ip_address = ""
     self.state.write()
 
-    # kill pppd hard — the process and any lingering thread
-    self._needs_reset.set()  # signal ppp thread to stop retrying
-    os.system("sudo killall -9 pppd 2>/dev/null")
-    if self._ppp_thread and self._ppp_thread.is_alive():
-      self._ppp_thread.join(timeout=3)
+    # kill data connection hard — the process and any lingering thread
+    self._needs_reset.set()  # signal data thread to stop retrying
+    if self._device_type == "tizi":
+      os.system(f"sudo ip link set {QMI_IFACE} down 2>/dev/null")
+    else:
+      os.system("sudo killall -9 pppd 2>/dev/null")
+    if self._data_thread and self._data_thread.is_alive():
+      self._data_thread.join(timeout=3)
     self.pppd_proc = None
 
     # reopen AT client (old serial may have buffered URCs from profile switch)
@@ -510,7 +701,7 @@ class Modem:
     self._needs_reset.clear()
     self.state.state = "connecting"
     self.state.write()
-    self.start_ppp()
+    self.start_data()
 
     # wait for connection
     ppp_wait_start = time.monotonic()
@@ -605,9 +796,10 @@ class Modem:
         except (ValueError, IndexError):
           pass
 
-    # check ppp0 interface for IP
+    # check data interface for IP
+    iface = QMI_IFACE if self._device_type == "tizi" else "ppp0"
     try:
-      result = subprocess.run(["ip", "-4", "addr", "show", "ppp0"],
+      result = subprocess.run(["ip", "-4", "addr", "show", iface],
                               capture_output=True, text=True, timeout=2)
       for line in result.stdout.splitlines():
         line = line.strip()
@@ -642,7 +834,7 @@ class Modem:
     print(f"\n[1/5 T+{(t0 - self.boot_start)*1000:.0f}ms] inhibiting ModemManager...")
     self.state.state = "inhibiting"
     self.state.write()
-    self.start_inhibit()
+    self.stop_modem_manager()
 
     # step 2: tear down existing connections
     t0 = time.monotonic()
@@ -669,7 +861,7 @@ class Modem:
     print(f"\n[5/5 T+{(t0 - self.boot_start)*1000:.0f}ms] starting PPP connection...")
     self.state.state = "connecting"
     self.state.write()
-    self.start_ppp()
+    self.start_data()
 
     # wait for PPP to connect before entering poll loop, with timeout
     ppp_wait_start = time.monotonic()
@@ -708,11 +900,10 @@ class Modem:
   def stop(self):
     print("\n[shutdown] stopping...")
     self.running = False
-    self._needs_reset.set()  # unblock ppp thread if waiting
+    self._needs_reset.set()  # unblock data thread if waiting
 
-    if self.pppd_proc:
-      print("[shutdown] killing pppd...")
-      os.system("sudo killall pppd 2>/dev/null")
+    print("[shutdown] killing data connection...")
+    self.kill_data()
 
     if self.inhibit_proc:
       print("[shutdown] killing mmcli inhibit...")
