@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Modem manager replacement for mici (Quectel EG916Q-GL).
+Modem manager replacement for tici devices (mici/tizi).
 
 Uses AT commands directly over serial ports and pppd for data connection.
 Writes state to /dev/shm/modem for openpilot consumption.
@@ -18,17 +18,15 @@ import sys
 import time
 import threading
 
-# add openpilot root to path for imports
-OPENPILOT_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-if OPENPILOT_ROOT not in sys.path:
-  sys.path.insert(0, OPENPILOT_ROOT)
-
-from system.hardware.tici.lpa import AtClient
+from openpilot.system.hardware.tici.hardware import get_device_type
+from openpilot.system.hardware.tici.lpa import AtClient
 
 AT_PORT = "/dev/modem_at0"
 PPP_PORT = "/dev/modem_at1"
 STATE_PATH = "/dev/shm/modem"
 POLL_INTERVAL = 10
+CREG_STATUS = {0: "not_registered", 1: "home", 2: "searching",
+               3: "denied", 4: "unknown", 5: "roaming"}
 
 # pppd args for cellular connection via ATD*99***1#
 PPPD_ARGS = [
@@ -77,7 +75,6 @@ class ModemState:
     self.signal_quality = 0
     self.network_type = "unknown"
     self.operator = ""
-    self.operator_id = ""
     self.band = ""
     self.channel = 0
     self.registration = "unknown"
@@ -96,7 +93,6 @@ class ModemState:
       "signal_quality": self.signal_quality,
       "network_type": self.network_type,
       "operator": self.operator,
-      "operator_id": self.operator_id,
       "band": self.band,
       "channel": self.channel,
       "registration": self.registration,
@@ -135,12 +131,10 @@ class Modem:
     self.inhibit_proc: subprocess.Popen | None = None
     self.running = True
     self.boot_start: float = 0.0
-    self._ppp_connect_time: float | None = None
     self._ppp_thread: threading.Thread | None = None
     self._needs_reset = threading.Event()
     self._dial_cid = 1
-    with open("/sys/firmware/devicetree/base/model") as f:
-      self._device_type = f.read().strip('\x00').split('comma ')[-1]
+    self._device_type = get_device_type()
     print(f"[init] device: {self._device_type}")
 
   def _open_at(self):
@@ -151,10 +145,6 @@ class Modem:
       except Exception:
         pass
     self.at = AtClient(AT_PORT, 9600, 5.0)
-
-  def at_query(self, cmd: str) -> list[str]:
-    """Send AT command and return response lines."""
-    return self.at.query(cmd)
 
   def at_query_safe(self, cmd: str) -> list[str]:
     """Send AT command, return [] on error."""
@@ -301,7 +291,7 @@ class Modem:
         self.state.state = "registered"
         self.state.write()
         return True
-      time.sleep(0.1)
+      time.sleep(0.5)
 
     elapsed = (time.monotonic() - t0) * 1000
     print(f"[timing] wait_for_registration: {elapsed:.1f}ms (TIMEOUT)")
@@ -318,8 +308,7 @@ class Modem:
         if len(parts) >= 2:
           try:
             stat = int(parts[1].strip('"'))
-            return {0: "not_registered", 1: "home", 2: "searching",
-                    3: "denied", 4: "unknown", 5: "roaming"}.get(stat, "unknown")
+            return CREG_STATUS.get(stat, "unknown")
           except ValueError:
             pass
     return "unknown"
@@ -336,9 +325,8 @@ class Modem:
   def start_ppp(self):
     """Start PPP data connection for mici (EG916)."""
     print("[ppp] starting pppd...")
-    cid = getattr(self, '_dial_cid', 1)
     with open("/dev/shm/modem_chat", "w") as f:
-      f.write(CHAT_SCRIPT_TEMPLATE.format(cid=cid))
+      f.write(CHAT_SCRIPT_TEMPLATE.format(cid=self._dial_cid))
     self._ppp_connect_time = time.monotonic()
 
     def _ppp_thread():
@@ -603,35 +591,34 @@ class Modem:
 
   def poll_status(self):
     """Poll modem status and update state."""
-    # signal quality (AT+CSQ)
     lines = self.at_query_safe("AT+CSQ")
     for line in lines:
       if "+CSQ:" in line:
-        parts = line.split(":", 1)[1].strip().split(",")
-        rssi = int(parts[0])
-        if rssi != 99:
-          # convert CSQ to dBm: dBm = -113 + 2*rssi
-          # convert to percentage: rough mapping
-          self.state.signal_strength = rssi
-          self.state.signal_quality = min(100, max(0, int((rssi / 31.0) * 100)))
+        try:
+          rssi = int(line.split(":", 1)[1].strip().split(",")[0])
+          if rssi != 99:
+            self.state.signal_strength = rssi
+            self.state.signal_quality = min(100, max(0, int((rssi / 31.0) * 100)))
+        except (ValueError, IndexError):
+          pass
 
-    # registration
     self.state.registration = self._get_registration()
 
-    # network info (AT+COPS?)
     lines = self.at_query_safe("AT+COPS?")
     for line in lines:
       if "+COPS:" in line:
         parts = line.split(":", 1)[1].strip().split(",")
-        if len(parts) >= 3:
-          self.state.operator = parts[2].strip('"')
-        if len(parts) >= 4:
-          act = int(parts[3])
-          self.state.network_type = {0: "gsm", 2: "utran", 3: "gsm_egprs",
-                                     4: "utran_hsdpa", 5: "utran_hsupa",
-                                     6: "utran_hsdpa_hsupa", 7: "lte"}.get(act, "unknown")
+        try:
+          if len(parts) >= 3:
+            self.state.operator = parts[2].strip('"')
+          if len(parts) >= 4:
+            act = int(parts[3])
+            self.state.network_type = {0: "gsm", 2: "utran", 3: "gsm_egprs",
+                                       4: "utran_hsdpa", 5: "utran_hsupa",
+                                       6: "utran_hsdpa_hsupa", 7: "lte"}.get(act, "unknown")
+        except (ValueError, IndexError):
+          pass
 
-    # serving cell info for band/channel
     lines = self.at_query_safe('AT+QNWINFO')
     for line in lines:
       if "+QNWINFO:" in line:
@@ -643,13 +630,11 @@ class Modem:
           except ValueError:
             pass
 
-    # detailed serving cell
     lines = self.at_query_safe('AT+QENG="servingcell"')
     for line in lines:
       if "+QENG:" in line:
         self.state.extra = line.split(":", 1)[1].strip().replace('"', '')
 
-    # temperature
     lines = self.at_query_safe("AT+QTEMP")
     for line in lines:
       if "+QTEMP:" in line:
@@ -660,7 +645,6 @@ class Modem:
         except (ValueError, IndexError):
           pass
 
-    # check data interface for IP
     try:
       result = subprocess.run(["ip", "-4", "addr", "show", "ppp0"],
                               capture_output=True, text=True, timeout=2)
