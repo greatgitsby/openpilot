@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, os, signal, subprocess, sys, time, threading
+import json, os, serial, signal, subprocess, sys, termios, time, threading
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 from system.hardware.tici.lpa import AtClient
@@ -50,7 +50,7 @@ class Modem:
 
   @staticmethod
   def _stop_mm():
-    """Stop ModemManager — systemd Conflicts= handles restart on exit."""
+    """Stop ModemManager so we own the AT/PPP ports."""
     os.system("sudo systemctl stop ModemManager 2>/dev/null")
     print("[mm] stopped")
 
@@ -98,42 +98,28 @@ class Modem:
     return self._wait_reg(timeout=30)
 
   @staticmethod
-  def _flash_port(port):
-    """Drop DTR on serial port to signal modem to exit PPP data mode.
-    This is what ModemManager does: set baud to B0 (drops DTR), wait 1s, restore."""
+  def _reset_data_port():
+    """Flash data port (drop DTR per MM's mm-port-serial.c) then run AT init sequence."""
     try:
-      import serial, termios
-      s = serial.Serial(port, 460800, timeout=1)
-      # drop DTR by setting baud to B0
+      s = serial.Serial(PPP_PORT, 460800, timeout=1)
+      # drop DTR by setting baud to B0 — signals modem to exit PPP data mode
       attrs = termios.tcgetattr(s.fd)
-      attrs[4] = attrs[5] = termios.B0  # ispeed = ospeed = B0
+      attrs[4] = attrs[5] = termios.B0
       termios.tcsetattr(s.fd, termios.TCSANOW, attrs)
       time.sleep(1)
-      # restore baud
       attrs[4] = attrs[5] = termios.B460800
       termios.tcsetattr(s.fd, termios.TCSANOW, attrs)
       s.reset_input_buffer()
-      s.close()
-      print(f"[flash] {port} DTR dropped and restored")
-    except Exception as e:
-      print(f"[flash] {port}: {e}")
-
-  @staticmethod
-  def _init_data_port():
-    """Run MM's init sequence on the data port after flash (ATE0 ATV1 +CMEE=1 X4 &C1)."""
-    try:
-      import serial
-      s = serial.Serial(PPP_PORT, 460800, timeout=2)
-      s.reset_input_buffer()
+      # run init sequence (ATE0 ATV1 +CMEE=1 X4 &C1)
       for cmd in ["ATE0", "ATV1", "AT+CMEE=1", "ATX4", "AT&C1"]:
         s.write((cmd + "\r").encode()); time.sleep(0.1); s.read(100)
       s.close()
+      print("[flash] data port reset")
     except Exception as e:
-      print(f"[init_data] {e}")
+      print(f"[flash] {e}")
 
   def _probe(self):
     try:
-      import serial
       s = serial.Serial(AT_PORT, 9600, timeout=2)
       s.reset_input_buffer(); s.write(b"AT\r"); ok = b"OK" in s.read(50); s.close()
       return ok
@@ -168,8 +154,7 @@ class Modem:
       fails = 0
       while self.running and not self._reset.is_set():
         if fails > 0:
-          self._flash_port(PPP_PORT)
-          self._init_data_port()
+          self._reset_data_port()
         print(f"[ppp] dial (T+{self._ms():.0f}ms)")
         try:
           proc = subprocess.Popen(PPPD, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -214,18 +199,17 @@ class Modem:
     self._reset.set()
     os.system("sudo killall -9 pppd 2>/dev/null")
     if self._ppp and self._ppp.is_alive(): self._ppp.join(timeout=3)
-    # MM sequence: CGACT on primary port, then flash data port, then init data port
     if self.at:
-      self._at(f"AT+CGACT=0,{self._cid}")  # deactivate PDP on primary (AT0)
+      self._at(f"AT+CGACT=0,{self._cid}")
       try: self.at.close()
       except Exception: pass
       self.at = None
-    self._flash_port(PPP_PORT)  # drop DTR on data port (AT1)
-    self._init_data_port()  # run init sequence on data port like MM does
     if self._reconnect_count >= 2:
       print("[reset] escalating to hardware reset")
       self._hw_reset()
       self._reconnect_count = 0
+    else:
+      self._reset_data_port()
     if not os.path.exists(AT_PORT) and not self._wait_port(): self._hw_reset()
     if not self._boot(): self._hw_reset(); self._boot()
     self._reset.clear(); self.S["state"] = "connecting"; self._ws(); self._start_ppp()
@@ -278,7 +262,7 @@ class Modem:
           self._poll()
           last_poll = time.monotonic()
       except Exception as e: print(f"[err] {e}")
-      time.sleep(1)
+      time.sleep(2)
 
   def stop(self):
     self.running = False; self._reset.set(); self._kill_ppp()
