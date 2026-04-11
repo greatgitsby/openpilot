@@ -132,6 +132,19 @@ class Modem:
     except Exception as e:
       print(f"[flash] {port}: {e}")
 
+  @staticmethod
+  def _init_data_port():
+    """Run MM's init sequence on the data port after flash (ATE0 ATV1 +CMEE=1 X4 &C1)."""
+    try:
+      import serial
+      s = serial.Serial(PPP_PORT, 460800, timeout=2)
+      s.reset_input_buffer()
+      for cmd in ["ATE0", "ATV1", "AT+CMEE=1", "ATX4", "AT&C1"]:
+        s.write((cmd + "\r").encode()); time.sleep(0.1); s.read(100)
+      s.close()
+    except Exception as e:
+      print(f"[init_data] {e}")
+
   def _probe(self):
     try:
       import serial
@@ -170,6 +183,7 @@ class Modem:
       while self.running and not self._reset.is_set():
         if fails > 0:
           self._flash_port(PPP_PORT)
+          self._init_data_port()
         print(f"[ppp] dial (T+{self._ms():.0f}ms)")
         try:
           proc = subprocess.Popen(PPPD, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -213,12 +227,14 @@ class Modem:
     self._reset.set()
     os.system("sudo killall -9 pppd 2>/dev/null")
     if self._ppp and self._ppp.is_alive(): self._ppp.join(timeout=3)
+    # MM sequence: CGACT on primary port, then flash data port, then init data port
     if self.at:
+      self._at(f"AT+CGACT=0,{self._cid}")  # deactivate PDP on primary (AT0)
       try: self.at.close()
       except Exception: pass
       self.at = None
-    # flash PPP port to drop DTR — tells modem to exit PPP data mode
-    self._flash_port(PPP_PORT)
+    self._flash_port(PPP_PORT)  # drop DTR on data port (AT1)
+    self._init_data_port()  # run init sequence on data port like MM does
     if self._reconnect_count >= 2:
       print("[reset] escalating to hardware reset")
       self._hw_reset()
