@@ -259,7 +259,7 @@ class Modem:
 
   def run(self):
     print(f"{'='*60}\nmodem.py {time.strftime('%H:%M:%S')}\n{'='*60}")
-    print(f"[1/4 T+{self._ms():.0f}ms] inhibit + teardown")
+    print(f"[1/4 T+{self._ms():.0f}ms] stop MM + teardown")
     self._stop_mm(); os.system("sudo killall pppd 2>/dev/null")
     print(f"[2/4 T+{self._ms():.0f}ms] init"); self._open(); self._init()
     print(f"[3/4 T+{self._ms():.0f}ms] PDP + reg"); self._pdp(); self._wait_reg()
