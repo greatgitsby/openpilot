@@ -6,8 +6,8 @@ from dataclasses import replace
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.hardware.base import LPABase, Profile
 
-
 PROFILE_POLL_INTERVAL_S = 5.0
+DOWNLOAD_TIMEOUT_S = 120
 
 
 def _get_lpa() -> LPABase:
@@ -174,6 +174,32 @@ class CellularManager:
 
   def delete_profile(self, iccid: str):
     self._run_operation(lambda lpa: lpa.delete_profile(iccid), "Failed to delete eSIM profile")
+
+  def download_profile(self, qr: str, nickname: str | None = None):
+    self._busy = True
+
+    def worker():
+      try:
+        with self._lock:
+          lpa = self._ensure_lpa()
+          lpa.download_profile(qr, nickname)
+          profiles = lpa.list_profiles()
+        self._enqueue(lambda: self._finish(profiles=profiles))
+      except Exception as e:
+        cloudlog.exception("Failed to download eSIM profile")
+        err = str(e)
+        self._enqueue(lambda: self._finish(error=err))
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    def watchdog():
+      t.join(timeout=DOWNLOAD_TIMEOUT_S)
+      if t.is_alive():
+        cloudlog.error("eSIM profile download timed out")
+        self._enqueue(lambda: self._finish(error="Profile download timed out. Please try again."))
+
+    threading.Thread(target=watchdog, daemon=True).start()
 
   def nickname_profile(self, iccid: str, nickname: str):
     self._run_operation(lambda lpa: lpa.nickname_profile(iccid, nickname), "Failed to update eSIM profile nickname")
