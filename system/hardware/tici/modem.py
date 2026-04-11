@@ -48,26 +48,11 @@ class Modem:
       if pfx in l and ":" in l: return l.split(":", 1)[1].strip()
     return None
 
-  # mmcli --inhibit releases all MM ports including QMI data sessions
-  def _inhibit(self):
-    e = threading.Event()
-    def run():
-      while self.running:
-        try:
-          p = subprocess.Popen(["sudo", "mmcli", "-m", "any", "--inhibit"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-          out = p.stdout.readline().decode().strip()
-          if "successfully" in out:
-            print(f"[inhibit] {out}")
-            e.set()
-            p.wait()  # blocks until uninhibited or killed
-          else:
-            p.wait()
-          if self.running: time.sleep(2)
-        except Exception:
-          time.sleep(2)
-    threading.Thread(target=run, daemon=True).start()
-    if not e.wait(timeout=30):
-      print("[inhibit] WARNING: could not inhibit MM within 30s")
+  @staticmethod
+  def _stop_mm():
+    """Stop ModemManager — systemd Conflicts= handles restart on exit."""
+    os.system("sudo systemctl stop ModemManager 2>/dev/null")
+    print("[mm] stopped")
 
   def _init(self):
     for c in ["ATE0","ATV1","AT+CMEE=1","ATX4","AT&C1","AT$QCSIMSLEEP=0","AT$QCSIMCFG=SimPowerSave,0","AT+CREG=2","AT+CGREG=2"]:
@@ -91,7 +76,8 @@ class Modem:
       print(f"[pdp] APN '{best[1]}' CID {self._cid}")
     else:
       self._at('AT+CGDCONT=1,"IP",""')
-    self._at(f'AT+CGACT=1,{self._cid}')
+    # deactivate stale data sessions — ATD will activate the context for PPP
+    self._at(f'AT+CGACT=0,{self._cid}')
 
   def _wait_reg(self, timeout=60):
     t = time.monotonic()
@@ -168,7 +154,7 @@ class Modem:
     try: subprocess.run(["sudo", "/usr/comma/lte/lte.sh", "start"], capture_output=True, timeout=30)
     except Exception: pass
     self._wait_port()
-    self._inhibit()  # re-inhibit after hw reset (MM restarts)
+    self._stop_mm()  # re-mask after hw reset
 
   # -- PPP --
 
@@ -274,7 +260,7 @@ class Modem:
   def run(self):
     print(f"{'='*60}\nmodem.py {time.strftime('%H:%M:%S')}\n{'='*60}")
     print(f"[1/4 T+{self._ms():.0f}ms] inhibit + teardown")
-    self._inhibit(); os.system("sudo killall pppd 2>/dev/null")
+    self._stop_mm(); os.system("sudo killall pppd 2>/dev/null")
     print(f"[2/4 T+{self._ms():.0f}ms] init"); self._open(); self._init()
     print(f"[3/4 T+{self._ms():.0f}ms] PDP + reg"); self._pdp(); self._wait_reg()
     print(f"[4/4 T+{self._ms():.0f}ms] PPP"); self.S["state"] = "connecting"; self._ws(); self._start_ppp()
