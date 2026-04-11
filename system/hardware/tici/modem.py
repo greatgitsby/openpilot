@@ -113,6 +113,22 @@ class Modem:
       "AT+CREG=2", "AT+CGREG=2",
     ]:
       self._at(c)
+    # device-specific modem configuration (moved from hardware.py configure_modem)
+    try:
+      with open("/sys/firmware/devicetree/base/model") as f:
+        device = f.read().strip('\x00').split('comma ')[-1]
+    except Exception:
+      device = ""
+    if device == "tizi":
+      for c in [
+        "AT+QSIMDET=1,0", "AT+QSIMSTAT=1",  # SIM hot swap detection
+        'AT+QNVW=5280,0,"0102000000000000"',  # data-centric mode
+        'AT+QNVFW="/nv/item_files/ims/IMS_enable",00',
+        'AT+QNVFW="/nv/item_files/modem/mmode/ue_usage_setting",01',
+      ]:
+        self._at(c)
+    else:
+      self._at('AT$QCPCFG=usbNet,1')  # ethernet config for EG916
     r = self._at("AT+CGSN")
     if r:
       self.S["imei"] = r[0].strip()
