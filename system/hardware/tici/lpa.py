@@ -430,29 +430,29 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       set_profile_nickname(self._client, iccid, nickname)
 
-  def _enable_profile(self, iccid: str) -> int:
+  def _enable_profile(self, iccid: str, refresh: bool = False) -> int:
     inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    inner += b'\x01\x01\x01'  # refreshFlag=1
+    inner += b'\x01\x01\x01' if refresh else b'\x01\x01\x00'
     response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
     root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
     return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
 
   def switch_profile(self, iccid: str) -> None:
     from openpilot.system.hardware.tici.hardware import get_device_type
+    refresh = get_device_type() == "tizi"
     with self._acquire_channel():
-      code = self._enable_profile(iccid)
+      code = self._enable_profile(iccid, refresh=refresh)
       if code == PROFILE_CAT_BUSY:  # reset modem and retry once
         self._client.reset()
-        code = self._enable_profile(iccid)
+        code = self._enable_profile(iccid, refresh=refresh)
       if code not in (PROFILE_OK, PROFILE_NOT_IN_DISABLED_STATE):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    # mici (EG916Q): refreshFlag alone doesn't update ModemManager — mmcli shows stale ICCID.
-    # CFUN cycle forces MM to re-read the SIM. sent raw because CFUN=0 drops serial before
-    # the modem can reply with OK. tizi (EG25) doesn't need this; the refresh flag triggers
-    # a proper SIM REFRESH that MM picks up automatically.
-    if get_device_type() == "mici":
-      self._client.send_raw(b'AT+CFUN=0\r')
+    # tizi (EG25): refreshFlag=1 triggers SIM REFRESH; just wait for it
+    # mici (EG916Q): refreshFlag=0 + CFUN cycle forces MM to re-read the SIM
+    if refresh:
+      time.sleep(0.2)
+    else:
+      self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')
       time.sleep(0.5)
-      self._client.send_raw(b'AT+CFUN=1\r')
-      time.sleep(0.5)
+      self._client.flush_input()
       self._client.flush_input()
