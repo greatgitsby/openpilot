@@ -17,7 +17,7 @@ class Modem:
   def __init__(self):
     self.at, self.running, self._t0 = None, True, time.monotonic()
     self._ppp, self._reset = None, threading.Event()
-    self._cid = 1
+    self._cid, self._reconnect_count = 1, 0
     self.S = {"state": "init", "connected": False, "ip_address": "", "iccid": "", "imei": "",
               "signal_quality": 0, "network_type": "unknown", "operator": "", "registration": "unknown",
               "temperatures": [], "error": ""}
@@ -106,7 +106,11 @@ class Modem:
     return False
 
   def _boot(self):
-    self._open(); time.sleep(1); self._init(); self._pdp()
+    self._open(); time.sleep(2)
+    # deactivate all PDP contexts to clear stale PPP state
+    for cid in range(1, 6):
+      self._at(f"AT+CGACT=0,{cid}")
+    self._init(); self._pdp()
     return self._wait_reg(timeout=30)
 
   def _probe(self):
@@ -131,7 +135,13 @@ class Modem:
       self.at = None
     try: subprocess.run(["sudo", "/usr/comma/lte/lte.sh", "start"], capture_output=True, timeout=30)
     except Exception: pass
+    self._wait_port()
+    # stop QMI data session before unbinding driver
+    if os.path.exists("/dev/cdc-wdm0"):
+      subprocess.run(["sudo", "qmicli", "-d", "/dev/cdc-wdm0", "--wds-stop-network=disable-autoconnect", "--client-no-release-cid"],
+                      capture_output=True, timeout=5)
     self._unbind_qmi()
+    time.sleep(1)  # let modem settle after QMI teardown
 
   # -- PPP --
 
@@ -155,7 +165,7 @@ class Modem:
             if "local  IP address" in line:
               ip = line.split("local  IP address")[-1].strip()
               self.S.update(ip_address=ip, connected=True, state="connected"); self._ws()
-              ok, fails = True, 0
+              ok, fails, self._reconnect_count = True, 0, 0
               print(f"[timing] ppp: {self._ms():.0f}ms (IP: {ip})")
             elif "Connection terminated" in line or "Modem hangup" in line:
               self.S.update(connected=False, state="disconnected", ip_address=""); self._ws()
@@ -181,7 +191,8 @@ class Modem:
     return True
 
   def _reconnect(self):
-    print(f"\n{'='*60}\n[reset] reconnecting\n{'='*60}")
+    self._reconnect_count += 1
+    print(f"\n{'='*60}\n[reset] reconnecting (attempt {self._reconnect_count})\n{'='*60}")
     self.S.update(state="reconnecting", connected=False, ip_address=""); self._ws()
     self._reset.set()
     os.system("sudo killall -9 pppd 2>/dev/null")
@@ -190,6 +201,12 @@ class Modem:
       try: self.at.close()
       except Exception: pass
       self.at = None
+    # escalate to hardware reset after repeated failures
+    if self._reconnect_count >= 2:
+      print("[reset] repeated failures, hardware reset")
+      self._hw_reset()
+      self._wait_port()
+      self._reconnect_count = 0
     self._unbind_qmi()
     if not os.path.exists(AT_PORT) and not self._wait_port(): self._hw_reset(); self._wait_port()
     if not self._boot(): self._hw_reset(); self._wait_port(); self._boot()
@@ -226,7 +243,11 @@ class Modem:
   def run(self):
     print(f"{'='*60}\nmodem.py {time.strftime('%H:%M:%S')}\n{'='*60}")
     print(f"[1/4 T+{self._ms():.0f}ms] inhibit + teardown")
-    self._inhibit(); os.system("sudo killall pppd 2>/dev/null"); self._unbind_qmi()
+    self._inhibit(); os.system("sudo killall pppd 2>/dev/null")
+    if os.path.exists("/dev/cdc-wdm0"):
+      subprocess.run(["sudo", "qmicli", "-d", "/dev/cdc-wdm0", "--wds-stop-network=disable-autoconnect", "--client-no-release-cid"],
+                      capture_output=True, timeout=5)
+    self._unbind_qmi()
     print(f"[2/4 T+{self._ms():.0f}ms] init"); self._open(); self._init()
     print(f"[3/4 T+{self._ms():.0f}ms] PDP + reg"); self._pdp(); self._wait_reg()
     print(f"[4/4 T+{self._ms():.0f}ms] PPP"); self.S["state"] = "connecting"; self._ws(); self._start_ppp()
