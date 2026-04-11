@@ -82,18 +82,11 @@ class AtClient:
     self._serial: serial.Serial | None = None
     self._use_dbus = not os.path.exists(device)
 
-  def reset(self) -> None:
-    self.open_isdr(reset_modem=True)
-
   def send_raw(self, data: bytes) -> None:
     self._ensure_serial()
     self._serial.reset_input_buffer()
     self._serial.write(data)
     self._serial.flush()
-
-  def flush_input(self) -> None:
-    self._ensure_serial()
-    self._serial.reset_input_buffer()
 
   def close(self) -> None:
     try:
@@ -194,12 +187,15 @@ class AtClient:
     raise RuntimeError("Failed to open ISD-R application")
 
   def _reset_modem(self) -> None:
+    if self._serial:
+      try:
+        self._serial.close()
+      except Exception:
+        pass
+      self._serial = None
     subprocess.run(['/usr/comma/lte/lte.sh', 'start'], capture_output=True)
-    self._serial = None
 
-  def open_isdr(self, reset_modem: bool = False) -> None:
-    if reset_modem:
-      self._reset_modem()
+  def open_isdr(self) -> None:
     for attempt in range(OPEN_ISDR_RETRIES):
       try:
         self._open_isdr_once()
@@ -440,11 +436,12 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       code = self._enable_profile(iccid)
       if code == PROFILE_CAT_BUSY:  # stale eUICC transaction, reset and retry
-        self._client.reset()
+        self._client._reset_modem()
+        self._client.open_isdr()
         code = self._enable_profile(iccid)
       if code not in (PROFILE_OK, PROFILE_NOT_IN_DISABLED_STATE):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     from openpilot.system.hardware import HARDWARE
     if HARDWARE.get_device_type() == "mici":
       self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')  # mici has no SIM presence pin; raw because CFUN=0 drops serial
-    self._client._ensure_serial(reconnect=True)
+      self._client._ensure_serial(reconnect=True)
