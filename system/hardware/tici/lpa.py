@@ -428,7 +428,7 @@ class TiciLPA(LPABase):
 
   def _enable_profile(self, iccid: str) -> int:
     inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    inner += b'\x01\x01\x01'  # refreshFlag=1
+    inner += b'\x01\x01\x00'  # refreshFlag=0 — modem detects profile change without eUICC reset
     response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
     return require_tag(require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse"), TAG_STATUS, "EnableProfile status")[0]
 
