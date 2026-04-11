@@ -199,6 +199,7 @@ class Modem:
   def _healthy(self):
     if not os.path.exists(AT_PORT): return False
     if self._reset.is_set(): return False
+    # check ICCID for profile switch — +QUSIM URC not emitted without CFUN
     if self.S["iccid"]:
       v = self._atv("AT+QCCID", "+QCCID:")
       if v and v != self.S["iccid"]:
@@ -267,12 +268,17 @@ class Modem:
     t = time.monotonic()
     while not self.S["connected"] and time.monotonic() - t < 30: time.sleep(0.2)
     if self.S["connected"]: print(f"\n{'='*60}\nBOOT {self._ms():.0f}ms\n{'='*60}")
+    last_poll = 0.0
     while self.running:
       try:
-        if not self._healthy(): self._reconnect()
-        else: self._poll()
+        if not self._healthy():
+          self._reconnect()
+          last_poll = time.monotonic()
+        elif time.monotonic() - last_poll >= 10:
+          self._poll()
+          last_poll = time.monotonic()
       except Exception as e: print(f"[err] {e}")
-      time.sleep(10)
+      time.sleep(1)
 
   def stop(self):
     self.running = False; self._reset.set(); self._kill_ppp()
