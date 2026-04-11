@@ -48,23 +48,26 @@ class Modem:
       if pfx in l and ":" in l: return l.split(":", 1)[1].strip()
     return None
 
-  @staticmethod
-  def _unbind_qmi():
-    if os.path.exists("/dev/cdc-wdm0"):
-      os.system("echo '1-1:1.4' | sudo tee /sys/bus/usb/drivers/qmi_wwan/unbind 2>/dev/null")
-
+  # mmcli --inhibit releases all MM ports including QMI data sessions
   def _inhibit(self):
     e = threading.Event()
     def run():
       while self.running:
         try:
           p = subprocess.Popen(["sudo", "mmcli", "-m", "any", "--inhibit"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-          p.stdout.readline(); e.set(); p.wait()
-          if self.running: time.sleep(5)
+          out = p.stdout.readline().decode().strip()
+          if "successfully" in out:
+            print(f"[inhibit] {out}")
+            e.set()
+            p.wait()  # blocks until uninhibited or killed
+          else:
+            p.wait()
+          if self.running: time.sleep(2)
         except Exception:
-          e.set(); time.sleep(5)
+          time.sleep(2)
     threading.Thread(target=run, daemon=True).start()
-    e.wait(timeout=5)
+    if not e.wait(timeout=30):
+      print("[inhibit] WARNING: could not inhibit MM within 30s")
 
   def _init(self):
     for c in ["ATE0","ATV1","AT+CMEE=1","ATX4","AT&C1","AT$QCSIMSLEEP=0","AT$QCSIMCFG=SimPowerSave,0","AT+CREG=2","AT+CGREG=2"]:
@@ -95,8 +98,7 @@ class Modem:
     while time.monotonic() - t < timeout:
       v = self._atv("AT+CREG?", "+CREG:")
       if v:
-        try:
-          reg = CREG.get(int(v.split(",")[1].strip('"')), "unknown")
+        try: reg = CREG.get(int(v.split(",")[1].strip('"')), "unknown")
         except (ValueError, IndexError): reg = "unknown"
         if reg in ("home", "roaming"):
           print(f"[timing] reg: {(time.monotonic()-t)*1000:.0f}ms ({reg})")
@@ -106,11 +108,7 @@ class Modem:
     return False
 
   def _boot(self):
-    self._open(); time.sleep(2)
-    # deactivate all PDP contexts to clear stale PPP state
-    for cid in range(1, 6):
-      self._at(f"AT+CGACT=0,{cid}")
-    self._init(); self._pdp()
+    self._open(); time.sleep(1); self._init(); self._pdp()
     return self._wait_reg(timeout=30)
 
   def _probe(self):
@@ -136,12 +134,7 @@ class Modem:
     try: subprocess.run(["sudo", "/usr/comma/lte/lte.sh", "start"], capture_output=True, timeout=30)
     except Exception: pass
     self._wait_port()
-    # stop QMI data session before unbinding driver
-    if os.path.exists("/dev/cdc-wdm0"):
-      subprocess.run(["sudo", "qmicli", "-d", "/dev/cdc-wdm0", "--wds-stop-network=disable-autoconnect", "--client-no-release-cid"],
-                      capture_output=True, timeout=5)
-    self._unbind_qmi()
-    time.sleep(1)  # let modem settle after QMI teardown
+    self._inhibit()  # re-inhibit after hw reset (MM restarts)
 
   # -- PPP --
 
@@ -201,15 +194,12 @@ class Modem:
       try: self.at.close()
       except Exception: pass
       self.at = None
-    # escalate to hardware reset after repeated failures
     if self._reconnect_count >= 2:
-      print("[reset] repeated failures, hardware reset")
+      print("[reset] escalating to hardware reset")
       self._hw_reset()
-      self._wait_port()
       self._reconnect_count = 0
-    self._unbind_qmi()
-    if not os.path.exists(AT_PORT) and not self._wait_port(): self._hw_reset(); self._wait_port()
-    if not self._boot(): self._hw_reset(); self._wait_port(); self._boot()
+    if not os.path.exists(AT_PORT) and not self._wait_port(): self._hw_reset()
+    if not self._boot(): self._hw_reset(); self._boot()
     self._reset.clear(); self.S["state"] = "connecting"; self._ws(); self._start_ppp()
     t = time.monotonic()
     while not self.S["connected"] and time.monotonic() - t < 30: time.sleep(0.2)
@@ -244,10 +234,6 @@ class Modem:
     print(f"{'='*60}\nmodem.py {time.strftime('%H:%M:%S')}\n{'='*60}")
     print(f"[1/4 T+{self._ms():.0f}ms] inhibit + teardown")
     self._inhibit(); os.system("sudo killall pppd 2>/dev/null")
-    if os.path.exists("/dev/cdc-wdm0"):
-      subprocess.run(["sudo", "qmicli", "-d", "/dev/cdc-wdm0", "--wds-stop-network=disable-autoconnect", "--client-no-release-cid"],
-                      capture_output=True, timeout=5)
-    self._unbind_qmi()
     print(f"[2/4 T+{self._ms():.0f}ms] init"); self._open(); self._init()
     print(f"[3/4 T+{self._ms():.0f}ms] PDP + reg"); self._pdp(); self._wait_reg()
     print(f"[4/4 T+{self._ms():.0f}ms] PPP"); self.S["state"] = "connecting"; self._ws(); self._start_ppp()
