@@ -87,7 +87,9 @@ class AtClient:
 
   def send_raw(self, data: bytes) -> None:
     self._ensure_serial()
+    self._serial.reset_input_buffer()
     self._serial.write(data)
+    self._serial.flush()
 
   def flush_input(self) -> None:
     self._ensure_serial()
@@ -365,8 +367,7 @@ def set_profile_nickname(client: AtClient, iccid: str, nickname: str) -> None:
     raise ValueError("Profile nickname must be 64 bytes or less")
   content = encode_tlv(TAG_ICCID, string_to_tbcd(iccid)) + encode_tlv(0x90, nickname_bytes)
   response = es10x_command(client, encode_tlv(TAG_SET_NICKNAME, content))
-  root = require_tag(response, TAG_SET_NICKNAME, "SetNicknameResponse")
-  code = require_tag(root, TAG_STATUS, "status in SetNicknameResponse")[0]
+  code = require_tag(require_tag(response, TAG_SET_NICKNAME, "SetNicknameResponse"), TAG_STATUS, "SetNickname status")[0]
   if code == 0x01:
     raise LPAError(f"profile {iccid} not found")
   if code != 0x00:
@@ -418,8 +419,7 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       request = encode_tlv(TAG_DELETE_PROFILE, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
       response = es10x_command(self._client, request)
-      root = require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse")
-      code = require_tag(root, TAG_STATUS, "status in DeleteProfileResponse")[0]
+      code = require_tag(require_tag(response, TAG_DELETE_PROFILE, "DeleteProfileResponse"), TAG_STATUS, "DeleteProfile status")[0]
     if code != PROFILE_OK:
       raise LPAError(f"DeleteProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
 
@@ -430,29 +430,21 @@ class TiciLPA(LPABase):
     with self._acquire_channel():
       set_profile_nickname(self._client, iccid, nickname)
 
-  def _enable_profile(self, iccid: str, refresh: bool = False) -> int:
+  def _enable_profile(self, iccid: str) -> int:
     inner = encode_tlv(TAG_OK, encode_tlv(TAG_ICCID, string_to_tbcd(iccid)))
-    inner += b'\x01\x01\x01' if refresh else b'\x01\x01\x00'
+    inner += b'\x01\x01\x01'  # refreshFlag=1
     response = es10x_command(self._client, encode_tlv(TAG_ENABLE_PROFILE, inner))
-    root = require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse")
-    return require_tag(root, TAG_STATUS, "status in EnableProfileResponse")[0]
+    return require_tag(require_tag(response, TAG_ENABLE_PROFILE, "EnableProfileResponse"), TAG_STATUS, "EnableProfile status")[0]
 
   def switch_profile(self, iccid: str) -> None:
-    from openpilot.system.hardware.tici.hardware import get_device_type
-    refresh = get_device_type() == "tizi"
     with self._acquire_channel():
-      code = self._enable_profile(iccid, refresh=refresh)
-      if code == PROFILE_CAT_BUSY:  # reset modem and retry once
+      code = self._enable_profile(iccid)
+      if code == PROFILE_CAT_BUSY:  # stale eUICC transaction, reset and retry
         self._client.reset()
-        code = self._enable_profile(iccid, refresh=refresh)
+        code = self._enable_profile(iccid)
       if code not in (PROFILE_OK, PROFILE_NOT_IN_DISABLED_STATE):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    # tizi (EG25): refreshFlag=1 triggers SIM REFRESH; just wait for it
-    # mici (EG916Q): refreshFlag=0 + CFUN cycle forces MM to re-read the SIM
-    if refresh:
-      time.sleep(0.2)
-    else:
-      self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')
-      time.sleep(0.5)
-      self._client.flush_input()
-      self._client.flush_input()
+    from openpilot.system.hardware import HARDWARE
+    if HARDWARE.get_device_type() == "mici":
+      self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')  # mici has no SIM presence pin; raw because CFUN=0 drops serial
+    self._client._ensure_serial(reconnect=True)
