@@ -30,7 +30,6 @@ PPP_PORT = "/dev/modem_at1"
 QMI_DEV = "/dev/cdc-wdm0"
 QMI_IFACE = "wwan0"
 STATE_PATH = "/dev/shm/modem"
-SWITCH_SIGNAL = "/dev/shm/modem_switch"
 POLL_INTERVAL = 10
 
 # pppd args for cellular connection via ATD*99***1#
@@ -633,16 +632,9 @@ class Modem:
     PPP (which is on the old profile's PDP context), re-init, and redial.
     """
     reset_start = time.monotonic()
-    triggered_by = "profile switch" if os.path.exists(SWITCH_SIGNAL) else "ppp failure"
-
-    # consume the signal file
-    try:
-      os.remove(SWITCH_SIGNAL)
-    except FileNotFoundError:
-      pass
 
     print(f"\n{'=' * 60}")
-    print(f"[reset] triggered by {triggered_by}, reconnecting...")
+    print(f"[reset] reconnecting...")
     print(f"{'=' * 60}")
 
     self.state.state = "reconnecting"
@@ -660,7 +652,32 @@ class Modem:
       self._data_thread.join(timeout=3)
     self.pppd_proc = None
 
-    # reopen AT client (old serial may have buffered URCs from profile switch)
+    # close AT client before waiting for port
+    if self.at:
+      try:
+        self.at.close()
+      except Exception:
+        pass
+      self.at = None
+
+    # if port disappeared, wait for it to come back
+    if not os.path.exists(AT_PORT):
+      print("[reset] AT port gone, waiting for it to return...")
+      t0 = time.monotonic()
+      while time.monotonic() - t0 < 30:
+        if os.path.exists(AT_PORT) and self._port_responsive():
+          print(f"[reset] port back after {(time.monotonic()-t0)*1000:.0f}ms")
+          break
+        time.sleep(0.5)
+      else:
+        print("[reset] port did not come back, trying hardware reset...")
+        try:
+          subprocess.run(["sudo", "/usr/comma/lte/lte.sh", "start"],
+                          capture_output=True, timeout=30)
+        except Exception:
+          pass
+
+    # reopen AT client
     self._open_at()
 
     # wait briefly for modem to settle after profile switch
@@ -718,11 +735,6 @@ class Modem:
 
   def check_modem_health(self) -> bool:
     """Check if modem needs a reset. Returns True if healthy."""
-    # check if LPA signaled a profile switch (fastest path)
-    if os.path.exists(SWITCH_SIGNAL):
-      print("[health] profile switch signal detected")
-      return False
-
     # check if port still exists
     if not os.path.exists(AT_PORT):
       print("[health] modem port disappeared")
@@ -732,6 +744,17 @@ class Modem:
     if self._needs_reset.is_set():
       print("[health] PPP thread signaled reset needed")
       return False
+
+    # check if ICCID changed (profile switch)
+    if self.state.iccid:
+      lines = self.at_query_safe("AT+QCCID")
+      for line in lines:
+        if "+QCCID:" in line:
+          new_iccid = line.split(":", 1)[1].strip()
+          if new_iccid != self.state.iccid:
+            print(f"[health] ICCID changed: {self.state.iccid} -> {new_iccid}")
+            return False
+          break
 
     return True
 
@@ -879,23 +902,15 @@ class Modem:
 
     # poll loop
     print("\n[running] entering poll loop...")
-    last_poll = 0.0
     while self.running:
       try:
-        # check for profile switch signal every iteration (fast path)
-        if os.path.exists(SWITCH_SIGNAL) or self._needs_reset.is_set() or not os.path.exists(AT_PORT):
-          if not self.check_modem_health():
-            self.reset_and_reconnect()
-            last_poll = time.monotonic()
-            continue
-
-        # full status poll every POLL_INTERVAL
-        if time.monotonic() - last_poll >= POLL_INTERVAL:
+        if not self.check_modem_health():
+          self.reset_and_reconnect()
+        else:
           self.poll_status()
-          last_poll = time.monotonic()
       except Exception as e:
         print(f"[poll] error: {e}")
-      time.sleep(0.5)  # check signal file every 500ms
+      time.sleep(POLL_INTERVAL)
 
   def stop(self):
     print("\n[shutdown] stopping...")

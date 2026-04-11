@@ -441,12 +441,5 @@ class TiciLPA(LPABase):
         code = self._enable_profile(iccid)
       if code not in (PROFILE_OK, PROFILE_NOT_IN_DISABLED_STATE):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
-    from openpilot.system.hardware import HARDWARE
-    if HARDWARE.get_device_type() == "mici":
-      # signal modem.py to reconnect with new profile — no CFUN needed,
-      # the modem detects the eSIM profile change and re-attaches automatically
-      try:
-        with open('/dev/shm/modem_switch', 'w') as f:
-          f.write(iccid)
-      except Exception:
-        pass
+    # no CFUN needed — the modem detects the eSIM profile change automatically,
+    # and modem.py detects the ICCID change in its poll loop
