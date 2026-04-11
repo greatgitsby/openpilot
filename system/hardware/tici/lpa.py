@@ -447,8 +447,10 @@ class TiciLPA(LPABase):
       if code not in (PROFILE_OK, PROFILE_NOT_IN_DISABLED_STATE):
         raise LPAError(f"EnableProfile failed: {PROFILE_ERROR_CODES.get(code, 'unknown')} (0x{code:02X})")
     # mici (EG916Q): refreshFlag alone doesn't update ModemManager — mmcli shows stale ICCID.
-    # CFUN cycle forces MM to re-read the SIM. tizi (EG25) doesn't need this; the refresh
-    # flag triggers a proper SIM REFRESH that MM picks up automatically.
+    # CFUN cycle forces MM to re-read the SIM. sent raw because CFUN=0 drops serial before
+    # the modem can reply with OK. tizi (EG25) doesn't need this; the refresh flag triggers
+    # a proper SIM REFRESH that MM picks up automatically.
     if get_device_type() == "mici":
-      self._client.query("AT+CFUN=0")
-      self._client.query("AT+CFUN=1")
+      self._client.send_raw(b'AT+CFUN=0\rAT+CFUN=1\r')
+      time.sleep(0.5)
+      self._client.flush_input()
