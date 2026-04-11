@@ -281,5 +281,8 @@ class Modem:
 
 if __name__ == "__main__":
   m = Modem()
-  for s in (signal.SIGINT, signal.SIGTERM): signal.signal(s, lambda *_: (m.stop(), sys.exit(0)))
+  def _sig(*_): m.running = False
+  signal.signal(signal.SIGINT, _sig)
+  signal.signal(signal.SIGTERM, _sig)
   m.run()
+  m.stop()
