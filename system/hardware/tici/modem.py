@@ -111,6 +111,27 @@ class Modem:
     self._open(); time.sleep(1); self._init(); self._pdp()
     return self._wait_reg(timeout=30)
 
+  @staticmethod
+  def _flash_port(port):
+    """Drop DTR on serial port to signal modem to exit PPP data mode.
+    This is what ModemManager does: set baud to B0 (drops DTR), wait 1s, restore."""
+    try:
+      import serial, termios
+      s = serial.Serial(port, 460800, timeout=1)
+      # drop DTR by setting baud to B0
+      attrs = termios.tcgetattr(s.fd)
+      attrs[4] = attrs[5] = termios.B0  # ispeed = ospeed = B0
+      termios.tcsetattr(s.fd, termios.TCSANOW, attrs)
+      time.sleep(1)
+      # restore baud
+      attrs[4] = attrs[5] = termios.B460800
+      termios.tcsetattr(s.fd, termios.TCSANOW, attrs)
+      s.reset_input_buffer()
+      s.close()
+      print(f"[flash] {port} DTR dropped and restored")
+    except Exception as e:
+      print(f"[flash] {port}: {e}")
+
   def _probe(self):
     try:
       import serial
@@ -194,6 +215,8 @@ class Modem:
       try: self.at.close()
       except Exception: pass
       self.at = None
+    # flash PPP port to drop DTR — tells modem to exit PPP data mode
+    self._flash_port(PPP_PORT)
     if self._reconnect_count >= 2:
       print("[reset] escalating to hardware reset")
       self._hw_reset()
