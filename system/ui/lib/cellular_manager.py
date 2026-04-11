@@ -9,6 +9,7 @@ from openpilot.system.hardware.base import LPABase, Profile
 MODEM_IP_POLL_INTERVAL = 5.0
 PROFILE_POLL_INTERVAL = 30.0
 SWITCH_SETTLE_S = 15.0
+DOWNLOAD_TIMEOUT = 120  # seconds
 
 
 def _get_modem_ip() -> str:
@@ -180,6 +181,32 @@ class CellularManager:
 
   def delete_profile(self, iccid: str):
     self._run_operation(lambda lpa: lpa.delete_profile(iccid), "Failed to delete eSIM profile")
+
+  def download_profile(self, qr: str, nickname: str | None = None):
+    self._busy = True
+
+    def worker():
+      try:
+        with self._lock:
+          lpa = self._ensure_lpa()
+          lpa.download_profile(qr, nickname)
+          profiles = lpa.list_profiles()
+        self._callback_queue.append(lambda: self._finish(profiles=profiles))
+      except Exception as e:
+        cloudlog.exception("Failed to download eSIM profile")
+        err = str(e)
+        self._callback_queue.append(lambda: self._finish(error=err))
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    def watchdog():
+      t.join(timeout=DOWNLOAD_TIMEOUT)
+      if t.is_alive():
+        cloudlog.error("eSIM profile download timed out")
+        self._callback_queue.append(lambda: self._finish(error="Profile download timed out. Please try again."))
+
+    threading.Thread(target=watchdog, daemon=True).start()
 
   def nickname_profile(self, iccid: str, nickname: str):
     self._run_operation(lambda lpa: lpa.nickname_profile(iccid, nickname), "Failed to update eSIM profile nickname")

@@ -1,3 +1,5 @@
+import threading
+import urllib.request
 from enum import IntEnum
 from functools import partial
 
@@ -13,6 +15,19 @@ from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog, alert_dial
 from openpilot.system.ui.widgets.keyboard import Keyboard
 from openpilot.system.ui.widgets.label import gui_label
 
+try:
+  import zxingcpp
+  from msgq.visionipc import VisionStreamType
+  from openpilot.selfdrive.ui.onroad.cameraview import CameraView
+  from openpilot.common.params import Params
+  from openpilot.selfdrive.ui.ui_state import device
+except Exception:
+  zxingcpp = None
+  VisionStreamType = None
+  CameraView = None
+  Params = None
+  device = None
+
 ITEM_HEIGHT = 160
 ICON_SIZE = 50
 COMMA_ICON_SIZE = 40
@@ -23,10 +38,109 @@ class UIState(IntEnum):
   IDLE = 0
   SWITCHING = 1
   DELETING = 2
+  DOWNLOADING = 3
 
 
 def _profile_display_name(profile: Profile) -> str:
   return profile.nickname or profile.provider or profile.iccid[:12]
+
+
+def _is_valid_lpa_code(text: str) -> bool:
+  if not text.startswith("LPA:"):
+    return False
+  parts = text[4:].split("$")
+  return len(parts) == 3 and all(parts)
+
+
+class QRScannerDialog(Widget):
+  def __init__(self, on_qr_detected):
+    super().__init__()
+    self._on_qr_detected = on_qr_detected
+    self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_DRIVER) if CameraView else None
+    self._detected = False
+
+  def show_event(self):
+    super().show_event()
+    if Params:
+      Params().put_bool("IsDriverViewEnabled", True)
+
+  def hide_event(self):
+    super().hide_event()
+    if Params:
+      Params().put_bool("IsDriverViewEnabled", False)
+
+  def __del__(self):
+    if self._camera_view:
+      self._camera_view.close()
+
+  def _update_state(self):
+    super()._update_state()
+    if self._camera_view:
+      self._camera_view._update_state()
+
+    if self._detected or not self._camera_view or not self._camera_view.frame:
+      return
+
+    frame = self._camera_view.frame
+    gray = frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width]
+    results = zxingcpp.read_barcodes(gray)
+    if results:
+      data = results[0].text
+      if _is_valid_lpa_code(data):
+        self._detected = True
+        gui_app.pop_widget()
+        self._on_qr_detected(data)
+
+  def _render(self, rect):
+    rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+
+    if self._camera_view:
+      self._camera_view._render(rect)
+
+    if not self._camera_view or not self._camera_view.frame:
+      gui_label(rect, "camera starting", font_size=100, font_weight=FontWeight.BOLD,
+                alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+    else:
+      label_y = rect.y + rect.height * 3 / 4
+      label_rect = rl.Rectangle(rect.x, label_y, rect.width, rect.y + rect.height - label_y)
+      gui_label(label_rect, "hold QR code to camera", font_size=64, font_weight=FontWeight.BOLD,
+                alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+
+    rl.end_scissor_mode()
+
+  def _handle_mouse_release(self, mouse_pos):
+    # Tap anywhere to dismiss
+    gui_app.pop_widget()
+
+
+class InstallingDialog(Widget):
+  DOT_STEP = 0.6
+
+  def __init__(self):
+    super().__init__()
+    self._show_time = 0.0
+
+  def show_event(self):
+    super().show_event()
+    self._show_time = rl.get_time()
+    if device:
+      device.set_override_interactive_timeout(600)
+
+  def hide_event(self):
+    super().hide_event()
+    if device:
+      device.set_override_interactive_timeout(None)
+
+  def _render(self, rect):
+    margin = 200
+    dialog_rect = rl.Rectangle(margin, margin, gui_app.width - 2 * margin, gui_app.height - 2 * margin)
+    rl.draw_rectangle_rec(dialog_rect, rl.Color(27, 27, 27, 255))
+
+    t = (rl.get_time() - self._show_time) % (self.DOT_STEP * 2)
+    dots = "." * min(int(t / (self.DOT_STEP / 4)), 3)
+    gui_label(dialog_rect, f"Installing eSIM profile{dots}", font_size=70, font_weight=FontWeight.BOLD,
+              alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER,
+              color=rl.Color(201, 201, 201, 255))
 
 
 class ESimManagerUI(Widget):
@@ -44,6 +158,10 @@ class ESimManagerUI(Widget):
     self._rename_buttons: dict[str, Button] = {}
     self._active_button = Button("Active", lambda: None, font_size=45, button_style=ButtonStyle.NORMAL)
     self._active_button.set_enabled(False)
+    self._add_button = Button("Add eSIM", self._on_add_profile, font_size=55, button_style=ButtonStyle.PRIMARY)
+
+    self._installing_dialog: InstallingDialog | None = None
+    self._pending_lpa_code: str | None = None
 
     self._cellular_manager.add_callbacks(
       profiles_updated=self._on_profiles_updated,
@@ -64,6 +182,10 @@ class ESimManagerUI(Widget):
     self._cellular_manager.process_callbacks()
 
   def _on_profiles_updated(self, profiles: list[Profile]):
+    if self._installing_dialog:
+      gui_app.pop_widget()
+      self._installing_dialog = None
+
     self._profiles = profiles
     self._profile_buttons.clear()
     self._forget_buttons.clear()
@@ -92,6 +214,10 @@ class ESimManagerUI(Widget):
       self._state_iccid = None
 
   def _on_error(self, error: str):
+    if self._installing_dialog:
+      gui_app.pop_widget()
+      self._installing_dialog = None
+
     self.state = UIState.IDLE
     self._state_iccid = None
     gui_app.push_widget(alert_dialog(error))
@@ -101,7 +227,8 @@ class ESimManagerUI(Widget):
       gui_label(rect, "Loading eSIM profiles...", 72, alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
       return
 
-    total_items = len(self._profiles)
+    # Total items: profiles + add button
+    total_items = len(self._profiles) + 1
     content_rect = rl.Rectangle(rect.x, rect.y, rect.width, total_items * ITEM_HEIGHT)
     offset = self.scroll_panel.update(rect, content_rect)
 
@@ -115,6 +242,13 @@ class ESimManagerUI(Widget):
       self._draw_profile_item(item_rect, profile)
       line_y = int(item_rect.y + item_rect.height - 1)
       rl.draw_line(int(item_rect.x), line_y, int(item_rect.x + item_rect.width), line_y, rl.LIGHTGRAY)
+
+    # Add button at the bottom
+    add_y = rect.y + len(self._profiles) * ITEM_HEIGHT + offset
+    add_rect = rl.Rectangle(rect.x + rect.width / 2 - 200, add_y + (ITEM_HEIGHT - 80) / 2, 400, 80)
+    if rl.check_collision_recs(rl.Rectangle(rect.x, add_y, rect.width, ITEM_HEIGHT), rect):
+      self._add_button.set_enabled(not self._cellular_manager.busy)
+      self._add_button.render(add_rect)
 
     rl.end_scissor_mode()
 
@@ -168,8 +302,6 @@ class ESimManagerUI(Widget):
         self._rename_buttons[profile.iccid].render(rename_rect)
 
   def _on_profile_clicked(self, iccid: str):
-    if self.state != UIState.IDLE:
-      return
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
     if profile is None or profile.enabled:
       return
@@ -179,8 +311,6 @@ class ESimManagerUI(Widget):
     self._cellular_manager.switch_profile(iccid)
 
   def _on_rename_clicked(self, iccid: str):
-    if self.state != UIState.IDLE:
-      return
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
     if profile is None:
       return
@@ -198,8 +328,6 @@ class ESimManagerUI(Widget):
       self._cellular_manager.nickname_profile(iccid, nickname)
 
   def _on_forget_clicked(self, iccid: str):
-    if self.state != UIState.IDLE:
-      return
     profile = next((p for p in self._profiles if p.iccid == iccid), None)
     if profile is None:
       return
@@ -214,3 +342,41 @@ class ESimManagerUI(Widget):
       self.state = UIState.DELETING
       self._state_iccid = iccid
       self._cellular_manager.delete_profile(iccid)
+
+  def _on_add_profile(self):
+    if not CameraView or not zxingcpp:
+      gui_app.push_widget(alert_dialog("QR scanning not available on this platform"))
+      return
+
+    scanner = QRScannerDialog(on_qr_detected=self._on_qr_scanned)
+    gui_app.push_widget(scanner)
+
+  def _on_qr_scanned(self, lpa_code: str):
+    self._pending_lpa_code = lpa_code
+    self.keyboard.reset(min_text_size=0)
+    self.keyboard.set_title("Enter a nickname for this profile", lpa_code)
+    self.keyboard.set_text("")
+    self.keyboard.set_callback(self._on_nickname_for_new_profile)
+    gui_app.push_widget(self.keyboard)
+
+  def _on_nickname_for_new_profile(self, result: DialogResult):
+    if result != DialogResult.CONFIRM:
+      return
+
+    self._pending_nickname = self.keyboard.text.strip() or None
+    self._installing_dialog = InstallingDialog()
+    gui_app.push_widget(self._installing_dialog)
+
+    def check_connectivity():
+      try:
+        req = urllib.request.Request("https://openpilot.comma.ai", method="HEAD")
+        urllib.request.urlopen(req, timeout=2.0)
+        connected = True
+      except Exception:
+        connected = False
+      self._cellular_manager._callback_queue.append(
+        lambda: self._cellular_manager.download_profile(self._pending_lpa_code, self._pending_nickname) if connected
+        else self._on_error("No internet connection.\nConnect to Wi-Fi or cellular to install.")
+      )
+
+    threading.Thread(target=check_connectivity, daemon=True).start()
