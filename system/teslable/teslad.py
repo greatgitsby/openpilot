@@ -712,15 +712,26 @@ async def establish_session(device, vin=None):
     log.info("requesting infotainment session...")
     await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
-    try:
-      response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
-    except asyncio.TimeoutError:
+    # drain responses until we get a RoutableMessage with session_info
+    info_response = None
+    for _ in range(10):
+      try:
+        response = await asyncio.wait_for(rx_queue.get(), timeout=3.0)
+        payload = response[2:]
+        parsed = parse_routable_response(payload)
+        log.info(f"infotainment rx: {parsed} (raw={response.hex()})")
+        if 'session_info' in parsed:
+          info_response = parsed
+          break
+      except asyncio.TimeoutError:
+        break
+
+    if info_response is None:
       log.warning("no infotainment session response — infotainment commands unavailable")
       return TeslaSession(client, shared_key, kid, rx_queue, public_key_bytes, vin,
                           routing_address=routing_address)
 
-    parsed = parse_routable_response(response[2:])
-    log.info(f"infotainment response: {parsed}")
+    parsed = info_response
 
     if 'session_info' in parsed:
       si = parsed['session_info']
