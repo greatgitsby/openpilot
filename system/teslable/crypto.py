@@ -54,14 +54,12 @@ def derive_session_key(shared_key, purpose):
 
 def encrypt_gcm(key, counter, plaintext):
   """AES-128-GCM encrypt with 4-byte big-endian counter as nonce.
-  Uses cryptography lib to match Tesla's expected GCM behavior.
   Returns (ciphertext_without_tag, tag) where tag is 16 bytes."""
-  from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+  from Crypto.Cipher import AES
   nonce = counter.to_bytes(4, 'big')
-  aesgcm = AESGCM(key)
-  # encrypt returns ciphertext + 16-byte tag appended
-  result = aesgcm.encrypt(nonce, plaintext, None)
-  return result[:-16], result[-16:]
+  cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+  ciphertext, tag = cipher.encrypt_and_digest(plaintext)
+  return ciphertext, tag
 
 
 def key_id(public_key_bytes):
