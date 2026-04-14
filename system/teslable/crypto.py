@@ -11,7 +11,7 @@ def generate_key_pair():
   public_key_bytes is 65 bytes uncompressed (0x04 || x || y)."""
   key = ECC.generate(curve='P-256')
   # uncompressed point: 0x04 + 32 bytes x + 32 bytes y
-  pub = b'\x04' + int.to_bytes(key.pointQ.x, 32, 'big') + int.to_bytes(key.pointQ.y, 32, 'big')
+  pub = b'\x04' + int(key.pointQ.x).to_bytes(32, 'big') + int(key.pointQ.y).to_bytes(32, 'big')
   return key, pub
 
 
@@ -27,7 +27,7 @@ def load_or_create_key(path):
     with open(path, 'wb') as f:
       f.write(key.export_key(format='PEM').encode() if isinstance(key.export_key(format='PEM'), str) else key.export_key(format='PEM'))
 
-  pub = b'\x04' + int.to_bytes(key.pointQ.x, 32, 'big') + int.to_bytes(key.pointQ.y, 32, 'big')
+  pub = b'\x04' + int(key.pointQ.x).to_bytes(32, 'big') + int(key.pointQ.y).to_bytes(32, 'big')
   return key, pub
 
 
@@ -42,7 +42,7 @@ def ecdh_shared_key(private_key, peer_public_bytes):
 
   # ECDH: multiply peer's public point by our private scalar
   shared_point = peer_point * private_key.d
-  shared_secret = int.to_bytes(shared_point.x, 32, 'big')
+  shared_secret = int(shared_point.x).to_bytes(32, 'big')
 
   return hashlib.sha1(shared_secret).digest()[:16]
 
