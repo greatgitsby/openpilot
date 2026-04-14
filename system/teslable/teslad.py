@@ -544,7 +544,7 @@ class TeslaSession:
       log.error("infotainment session not established")
       return None
 
-    expires_at = self.infotainment_clock_time + 5
+    expires_at = (self.infotainment_clock_time or int(time.time())) + 5
     msg = build_infotainment_command(
       self.infotainment_key, self.public_key_bytes, self.routing_address,
       self.vin, self.infotainment_epoch, self.infotainment_counter,
