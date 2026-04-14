@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 import asyncio
-import re
-
-import logging
-
 import hashlib
+import logging
+import re
 
 from bleak import BleakClient, BleakScanner
 
-from openpilot.common.params import Params
+TESLA_VIN_PATH = "/data/teslable/vin"
 
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("teslabled")
+log = logging.getLogger("teslad")
 
 # Tesla BLE UUIDs
 TESLA_SERVICE_UUID = "00000211-b2d1-43f0-9b88-960cebf8b91e"
@@ -64,17 +62,18 @@ async def connect(device):
 
 async def run():
   while True:
-    teslas = await scan_for_teslas()
-    if not teslas:
-      log.info("no Tesla found, retrying...")
+    # read VIN from file
+    try:
+      with open(TESLA_VIN_PATH) as f:
+        vin = f.read().strip()
+    except FileNotFoundError:
+      log.info(f"{TESLA_VIN_PATH} not found, retrying...")
       await asyncio.sleep(SCAN_INTERVAL)
       continue
 
-    # connect to target Tesla by VIN
-    params = Params()
-    vin = params.get("TeslaVIN", encoding="utf-8")
-    if not vin:
-      log.info("TeslaVIN param not set, retrying...")
+    teslas = await scan_for_teslas()
+    if not teslas:
+      log.info("no Tesla found, retrying...")
       await asyncio.sleep(SCAN_INTERVAL)
       continue
 
@@ -94,7 +93,7 @@ async def run():
 
 
 def main():
-  log.info("teslabled started")
+  log.info("teslad started")
   asyncio.run(run())
 
 
