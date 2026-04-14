@@ -81,9 +81,9 @@ def build_signed_command(shared_key, kid_bytes, counter, unsigned_msg_bytes):
   signed_msg = b''
   signed_msg += encode_field(2, ciphertext)
   signed_msg += encode_field(3, 0)  # SIGNATURE_TYPE_AES_GCM
-  signed_msg += encode_field(5, counter)
-  signed_msg += encode_field(6, tag)
-  signed_msg += encode_field(7, kid_bytes)
+  signed_msg += encode_field(4, tag)       # signature
+  signed_msg += encode_field(5, kid_bytes) # keyId
+  signed_msg += encode_field(6, counter)   # counter
 
   return encode_field(1, signed_msg)  # ToVCSECMessage.signedMessage
 
