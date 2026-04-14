@@ -70,18 +70,17 @@ def build_whitelist_request(public_key_bytes):
 
 def build_signed_command(shared_key, kid_bytes, counter, unsigned_msg_bytes):
   """Encrypt an UnsignedMessage with AES-GCM and wrap in ToVCSECMessage.signedMessage.
-  SignedMessage {
-    protobufMessageAsBytes (field 2) = ciphertext (without tag)
-    signatureType (field 3) = SIGNATURE_TYPE_AES_GCM (0)
-    counter (field 5) = counter value
-    signature (field 6) = GCM auth tag (16 bytes)
-    keyId (field 7) = SHA1(pubkey)[:4]
-  }"""
-  ciphertext, tag = encrypt_gcm(shared_key, counter, unsigned_msg_bytes)
+
+  The plaintext is a serialized ToVCSECMessage { unsignedMessage = <unsigned_msg> },
+  NOT the raw UnsignedMessage bytes."""
+  # wrap UnsignedMessage in ToVCSECMessage.unsignedMessage (field 2) before encrypting
+  plaintext = encode_field(2, unsigned_msg_bytes)
+
+  ciphertext, tag = encrypt_gcm(shared_key, counter, plaintext)
 
   signed_msg = b''
   signed_msg += encode_field(2, ciphertext)
-  signed_msg += encode_field(3, 0)  # AES_GCM
+  signed_msg += encode_field(3, 0)  # SIGNATURE_TYPE_AES_GCM
   signed_msg += encode_field(5, counter)
   signed_msg += encode_field(6, tag)
   signed_msg += encode_field(7, kid_bytes)
@@ -89,18 +88,18 @@ def build_signed_command(shared_key, kid_bytes, counter, unsigned_msg_bytes):
   return encode_field(1, signed_msg)  # ToVCSECMessage.signedMessage
 
 
-def build_open_trunk():
-  """Build UnsignedMessage for opening rear trunk.
-  UnsignedMessage { ClosureMoveRequest (field 4) { rearTrunk (field 5) = OPEN (3) } }"""
-  closure_req = encode_field(5, 3)  # rearTrunk = CLOSURE_MOVE_TYPE_OPEN
-  return encode_field(4, closure_req)
+# RKEAction_E values
+RKE_ACTION_UNLOCK = 0
+RKE_ACTION_LOCK = 1
+RKE_ACTION_OPEN_TRUNK = 2
+RKE_ACTION_OPEN_FRUNK = 3
+RKE_ACTION_OPEN_CHARGE_PORT = 4
+RKE_ACTION_CLOSE_CHARGE_PORT = 5
 
 
-def build_open_frunk():
-  """Build UnsignedMessage for opening front trunk.
-  UnsignedMessage { ClosureMoveRequest (field 4) { frontTrunk (field 6) = OPEN (3) } }"""
-  closure_req = encode_field(6, 3)  # frontTrunk = CLOSURE_MOVE_TYPE_OPEN
-  return encode_field(4, closure_req)
+def build_rke_action(action):
+  """Build UnsignedMessage { RKEAction (field 2) = action }"""
+  return encode_field(2, action)
 
 
 # ── VCSEC response parsers ──
@@ -236,10 +235,10 @@ async def connect(device):
     log.info("shared key derived, session established!")
 
     # send open trunk command
-    counter = 1
-    unsigned_msg = build_open_trunk()
+    counter = int(time.time())
+    unsigned_msg = build_rke_action(RKE_ACTION_OPEN_TRUNK)
     cmd = build_signed_command(shared_key, kid, counter, unsigned_msg)
-    log.info(f"sending open trunk command (counter={counter}, cmd={ble_frame(cmd).hex()})...")
+    log.info(f"sending open trunk command (counter={counter})...")
     await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(cmd))
 
     # wait for response — drain unsolicited broadcasts to find actual response
