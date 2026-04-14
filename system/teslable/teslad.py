@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Tesla BLE daemon — manages BLE connection to a Tesla vehicle using the VCSEC protocol."""
 import asyncio
 import hashlib
 import logging
@@ -8,13 +9,11 @@ import struct
 
 from bleak import BleakClient, BleakScanner
 
-from openpilot.system.teslable.crypto import load_or_create_key, ecdh_shared_key, derive_session_key, key_id
+from openpilot.system.teslable.crypto import load_or_create_key, ecdh_shared_key, key_id
 from openpilot.system.teslable.proto import encode_field, decode_fields, get_field
 
 TESLA_VIN_PATH = "/data/teslable/vin"
 TESLA_KEY_PATH = "/data/teslable/key.pem"
-
-DOMAIN_VEHICLE_SECURITY = 2
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("teslad")
@@ -24,85 +23,84 @@ TESLA_WRITE_UUID = "00000212-b2d1-43f0-9b88-960cebf8b91e"
 TESLA_READ_UUID = "00000213-b2d1-43f0-9b88-960cebf8b91e"
 TESLA_VERSION_UUID = "00000214-b2d1-43f0-9b88-960cebf8b91e"
 
-# Tesla advertises as S<16 hex chars of SHA1(VIN)>C
 TESLA_BLE_NAME_RE = re.compile(r"^S[0-9a-f]{16}C$")
 
 SCAN_DURATION = 5.0
 SCAN_INTERVAL = 10.0
 
-# SessionInfo status
-SESSION_INFO_STATUS_OK = 0
-SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST = 1
-
-
-def build_session_info_request(public_key_bytes, domain, routing_address):
-  """Build a RoutableMessage containing a SessionInfoRequest."""
-  uuid = os.urandom(16)
-
-  session_info_req = encode_field(1, public_key_bytes)
-  to_dest = encode_field(1, domain)
-  from_dest = encode_field(2, routing_address)
-
-  msg = b''
-  msg += encode_field(6, to_dest)
-  msg += encode_field(7, from_dest)
-  msg += encode_field(14, session_info_req)
-  msg += encode_field(51, uuid)  # uuid is field 51
-
-  return msg, uuid
-
-
-def build_whitelist_request(public_key_bytes):
-  """Build a ToVCSECMessage to add our key to the whitelist.
-  This is NOT a RoutableMessage — it's sent raw over BLE.
-  User must tap NFC key card on center console to approve."""
-
-  # PublicKey { PublicKeyRaw (field 1) = <65 bytes> }
-  pubkey_msg = encode_field(1, public_key_bytes)
-
-  # PermissionChange: key (field 1) + keyRole (field 4) = ROLE_OWNER (2)
-  perm_change = encode_field(1, pubkey_msg) + encode_field(4, 2)
-
-  # KeyMetadata: keyFormFactor (field 1) = KEY_FORM_FACTOR_CLOUD_KEY (9)
-  metadata = encode_field(1, 9)
-
-  # WhitelistOperation: addKeyToWhitelistAndAddPermissions (field 5) + metadataForKey (field 6)
-  whitelist_op = encode_field(5, perm_change) + encode_field(6, metadata)
-
-  # UnsignedMessage: WhitelistOperation (field 16)
-  unsigned_msg = encode_field(16, whitelist_op)
-
-  # SignedMessage: protobufMessageAsBytes (field 2) + signatureType (field 3) = PRESENT_KEY (2)
-  signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)
-
-  # ToVCSECMessage: signedMessage (field 1)
-  to_vcsec = encode_field(1, signed_msg)
-
-  return to_vcsec
-
-
-def parse_session_info(data):
-  """Parse a RoutableMessage containing SessionInfo. Returns dict or None."""
-  fields = decode_fields(data)
-
-  # session_info is field 15 (raw bytes)
-  session_info_bytes = get_field(fields, 15)
-  if session_info_bytes is None:
-    return None
-
-  si_fields = decode_fields(session_info_bytes)
-  return {
-    'counter': get_field(si_fields, 1),
-    'public_key': get_field(si_fields, 2),
-    'epoch': get_field(si_fields, 3),
-    'clock_time': get_field(si_fields, 4),
-    'status': get_field(si_fields, 5),
-  }
-
 
 def ble_frame(msg):
   """Prepend 2-byte big-endian length prefix."""
   return struct.pack('>H', len(msg)) + msg
+
+
+# ── VCSEC message builders (all use ToVCSECMessage, NOT RoutableMessage) ──
+
+def build_ephemeral_key_request(kid_bytes):
+  """Request vehicle's ephemeral public key.
+  ToVCSECMessage { unsignedMessage (field 2) {
+    InformationRequest (field 1) {
+      informationRequestType (field 1) = GET_EPHEMERAL_PUBLIC_KEY (3)
+      keyId (field 2) { publicKeySHA1 (field 1) = <4 bytes> }
+    }
+  }}"""
+  key_id_msg = encode_field(1, kid_bytes)  # KeyIdentifier.publicKeySHA1
+  info_req = encode_field(1, 3) + encode_field(2, key_id_msg)  # type=3, keyId
+  unsigned_msg = encode_field(1, info_req)  # UnsignedMessage.InformationRequest
+  return encode_field(2, unsigned_msg)  # ToVCSECMessage.unsignedMessage
+
+
+def build_whitelist_request(public_key_bytes):
+  """Build a ToVCSECMessage to add our key to the whitelist.
+  ToVCSECMessage { signedMessage (field 1) {
+    protobufMessageAsBytes (field 2) = serialized UnsignedMessage
+    signatureType (field 3) = SIGNATURE_TYPE_PRESENT_KEY (2)
+  }}"""
+  pubkey_msg = encode_field(1, public_key_bytes)  # PublicKey.PublicKeyRaw
+  perm_change = encode_field(1, pubkey_msg) + encode_field(4, 2)  # key + keyRole=ROLE_OWNER
+  metadata = encode_field(1, 7)  # keyFormFactor = KEY_FORM_FACTOR_ANDROID_DEVICE
+  whitelist_op = encode_field(5, perm_change) + encode_field(6, metadata)
+  unsigned_msg = encode_field(16, whitelist_op)  # UnsignedMessage.WhitelistOperation
+
+  signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)  # PRESENT_KEY
+  return encode_field(1, signed_msg)  # ToVCSECMessage.signedMessage
+
+
+# ── VCSEC response parsers ──
+
+def parse_from_vcsec(data):
+  """Parse a FromVCSECMessage response.
+  FromVCSECMessage {
+    commandStatus (field 1)
+    sessionInfo (field 2) {
+      token (field 1)
+      counter (field 2)
+      publicKey (field 3) — 65-byte vehicle ephemeral key
+    }
+    whitelistInfo (field 3)
+    ...
+  }"""
+  fields = decode_fields(data)
+  result = {}
+
+  session_info_bytes = get_field(fields, 2)
+  if session_info_bytes is not None:
+    si = decode_fields(session_info_bytes)
+    result['session_info'] = {
+      'token': get_field(si, 1),
+      'counter': get_field(si, 2),
+      'public_key': get_field(si, 3),
+    }
+
+  command_status_bytes = get_field(fields, 1)
+  if command_status_bytes is not None:
+    cs = decode_fields(command_status_bytes)
+    result['command_status'] = {
+      'operation_status': get_field(cs, 1),
+      'signed_message_fault': get_field(cs, 2),
+    }
+
+  return result
 
 
 async def scan_for_teslas():
@@ -121,7 +119,6 @@ async def connect(device):
   kid = key_id(public_key_bytes)
   log.info(f"using key id: {kid.hex()}")
 
-  routing_address = os.urandom(16)
   rx_queue = asyncio.Queue()
 
   async with BleakClient(device.address) as client:
@@ -144,77 +141,62 @@ async def connect(device):
     while not rx_queue.empty():
       rx_queue.get_nowait()
 
-    # request session info
-    msg, uuid = build_session_info_request(public_key_bytes, DOMAIN_VEHICLE_SECURITY, routing_address)
-    log.info(f"sending session info request...")
+    # request ephemeral key to check if we're whitelisted
+    msg = build_ephemeral_key_request(kid)
+    log.info("requesting vehicle ephemeral key...")
     await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
     try:
       response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
     except asyncio.TimeoutError:
-      log.error("no session info response")
+      log.error("no response to ephemeral key request")
       return
 
-    payload = response[2:] if len(response) > 2 else response
-    session_info = parse_session_info(payload)
-    if session_info is None:
-      log.error(f"failed to parse session info: {response.hex()}")
-      return
+    payload = response[2:]  # strip length prefix
+    parsed = parse_from_vcsec(payload)
+    log.info(f"response: {parsed}")
 
-    status = session_info.get('status')
-    if status == SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST:
+    vehicle_pubkey = None
+    if 'session_info' in parsed and parsed['session_info'].get('public_key'):
+      vehicle_pubkey = parsed['session_info']['public_key']
+
+    if vehicle_pubkey is None:
+      # not whitelisted — send whitelist request and poll
       log.info("key not on whitelist — sending whitelist request")
       log.info(">>> TAP YOUR NFC KEY CARD ON THE CENTER CONSOLE <<<")
 
       wl_msg = build_whitelist_request(public_key_bytes)
       await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(wl_msg))
 
-      # wait for whitelist response (user needs to tap key card)
-      try:
-        wl_response = await asyncio.wait_for(rx_queue.get(), timeout=30.0)
-        log.info(f"whitelist response: {wl_response.hex()}")
-      except asyncio.TimeoutError:
-        log.error("whitelist timed out — did you tap the key card?")
+      # poll for ephemeral key every 2s until whitelisted or timeout
+      for attempt in range(30):
+        await asyncio.sleep(2.0)
+
+        # drain and check for session info
+        while not rx_queue.empty():
+          resp = rx_queue.get_nowait()
+          p = parse_from_vcsec(resp[2:])
+          if 'session_info' in p and p['session_info'].get('public_key'):
+            vehicle_pubkey = p['session_info']['public_key']
+            break
+
+        if vehicle_pubkey:
+          break
+
+        # re-request ephemeral key
+        msg = build_ephemeral_key_request(kid)
+        await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+        log.info(f"waiting for keycard tap... (attempt {attempt + 1}/30)")
+
+      if vehicle_pubkey is None:
+        log.error("whitelist timed out — key card not tapped")
         return
-
-      # retry session info after whitelisting
-      await asyncio.sleep(1.0)
-      msg, uuid = build_session_info_request(public_key_bytes, DOMAIN_VEHICLE_SECURITY, routing_address)
-      log.info("retrying session info request after whitelist...")
-      await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
-
-      try:
-        response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
-      except asyncio.TimeoutError:
-        log.error("no session info response after whitelist")
-        return
-
-      payload = response[2:] if len(response) > 2 else response
-      session_info = parse_session_info(payload)
-      if session_info is None:
-        log.error(f"failed to parse session info after whitelist: {response.hex()}")
-        return
-
-    if session_info.get('status', 0) != SESSION_INFO_STATUS_OK:
-      log.error(f"session info status: {session_info.get('status')}")
-      return
-
-    vehicle_pubkey = session_info['public_key']
-    epoch = session_info['epoch']
-    clock_time = session_info['clock_time']
-    counter = session_info['counter']
 
     log.info(f"vehicle public key: {vehicle_pubkey.hex()}")
-    log.info(f"epoch: {epoch.hex()}")
-    log.info(f"clock_time: {clock_time}")
-    log.info(f"counter: {counter}")
 
+    # derive shared key
     shared_key = ecdh_shared_key(private_key, vehicle_pubkey)
-    log.info(f"shared key derived")
-
-    session_info_key = derive_session_key(shared_key, "session info")
-    command_key = derive_session_key(shared_key, "authenticated command")
-    log.info("session established!")
+    log.info("shared key derived, session established!")
 
     # hold connection
     while client.is_connected:
