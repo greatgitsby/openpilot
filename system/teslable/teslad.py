@@ -236,10 +236,10 @@ async def connect(device):
     log.info("shared key derived, session established!")
 
     # send open trunk command
-    counter = int(time.time())
+    counter = 1
     unsigned_msg = build_open_trunk()
     cmd = build_signed_command(shared_key, kid, counter, unsigned_msg)
-    log.info(f"sending open trunk command (counter={counter})...")
+    log.info(f"sending open trunk command (counter={counter}, cmd={ble_frame(cmd).hex()})...")
     await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(cmd))
 
     # wait for response — drain unsolicited broadcasts to find actual response
