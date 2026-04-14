@@ -242,14 +242,19 @@ async def connect(device):
     log.info(f"sending open trunk command (counter={counter})...")
     await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(cmd))
 
-    # wait for response
-    try:
-      response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
-      payload = response[2:]
-      parsed = parse_from_vcsec(payload)
-      log.info(f"trunk response: {parsed}")
-    except asyncio.TimeoutError:
-      log.error("no response to trunk command")
+    # wait for response — drain unsolicited broadcasts to find actual response
+    deadline = asyncio.get_event_loop().time() + 5.0
+    while asyncio.get_event_loop().time() < deadline:
+      try:
+        response = await asyncio.wait_for(rx_queue.get(), timeout=2.0)
+        payload = response[2:]
+        log.info(f"trunk raw response: {response.hex()}")
+        parsed = parse_from_vcsec(payload)
+        log.info(f"trunk parsed: {parsed}")
+        if parsed.get('command_status') is not None:
+          break
+      except asyncio.TimeoutError:
+        break
 
     # hold connection
     while client.is_connected:
