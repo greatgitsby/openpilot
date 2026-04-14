@@ -52,40 +52,33 @@ def build_session_info_request(public_key_bytes, domain, routing_address):
   return msg, uuid
 
 
-def build_whitelist_request(public_key_bytes, routing_address):
-  """Build a VCSEC WhitelistOperation to add our key.
+def build_whitelist_request(public_key_bytes):
+  """Build a ToVCSECMessage to add our key to the whitelist.
+  This is NOT a RoutableMessage — it's sent raw over BLE.
   User must tap NFC key card on center console to approve."""
 
   # PublicKey { PublicKeyRaw (field 1) = <65 bytes> }
   pubkey_msg = encode_field(1, public_key_bytes)
 
-  # KeyToRole: key (field 1) + role (field 2) = ROLE_OWNER (0)
-  key_to_role = encode_field(1, pubkey_msg) + encode_field(2, 0)
+  # PermissionChange: key (field 1) + keyRole (field 4) = ROLE_OWNER (2)
+  perm_change = encode_field(1, pubkey_msg) + encode_field(4, 2)
 
-  # metadataForKey: keyFormFactor (field 1) = KEY_FORM_FACTOR_CLOUD_KEY (5)
-  metadata = encode_field(1, 5)
+  # KeyMetadata: keyFormFactor (field 1) = KEY_FORM_FACTOR_CLOUD_KEY (9)
+  metadata = encode_field(1, 9)
 
-  # WhitelistOperation: addKeyToWhitelistAndAddPermissions (field 1) + metadataForKey (field 3)
-  whitelist_op = encode_field(1, key_to_role) + encode_field(3, metadata)
+  # WhitelistOperation: addKeyToWhitelistAndAddPermissions (field 5) + metadataForKey (field 6)
+  whitelist_op = encode_field(5, perm_change) + encode_field(6, metadata)
 
   # UnsignedMessage: WhitelistOperation (field 16)
   unsigned_msg = encode_field(16, whitelist_op)
 
-  # ToVCSECMessage: unsignedMessage (field 1) ... but we wrap in RoutableMessage
-  # signatureType = SIGNATURE_TYPE_PRESENT_KEY (1) — no encryption needed for whitelisting
+  # SignedMessage: protobufMessageAsBytes (field 2) + signatureType (field 3) = PRESENT_KEY (2)
+  signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)
 
-  to_dest = encode_field(1, DOMAIN_VEHICLE_SECURITY)
-  from_dest = encode_field(2, routing_address)
+  # ToVCSECMessage: signedMessage (field 1)
+  to_vcsec = encode_field(1, signed_msg)
 
-  uuid = os.urandom(16)
-
-  msg = b''
-  msg += encode_field(6, to_dest)
-  msg += encode_field(7, from_dest)
-  msg += encode_field(10, unsigned_msg)  # protobuf_message_as_bytes
-  msg += encode_field(51, uuid)
-
-  return msg, uuid
+  return to_vcsec
 
 
 def parse_session_info(data):
@@ -173,7 +166,7 @@ async def connect(device):
       log.info("key not on whitelist — sending whitelist request")
       log.info(">>> TAP YOUR NFC KEY CARD ON THE CENTER CONSOLE <<<")
 
-      wl_msg, wl_uuid = build_whitelist_request(public_key_bytes, routing_address)
+      wl_msg = build_whitelist_request(public_key_bytes)
       await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(wl_msg))
 
       # wait for whitelist response (user needs to tap key card)
