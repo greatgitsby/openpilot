@@ -110,7 +110,7 @@ procs = [
   PythonProcess("updated", "system.updated.updated", only_offroad, enabled=not PC),
   PythonProcess("uploader", "system.loggerd.uploader", always_run),
   PythonProcess("statsd", "system.statsd", always_run),
-  PythonProcess("teslad", "system.teslable.teslad", always_run),
+  PythonProcess("teslad", "system.teslable.teslad", iscar),
   PythonProcess("feedbackd", "selfdrive.ui.feedback.feedbackd", only_onroad),
 
   # debug procs

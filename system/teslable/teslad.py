@@ -48,7 +48,11 @@ async def connect(device):
     def on_notify(_handle, data: bytearray):
       log.info(f"rx: {data.hex()}")
 
-    await client.start_notify(TESLA_READ_UUID, on_notify)
+    try:
+      await client.start_notify(TESLA_READ_UUID, on_notify)
+    except Exception as e:
+      log.warning(f"start_notify failed ({e}), retrying with new connection...")
+      return
 
     # TODO: send session info request and do ECDH key exchange
     log.info("session setup not yet implemented, holding connection...")
