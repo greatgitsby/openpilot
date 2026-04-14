@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tesla BLE daemon — manages BLE connection to a Tesla vehicle using the VCSEC protocol."""
+"""Tesla BLE daemon — manages BLE connection to a Tesla vehicle using VCSEC and Infotainment protocols."""
 import asyncio
 import hashlib
 import logging
@@ -10,7 +10,10 @@ import time
 
 from bleak import BleakClient, BleakScanner
 
-from openpilot.system.teslable.crypto import load_or_create_key, ecdh_shared_key, encrypt_gcm, key_id
+from openpilot.system.teslable.crypto import (
+  load_or_create_key, ecdh_shared_key, encrypt_gcm, encrypt_gcm_personalized,
+  derive_subkey, key_id,
+)
 from openpilot.system.teslable.proto import encode_field, decode_fields, get_field
 
 TESLA_VIN_PATH = "/data/teslable/vin"
@@ -28,6 +31,9 @@ TESLA_BLE_NAME_RE = re.compile(r"^S[0-9a-f]{16}C$")
 
 SCAN_DURATION = 5.0
 SCAN_INTERVAL = 10.0
+
+DOMAIN_VEHICLE_SECURITY = 2
+DOMAIN_INFOTAINMENT = 3
 
 # ── RKE actions ──
 
@@ -158,15 +164,209 @@ def parse_from_vcsec(data):
   return result
 
 
+# ── Infotainment (RoutableMessage) builders ──
+
+def build_metadata_aad(vin, epoch, expires_at, counter, flags=0):
+  """Build TLV metadata and return its SHA-256 hash for use as AES-GCM AAD."""
+  tlv = b''
+  tlv += bytes([0, 1, 5])                                  # TAG_SIGNATURE_TYPE = AES_GCM_PERSONALIZED (5)
+  tlv += bytes([1, 1, DOMAIN_INFOTAINMENT])                 # TAG_DOMAIN = 3
+  vin_bytes = vin.encode()
+  tlv += bytes([2, len(vin_bytes)]) + vin_bytes             # TAG_PERSONALIZATION = VIN
+  tlv += bytes([3, len(epoch)]) + epoch                     # TAG_EPOCH
+  tlv += bytes([4, 4]) + expires_at.to_bytes(4, 'big')      # TAG_EXPIRES_AT
+  tlv += bytes([5, 4]) + counter.to_bytes(4, 'big')         # TAG_COUNTER
+  if flags:
+    tlv += bytes([7, 4]) + flags.to_bytes(4, 'big')         # TAG_FLAGS
+  tlv += bytes([0xFF])                                       # TAG_END
+  return hashlib.sha256(tlv).digest()
+
+
+def build_session_info_request(public_key_bytes, domain, routing_address):
+  """Build RoutableMessage with SessionInfoRequest for a domain."""
+  uuid = os.urandom(16)
+  session_info_req = encode_field(1, public_key_bytes)
+  to_dest = encode_field(1, domain)
+  from_dest = encode_field(2, routing_address)
+  msg = b''
+  msg += encode_field(6, to_dest)
+  msg += encode_field(7, from_dest)
+  msg += encode_field(14, session_info_req)
+  msg += encode_field(51, uuid)
+  return msg, uuid
+
+
+def parse_routable_response(data):
+  """Parse a RoutableMessage response."""
+  fields = decode_fields(data)
+  result = {}
+
+  session_info_bytes = get_field(fields, 15)
+  if session_info_bytes is not None:
+    si = decode_fields(session_info_bytes)
+    result['session_info'] = {
+      'counter': get_field(si, 1),
+      'public_key': get_field(si, 2),
+      'epoch': get_field(si, 3),
+      'clock_time': get_field(si, 4),
+      'status': get_field(si, 5),
+    }
+
+  payload = get_field(fields, 10)
+  if payload is not None:
+    result['payload'] = payload
+
+  status = get_field(fields, 12)
+  if status is not None:
+    sf = decode_fields(status)
+    result['message_status'] = {
+      'operation_status': get_field(sf, 1),
+      'fault': get_field(sf, 2),
+    }
+
+  return result
+
+
+def build_infotainment_command(aes_key, public_key_bytes, routing_address, vin,
+                                epoch, counter, expires_at, action_bytes):
+  """Build a signed RoutableMessage for an infotainment command."""
+  nonce = os.urandom(12)
+  aad = build_metadata_aad(vin, epoch, expires_at, counter)
+  ciphertext, tag = encrypt_gcm_personalized(aes_key, nonce, action_bytes, aad)
+
+  # AES_GCM_Personalized_Signature_Data
+  sig_data = b''
+  sig_data += encode_field(1, epoch)
+  sig_data += encode_field(2, nonce)
+  sig_data += encode_field(3, counter)
+  sig_data += encode_field(4, struct.pack('<I', expires_at))  # fixed32 = little-endian
+  sig_data += encode_field(5, tag)
+
+  # SignatureData { signer_identity (1), AES_GCM_Personalized_data (5) }
+  signer = encode_field(1, public_key_bytes)  # KeyIdentity.public_key
+  signature_data = encode_field(1, signer) + encode_field(5, sig_data)
+
+  to_dest = encode_field(1, DOMAIN_INFOTAINMENT)
+  from_dest = encode_field(2, routing_address)
+  uuid = os.urandom(16)
+
+  msg = b''
+  msg += encode_field(6, to_dest)
+  msg += encode_field(7, from_dest)
+  msg += encode_field(10, ciphertext)   # encrypted payload
+  msg += encode_field(13, signature_data)
+  msg += encode_field(51, uuid)
+  return msg
+
+
+# ── Infotainment action builders (carserver.Action > VehicleAction) ──
+
+def build_vehicle_action(field_number, action_body=b''):
+  """Build Action { vehicleAction (field 2) { <field_number>: action_body } }"""
+  vehicle_action = encode_field(field_number, action_body) if action_body else encode_field(field_number, b'')
+  return encode_field(2, vehicle_action)
+
+
+def action_honk_horn():
+  return build_vehicle_action(27)
+
+def action_flash_lights():
+  return build_vehicle_action(26)
+
+def action_hvac_auto(on=True):
+  # HvacAutoAction { power_on (field 1) = bool }
+  return build_vehicle_action(10, encode_field(1, 1 if on else 0))
+
+def action_hvac_steering_wheel_heater(on=True):
+  # HvacSteeringWheelHeaterAction { power_on (field 1) = bool }
+  return build_vehicle_action(13, encode_field(1, 1 if on else 0))
+
+def action_media_toggle_playback():
+  return build_vehicle_action(15)
+
+def action_media_next_track():
+  return build_vehicle_action(19)
+
+def action_media_previous_track():
+  return build_vehicle_action(20)
+
+def action_media_volume(volume_delta=0, volume_abs=-1):
+  # MediaUpdateVolume { media_volume_delta (field 1) = float }
+  body = b''
+  if volume_abs >= 0:
+    body += encode_field(4, struct.pack('<f', volume_abs))  # absolute volume (fixed32/float)
+  else:
+    body += encode_field(1, struct.pack('<f', volume_delta))
+  return build_vehicle_action(16, body)
+
+def action_sentry_mode(on=True):
+  # VehicleControlSetSentryModeAction { on (field 1) = bool }
+  return build_vehicle_action(30, encode_field(1, 1 if on else 0))
+
+def action_trigger_homelink():
+  return build_vehicle_action(33)
+
+def action_window(vent=False, close=False):
+  # VehicleControlWindowAction
+  body = b''
+  if vent:
+    body += encode_field(1, 1)  # action = Vent
+  elif close:
+    body += encode_field(1, 2)  # action = Close
+  return build_vehicle_action(34, body)
+
+def action_seat_heater(seat, level):
+  # HvacSeatHeaterActions { hvacSeatHeaterAction (field 1, repeated) { ... } }
+  # Each: SeatPosition (field 1) = seat enum, SeatHeaterLevel (field 2) = level enum
+  seat_action = encode_field(1, seat) + encode_field(2, level)
+  return build_vehicle_action(36, encode_field(1, seat_action))
+
+def action_charging_start():
+  return build_vehicle_action(6, encode_field(1, 1))  # start
+
+def action_charging_stop():
+  return build_vehicle_action(6, encode_field(1, 2))  # stop
+
+def action_set_charge_limit(percent):
+  return build_vehicle_action(5, encode_field(1, percent))
+
+def action_ping():
+  return build_vehicle_action(46)
+
+def action_bioweapon_mode(on=True):
+  return build_vehicle_action(35, encode_field(1, 1 if on else 0))
+
+def action_set_vehicle_name(name):
+  return build_vehicle_action(54, encode_field(1, name.encode()))
+
+def action_hvac_temp(driver_temp=None, passenger_temp=None):
+  # HvacTemperatureAdjustmentAction
+  body = b''
+  if driver_temp is not None:
+    body += encode_field(1, struct.pack('<f', driver_temp))
+  if passenger_temp is not None:
+    body += encode_field(2, struct.pack('<f', passenger_temp))
+  return build_vehicle_action(14, body)
+
+
 # ── Tesla session ──
 
 class TeslaSession:
-  def __init__(self, client, shared_key, kid_bytes, rx_queue):
+  def __init__(self, client, shared_key, kid_bytes, rx_queue, public_key_bytes,
+               vin=None, infotainment_key=None, infotainment_epoch=None,
+               infotainment_clock_time=None, routing_address=None):
     self.client = client
     self.shared_key = shared_key
     self.kid = kid_bytes
     self.rx_queue = rx_queue
     self.counter = int(time.time())
+    self.public_key_bytes = public_key_bytes
+    self.vin = vin
+    self.infotainment_key = infotainment_key
+    self.infotainment_epoch = infotainment_epoch
+    self.infotainment_clock_time = infotainment_clock_time
+    self.infotainment_counter = int(time.time())
+    self.routing_address = routing_address or os.urandom(16)
 
   async def send_rke(self, action):
     cmd = build_signed_command(self.shared_key, self.kid, self.counter, build_rke_action(action))
@@ -337,6 +537,114 @@ class TeslaSession:
     await self.send_rke(RKE_ACTION_DOUBLE_PRESS_BACK)
     return await self.wait_for_response()
 
+  # ── Infotainment commands ──
+
+  async def send_infotainment(self, action_bytes):
+    if self.infotainment_key is None:
+      log.error("infotainment session not established")
+      return None
+
+    expires_at = self.infotainment_clock_time + 5
+    msg = build_infotainment_command(
+      self.infotainment_key, self.public_key_bytes, self.routing_address,
+      self.vin, self.infotainment_epoch, self.infotainment_counter,
+      expires_at, action_bytes,
+    )
+    self.infotainment_counter += 1
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+
+    # wait for routable response
+    deadline = asyncio.get_event_loop().time() + 5.0
+    while asyncio.get_event_loop().time() < deadline:
+      try:
+        response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
+        payload = response[2:]
+        parsed = parse_routable_response(payload)
+        if parsed.get('message_status') is not None or parsed.get('payload') is not None:
+          return parsed
+      except asyncio.TimeoutError:
+        break
+    return None
+
+  async def flash_lights(self):
+    log.info("flashing lights...")
+    return await self.send_infotainment(action_flash_lights())
+
+  async def honk_horn(self):
+    log.info("honking horn...")
+    return await self.send_infotainment(action_honk_horn())
+
+  async def set_sentry_mode(self, on=True):
+    log.info(f"sentry mode {'on' if on else 'off'}...")
+    return await self.send_infotainment(action_sentry_mode(on))
+
+  async def trigger_homelink(self):
+    log.info("triggering homelink...")
+    return await self.send_infotainment(action_trigger_homelink())
+
+  async def vent_windows(self):
+    log.info("venting windows...")
+    return await self.send_infotainment(action_window(vent=True))
+
+  async def close_windows(self):
+    log.info("closing windows...")
+    return await self.send_infotainment(action_window(close=True))
+
+  async def hvac_on(self):
+    log.info("hvac on...")
+    return await self.send_infotainment(action_hvac_auto(on=True))
+
+  async def hvac_off(self):
+    log.info("hvac off...")
+    return await self.send_infotainment(action_hvac_auto(on=False))
+
+  async def steering_wheel_heater(self, on=True):
+    log.info(f"steering wheel heater {'on' if on else 'off'}...")
+    return await self.send_infotainment(action_hvac_steering_wheel_heater(on))
+
+  async def set_hvac_temp(self, driver_temp=None, passenger_temp=None):
+    log.info(f"setting hvac temp driver={driver_temp} passenger={passenger_temp}...")
+    return await self.send_infotainment(action_hvac_temp(driver_temp, passenger_temp))
+
+  async def seat_heater(self, seat, level):
+    log.info(f"seat heater seat={seat} level={level}...")
+    return await self.send_infotainment(action_seat_heater(seat, level))
+
+  async def media_toggle(self):
+    log.info("toggling media playback...")
+    return await self.send_infotainment(action_media_toggle_playback())
+
+  async def media_next(self):
+    log.info("next track...")
+    return await self.send_infotainment(action_media_next_track())
+
+  async def media_prev(self):
+    log.info("previous track...")
+    return await self.send_infotainment(action_media_previous_track())
+
+  async def start_charging(self):
+    log.info("starting charge...")
+    return await self.send_infotainment(action_charging_start())
+
+  async def stop_charging(self):
+    log.info("stopping charge...")
+    return await self.send_infotainment(action_charging_stop())
+
+  async def set_charge_limit(self, percent):
+    log.info(f"setting charge limit to {percent}%...")
+    return await self.send_infotainment(action_set_charge_limit(percent))
+
+  async def bioweapon_mode(self, on=True):
+    log.info(f"bioweapon mode {'on' if on else 'off'}...")
+    return await self.send_infotainment(action_bioweapon_mode(on))
+
+  async def set_vehicle_name(self, name):
+    log.info(f"setting vehicle name to '{name}'...")
+    return await self.send_infotainment(action_set_vehicle_name(name))
+
+  async def ping(self):
+    return await self.send_infotainment(action_ping())
+
 
 async def scan_for_teslas():
   log.info("scanning for Tesla BLE devices...")
@@ -347,12 +655,13 @@ async def scan_for_teslas():
   return teslas
 
 
-async def establish_session(device):
+async def establish_session(device, vin=None):
   """Connect to a Tesla and return a TeslaSession, or None on failure."""
   log.info(f"connecting to {device.name} ({device.address})...")
 
   private_key, public_key_bytes = load_or_create_key(TESLA_KEY_PATH)
   kid = key_id(public_key_bytes)
+  routing_address = os.urandom(16)
 
   rx_queue = asyncio.Queue()
 
@@ -365,7 +674,7 @@ async def establish_session(device):
   while not rx_queue.empty():
     rx_queue.get_nowait()
 
-  # request ephemeral key
+  # ── VCSEC session ──
   msg = build_ephemeral_key_request(kid)
   await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
@@ -387,9 +696,50 @@ async def establish_session(device):
     return None
 
   shared_key = ecdh_shared_key(private_key, vehicle_pubkey)
-  log.info("session established")
+  log.info("VCSEC session established")
 
-  return TeslaSession(client, shared_key, kid, rx_queue)
+  # ── Infotainment session ──
+  infotainment_key = None
+  infotainment_epoch = None
+  infotainment_clock_time = None
+
+  if vin:
+    await asyncio.sleep(0.5)
+    while not rx_queue.empty():
+      rx_queue.get_nowait()
+
+    msg, uuid = build_session_info_request(public_key_bytes, DOMAIN_INFOTAINMENT, routing_address)
+    log.info("requesting infotainment session...")
+    await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+
+    try:
+      response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
+    except asyncio.TimeoutError:
+      log.warning("no infotainment session response — infotainment commands unavailable")
+      return TeslaSession(client, shared_key, kid, rx_queue, public_key_bytes, vin,
+                          routing_address=routing_address)
+
+    parsed = parse_routable_response(response[2:])
+    log.info(f"infotainment response: {parsed}")
+
+    if 'session_info' in parsed:
+      si = parsed['session_info']
+      if si.get('public_key') and si.get('epoch'):
+        info_pubkey = si['public_key']
+        infotainment_epoch = si['epoch']
+        infotainment_clock_time = si.get('clock_time', 0)
+
+        info_shared = ecdh_shared_key(private_key, info_pubkey)
+        infotainment_key = derive_subkey(info_shared, "authenticated command")[:16]
+        log.info("infotainment session established")
+      elif si.get('status') == 1:
+        log.warning("infotainment: key not on whitelist")
+      else:
+        log.warning(f"infotainment session incomplete: {si}")
+
+  return TeslaSession(client, shared_key, kid, rx_queue, public_key_bytes, vin,
+                      infotainment_key, infotainment_epoch, infotainment_clock_time,
+                      routing_address)
 
 
 async def run():
@@ -416,7 +766,7 @@ async def run():
       continue
 
     try:
-      session = await establish_session(target)
+      session = await establish_session(target, vin=vin)
       if session is None:
         await asyncio.sleep(SCAN_INTERVAL)
         continue

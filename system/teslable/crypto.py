@@ -1,5 +1,6 @@
 """Tesla BLE crypto — ECDH key exchange and AES-GCM encryption."""
 import hashlib
+import hmac
 import os
 
 from Crypto.PublicKey import ECC
@@ -47,12 +48,27 @@ def ecdh_shared_key(private_key, peer_public_bytes):
 
 
 
+def derive_subkey(shared_key, purpose):
+  """Derive a purpose-specific subkey: HMAC-SHA256(K, purpose)."""
+  return hmac.new(shared_key, purpose.encode(), hashlib.sha256).digest()
+
+
 def encrypt_gcm(key, counter, plaintext):
-  """AES-128-GCM encrypt with 4-byte big-endian counter as nonce.
+  """AES-128-GCM encrypt with 4-byte big-endian counter as nonce (VCSEC legacy).
   Returns (ciphertext_without_tag, tag) where tag is 16 bytes."""
   from Crypto.Cipher import AES
   nonce = counter.to_bytes(4, 'big')
   cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+  ciphertext, tag = cipher.encrypt_and_digest(plaintext)
+  return ciphertext, tag
+
+
+def encrypt_gcm_personalized(key, nonce, plaintext, aad):
+  """AES-128-GCM encrypt with 12-byte nonce and AAD (infotainment).
+  Returns (ciphertext_without_tag, tag) where tag is 16 bytes."""
+  from Crypto.Cipher import AES
+  cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+  cipher.update(aad)
   ciphertext, tag = cipher.encrypt_and_digest(plaintext)
   return ciphertext, tag
 
