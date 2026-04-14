@@ -22,7 +22,7 @@ SCAN_INTERVAL = 10.0  # seconds between scans when not connected
 async def scan_for_tesla():
   """Scan for Tesla BLE advertisements. Returns the first matching device or None."""
   log.info("teslabled: scanning for Tesla BLE devices...")
-  devices = await BleakScanner.discover(timeout=SCAN_DURATION, service_uuids=[TESLA_SERVICE_UUID])
+  devices = await BleakScanner.discover(timeout=SCAN_DURATION)
   for device in devices:
     if device.name and TESLA_BLE_NAME_RE.match(device.name):
       log.info(f"teslabled: found Tesla: {device.name} ({device.address})")
