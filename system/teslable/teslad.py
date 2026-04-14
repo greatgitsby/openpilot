@@ -30,46 +30,80 @@ TESLA_BLE_NAME_RE = re.compile(r"^S[0-9a-f]{16}C$")
 SCAN_DURATION = 5.0
 SCAN_INTERVAL = 10.0
 
+# SessionInfo status
+SESSION_INFO_STATUS_OK = 0
+SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST = 1
 
-def build_session_info_request(public_key_bytes, domain):
+
+def build_session_info_request(public_key_bytes, domain, routing_address):
   """Build a RoutableMessage containing a SessionInfoRequest."""
   uuid = os.urandom(16)
-  routing_address = os.urandom(16)
 
-  # SessionInfoRequest { public_key (field 1) = <65 bytes> }
   session_info_req = encode_field(1, public_key_bytes)
-
-  # Destination { domain (field 1) = varint }
   to_dest = encode_field(1, domain)
-
-  # Destination { routing_address (field 2) = bytes }
   from_dest = encode_field(2, routing_address)
 
-  # RoutableMessage
   msg = b''
-  msg += encode_field(6, to_dest)          # to_destination
-  msg += encode_field(7, from_dest)        # from_destination
-  msg += encode_field(14, session_info_req) # session_info_request
-  msg += encode_field(50, uuid)            # uuid
+  msg += encode_field(6, to_dest)
+  msg += encode_field(7, from_dest)
+  msg += encode_field(14, session_info_req)
+  msg += encode_field(51, uuid)  # uuid is field 51
 
-  return msg, uuid, routing_address
+  return msg, uuid
+
+
+def build_whitelist_request(public_key_bytes, routing_address):
+  """Build a VCSEC WhitelistOperation to add our key.
+  User must tap NFC key card on center console to approve."""
+
+  # PublicKey { PublicKeyRaw (field 1) = <65 bytes> }
+  pubkey_msg = encode_field(1, public_key_bytes)
+
+  # KeyToRole: key (field 1) + role (field 2) = ROLE_OWNER (0)
+  key_to_role = encode_field(1, pubkey_msg) + encode_field(2, 0)
+
+  # metadataForKey: keyFormFactor (field 1) = KEY_FORM_FACTOR_CLOUD_KEY (5)
+  metadata = encode_field(1, 5)
+
+  # WhitelistOperation: addKeyToWhitelistAndAddPermissions (field 1) + metadataForKey (field 3)
+  whitelist_op = encode_field(1, key_to_role) + encode_field(3, metadata)
+
+  # UnsignedMessage: WhitelistOperation (field 16)
+  unsigned_msg = encode_field(16, whitelist_op)
+
+  # ToVCSECMessage: unsignedMessage (field 1) ... but we wrap in RoutableMessage
+  # signatureType = SIGNATURE_TYPE_PRESENT_KEY (1) — no encryption needed for whitelisting
+
+  to_dest = encode_field(1, DOMAIN_VEHICLE_SECURITY)
+  from_dest = encode_field(2, routing_address)
+
+  uuid = os.urandom(16)
+
+  msg = b''
+  msg += encode_field(6, to_dest)
+  msg += encode_field(7, from_dest)
+  msg += encode_field(10, unsigned_msg)  # protobuf_message_as_bytes
+  msg += encode_field(51, uuid)
+
+  return msg, uuid
 
 
 def parse_session_info(data):
   """Parse a RoutableMessage containing SessionInfo. Returns dict or None."""
   fields = decode_fields(data)
 
-  # session_info is field 15
+  # session_info is field 15 (raw bytes)
   session_info_bytes = get_field(fields, 15)
   if session_info_bytes is None:
     return None
 
   si_fields = decode_fields(session_info_bytes)
   return {
-    'public_key': get_field(si_fields, 1),     # vehicle's ephemeral public key
-    'epoch': get_field(si_fields, 2),           # 16 bytes, generated at boot
-    'clock_time': get_field(si_fields, 3),      # seconds since epoch
-    'counter': get_field(si_fields, 4),         # anti-replay counter
+    'counter': get_field(si_fields, 1),
+    'public_key': get_field(si_fields, 2),
+    'epoch': get_field(si_fields, 3),
+    'clock_time': get_field(si_fields, 4),
+    'status': get_field(si_fields, 5),
   }
 
 
@@ -94,6 +128,7 @@ async def connect(device):
   kid = key_id(public_key_bytes)
   log.info(f"using key id: {kid.hex()}")
 
+  routing_address = os.urandom(16)
   rx_queue = asyncio.Queue()
 
   async with BleakClient(device) as client:
@@ -111,30 +146,64 @@ async def connect(device):
       log.warning(f"start_notify failed ({e}), retrying...")
       return
 
-    # drain any unsolicited messages
+    # drain unsolicited messages
     await asyncio.sleep(0.5)
     while not rx_queue.empty():
       rx_queue.get_nowait()
 
-    # send session info request for VCSEC domain
-    msg, uuid, routing_addr = build_session_info_request(public_key_bytes, DOMAIN_VEHICLE_SECURITY)
-    log.info(f"sending session info request (uuid={uuid.hex()})...")
+    # request session info
+    msg, uuid = build_session_info_request(public_key_bytes, DOMAIN_VEHICLE_SECURITY, routing_address)
+    log.info(f"sending session info request...")
     await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
-    # wait for session info response
     try:
       response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
     except asyncio.TimeoutError:
-      log.error("no session info response received")
+      log.error("no session info response")
       return
 
-    # strip 2-byte length prefix
     payload = response[2:] if len(response) > 2 else response
-    log.info(f"session info response: {response.hex()}")
-
     session_info = parse_session_info(payload)
     if session_info is None:
-      log.error(f"failed to parse session info from response")
+      log.error(f"failed to parse session info: {response.hex()}")
+      return
+
+    status = session_info.get('status')
+    if status == SESSION_INFO_STATUS_KEY_NOT_ON_WHITELIST:
+      log.info("key not on whitelist — sending whitelist request")
+      log.info(">>> TAP YOUR NFC KEY CARD ON THE CENTER CONSOLE <<<")
+
+      wl_msg, wl_uuid = build_whitelist_request(public_key_bytes, routing_address)
+      await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(wl_msg))
+
+      # wait for whitelist response (user needs to tap key card)
+      try:
+        wl_response = await asyncio.wait_for(rx_queue.get(), timeout=30.0)
+        log.info(f"whitelist response: {wl_response.hex()}")
+      except asyncio.TimeoutError:
+        log.error("whitelist timed out — did you tap the key card?")
+        return
+
+      # retry session info after whitelisting
+      await asyncio.sleep(1.0)
+      msg, uuid = build_session_info_request(public_key_bytes, DOMAIN_VEHICLE_SECURITY, routing_address)
+      log.info("retrying session info request after whitelist...")
+      await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+
+      try:
+        response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
+      except asyncio.TimeoutError:
+        log.error("no session info response after whitelist")
+        return
+
+      payload = response[2:] if len(response) > 2 else response
+      session_info = parse_session_info(payload)
+      if session_info is None:
+        log.error(f"failed to parse session info after whitelist: {response.hex()}")
+        return
+
+    if session_info.get('status', 0) != SESSION_INFO_STATUS_OK:
+      log.error(f"session info status: {session_info.get('status')}")
       return
 
     vehicle_pubkey = session_info['public_key']
@@ -147,14 +216,12 @@ async def connect(device):
     log.info(f"clock_time: {clock_time}")
     log.info(f"counter: {counter}")
 
-    # derive shared key
     shared_key = ecdh_shared_key(private_key, vehicle_pubkey)
-    log.info(f"shared key derived: {shared_key.hex()}")
+    log.info(f"shared key derived")
 
-    # derive session-specific keys
     session_info_key = derive_session_key(shared_key, "session info")
     command_key = derive_session_key(shared_key, "authenticated command")
-    log.info("session keys derived, session established!")
+    log.info("session established!")
 
     # hold connection
     while client.is_connected:
