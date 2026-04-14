@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Standalone script to whitelist our BLE key with a Tesla."""
 import asyncio
+import logging
 import struct
+import sys
+
+logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(asctime)s %(message)s')
+log = logging.getLogger("whitelist")
 
 from bleak import BleakClient, BleakScanner
 
@@ -20,16 +25,16 @@ def frame(msg):
 async def main():
   priv, pub = load_or_create_key("/data/teslable/key.pem")
   kid = key_id(pub)
-  print(f"key id: {kid.hex()}")
+  log.info(f"key id: {kid.hex()}")
 
-  print("scanning to warm bluez cache...")
+  log.info("scanning to warm bluez cache...")
   await BleakScanner.discover(timeout=5.0)
 
-  print(f"connecting to {ADDR}...")
+  log.info(f"connecting to {ADDR}...")
   rx = asyncio.Queue()
 
   async with BleakClient(ADDR, timeout=15.0) as client:
-    print("connected")
+    log.info("connected")
 
     await client.start_notify(READ, lambda _h, d: rx.put_nowait(bytes(d)))
     await asyncio.sleep(1)
@@ -45,9 +50,9 @@ async def main():
     signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)  # PRESENT_KEY
     to_vcsec = encode_field(1, signed_msg)
 
-    print("sending whitelist request...")
+    log.info("sending whitelist request...")
     await client.write_gatt_char(WRITE, frame(to_vcsec))
-    print(">>> TAP YOUR KEY CARD ON CENTER CONSOLE NOW <<<")
+    log.info(">>> TAP YOUR KEY CARD ON CENTER CONSOLE NOW <<<")
 
     for i in range(60):
       await asyncio.sleep(1)
@@ -59,23 +64,23 @@ async def main():
 
         if 4 in fnums:
           cs = get_field(fields, 4)
-          print(f"  [{i}s] COMMAND STATUS: {data.hex()}")
+          log.info(f"  [{i}s] COMMAND STATUS: {data.hex()}")
         elif 2 in fnums:
           si = get_field(fields, 2)
           sif = decode_fields(si)
           ctr = get_field(sif, 2)
           pk = get_field(sif, 3)
-          print(f"  [{i}s] SESSION INFO: counter={ctr} has_pubkey={pk is not None}")
+          log.info(f"  [{i}s] SESSION INFO: counter={ctr} has_pubkey={pk is not None}")
           if ctr is not None:
-            print("KEY WHITELISTED SUCCESSFULLY!")
+            log.info("KEY WHITELISTED SUCCESSFULLY!")
             return
         elif 1 in fnums:
-          print(f"  [{i}s] vehicle_status")
+          log.info(f"  [{i}s] vehicle_status")
 
       if i > 0 and i % 15 == 0:
-        print(f"  [{i}s] still waiting for key card tap...")
+        log.info(f"  [{i}s] still waiting for key card tap...")
 
-    print("timed out — key card was not tapped")
+    log.info("timed out — key card was not tapped")
 
 
 if __name__ == "__main__":
