@@ -9,7 +9,9 @@ import struct
 
 from bleak import BleakClient, BleakScanner
 
-from openpilot.system.teslable.crypto import load_or_create_key, ecdh_shared_key, key_id
+import time
+
+from openpilot.system.teslable.crypto import load_or_create_key, ecdh_shared_key, encrypt_gcm, key_id
 from openpilot.system.teslable.proto import encode_field, decode_fields, get_field
 
 TESLA_VIN_PATH = "/data/teslable/vin"
@@ -64,6 +66,41 @@ def build_whitelist_request(public_key_bytes):
 
   signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)  # PRESENT_KEY
   return encode_field(1, signed_msg)  # ToVCSECMessage.signedMessage
+
+
+def build_signed_command(shared_key, kid_bytes, counter, unsigned_msg_bytes):
+  """Encrypt an UnsignedMessage with AES-GCM and wrap in ToVCSECMessage.signedMessage.
+  SignedMessage {
+    protobufMessageAsBytes (field 2) = ciphertext (without tag)
+    signatureType (field 3) = SIGNATURE_TYPE_AES_GCM (0)
+    counter (field 5) = counter value
+    signature (field 6) = GCM auth tag (16 bytes)
+    keyId (field 7) = SHA1(pubkey)[:4]
+  }"""
+  ciphertext, tag = encrypt_gcm(shared_key, counter, unsigned_msg_bytes)
+
+  signed_msg = b''
+  signed_msg += encode_field(2, ciphertext)
+  signed_msg += encode_field(3, 0)  # AES_GCM
+  signed_msg += encode_field(5, counter)
+  signed_msg += encode_field(6, tag)
+  signed_msg += encode_field(7, kid_bytes)
+
+  return encode_field(1, signed_msg)  # ToVCSECMessage.signedMessage
+
+
+def build_open_trunk():
+  """Build UnsignedMessage for opening rear trunk.
+  UnsignedMessage { ClosureMoveRequest (field 4) { rearTrunk (field 5) = OPEN (3) } }"""
+  closure_req = encode_field(5, 3)  # rearTrunk = CLOSURE_MOVE_TYPE_OPEN
+  return encode_field(4, closure_req)
+
+
+def build_open_frunk():
+  """Build UnsignedMessage for opening front trunk.
+  UnsignedMessage { ClosureMoveRequest (field 4) { frontTrunk (field 6) = OPEN (3) } }"""
+  closure_req = encode_field(6, 3)  # frontTrunk = CLOSURE_MOVE_TYPE_OPEN
+  return encode_field(4, closure_req)
 
 
 # ── VCSEC response parsers ──
@@ -197,6 +234,22 @@ async def connect(device):
     # derive shared key
     shared_key = ecdh_shared_key(private_key, vehicle_pubkey)
     log.info("shared key derived, session established!")
+
+    # send open trunk command
+    counter = int(time.time())
+    unsigned_msg = build_open_trunk()
+    cmd = build_signed_command(shared_key, kid, counter, unsigned_msg)
+    log.info(f"sending open trunk command (counter={counter})...")
+    await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(cmd))
+
+    # wait for response
+    try:
+      response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
+      payload = response[2:]
+      parsed = parse_from_vcsec(payload)
+      log.info(f"trunk response: {parsed}")
+    except asyncio.TimeoutError:
+      log.error("no response to trunk command")
 
     # hold connection
     while client.is_connected:

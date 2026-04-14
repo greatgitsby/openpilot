@@ -52,6 +52,16 @@ def derive_session_key(shared_key, purpose):
   return hmac.new(shared_key, purpose.encode(), hashlib.sha256).digest()
 
 
+def encrypt_gcm(key, counter, plaintext):
+  """AES-128-GCM encrypt with 4-byte big-endian counter as nonce.
+  Returns (ciphertext, tag) where tag is 16 bytes."""
+  from Crypto.Cipher import AES
+  nonce = counter.to_bytes(4, 'big')
+  cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+  ciphertext, tag = cipher.encrypt_and_digest(plaintext)
+  return ciphertext, tag
+
+
 def key_id(public_key_bytes):
   """Key ID = first 4 bytes of SHA1(public_key)."""
   return hashlib.sha1(public_key_bytes).digest()[:4]
