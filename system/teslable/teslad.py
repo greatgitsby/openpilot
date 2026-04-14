@@ -37,7 +37,28 @@ RKE_ACTION_OPEN_TRUNK = 2
 RKE_ACTION_OPEN_FRUNK = 3
 RKE_ACTION_OPEN_CHARGE_PORT = 4
 RKE_ACTION_CLOSE_CHARGE_PORT = 5
+RKE_ACTION_CANCEL_EXTERNAL_AUTHENTICATE = 6
+RKE_ACTION_SINGLE_PRESS_TOP = 7
+RKE_ACTION_DOUBLE_PRESS_TOP = 8
+RKE_ACTION_TRIPLE_PRESS_TOP = 9
+RKE_ACTION_HOLD_TOP = 10
+RKE_ACTION_SINGLE_PRESS_BACK = 11
+RKE_ACTION_DOUBLE_PRESS_BACK = 12
+RKE_ACTION_TRIPLE_PRESS_BACK = 13
+RKE_ACTION_HOLD_BACK = 14
+RKE_ACTION_SINGLE_PRESS_FRONT = 15
+RKE_ACTION_DOUBLE_PRESS_FRONT = 16
+RKE_ACTION_TRIPLE_PRESS_FRONT = 17
+RKE_ACTION_HOLD_FRONT = 18
 RKE_ACTION_REMOTE_DRIVE = 20
+RKE_ACTION_SINGLE_PRESS_LEFT = 21
+RKE_ACTION_DOUBLE_PRESS_LEFT = 22
+RKE_ACTION_TRIPLE_PRESS_LEFT = 23
+RKE_ACTION_HOLD_LEFT = 24
+RKE_ACTION_SINGLE_PRESS_RIGHT = 25
+RKE_ACTION_DOUBLE_PRESS_RIGHT = 26
+RKE_ACTION_TRIPLE_PRESS_RIGHT = 27
+RKE_ACTION_HOLD_RIGHT = 28
 RKE_ACTION_AUTO_SECURE_VEHICLE = 29
 RKE_ACTION_WAKE_VEHICLE = 30
 
@@ -170,6 +191,8 @@ class TeslaSession:
         break
     return None
 
+  # ── Door lock/unlock ──
+
   async def unlock(self):
     log.info("unlocking...")
     await self.send_rke(RKE_ACTION_UNLOCK)
@@ -179,6 +202,8 @@ class TeslaSession:
     log.info("locking...")
     await self.send_rke(RKE_ACTION_LOCK)
     return await self.wait_for_response()
+
+  # ── Trunk ──
 
   async def open_trunk(self):
     log.info("opening trunk...")
@@ -190,10 +215,14 @@ class TeslaSession:
     await self.send_closure_move(rear_trunk=CLOSURE_MOVE_CLOSE)
     return await self.wait_for_response()
 
+  # ── Frunk ──
+
   async def open_frunk(self):
     log.info("opening frunk...")
     await self.send_rke(RKE_ACTION_OPEN_FRUNK)
     return await self.wait_for_response()
+
+  # ── Charge port ──
 
   async def open_charge_port(self):
     log.info("opening charge port...")
@@ -205,9 +234,107 @@ class TeslaSession:
     await self.send_rke(RKE_ACTION_CLOSE_CHARGE_PORT)
     return await self.wait_for_response()
 
+  # ── Vehicle state ──
+
   async def wake(self):
     log.info("waking vehicle...")
     await self.send_rke(RKE_ACTION_WAKE_VEHICLE)
+    return await self.wait_for_response()
+
+  async def remote_drive(self):
+    log.info("enabling remote drive...")
+    await self.send_rke(RKE_ACTION_REMOTE_DRIVE)
+    return await self.wait_for_response()
+
+  async def auto_secure(self):
+    log.info("auto-securing vehicle...")
+    await self.send_rke(RKE_ACTION_AUTO_SECURE_VEHICLE)
+    return await self.wait_for_response()
+
+  # ── Closure control (individual doors/closures) ──
+
+  async def open_front_driver_door(self):
+    log.info("opening front driver door...")
+    await self.send_closure_move(front_driver=CLOSURE_MOVE_OPEN)
+    return await self.wait_for_response()
+
+  async def close_front_driver_door(self):
+    log.info("closing front driver door...")
+    await self.send_closure_move(front_driver=CLOSURE_MOVE_CLOSE)
+    return await self.wait_for_response()
+
+  async def open_front_passenger_door(self):
+    log.info("opening front passenger door...")
+    await self.send_closure_move(front_passenger=CLOSURE_MOVE_OPEN)
+    return await self.wait_for_response()
+
+  async def close_front_passenger_door(self):
+    log.info("closing front passenger door...")
+    await self.send_closure_move(front_passenger=CLOSURE_MOVE_CLOSE)
+    return await self.wait_for_response()
+
+  async def open_rear_driver_door(self):
+    log.info("opening rear driver door...")
+    await self.send_closure_move(rear_driver=CLOSURE_MOVE_OPEN)
+    return await self.wait_for_response()
+
+  async def close_rear_driver_door(self):
+    log.info("closing rear driver door...")
+    await self.send_closure_move(rear_driver=CLOSURE_MOVE_CLOSE)
+    return await self.wait_for_response()
+
+  async def open_rear_passenger_door(self):
+    log.info("opening rear passenger door...")
+    await self.send_closure_move(rear_passenger=CLOSURE_MOVE_OPEN)
+    return await self.wait_for_response()
+
+  async def close_rear_passenger_door(self):
+    log.info("closing rear passenger door...")
+    await self.send_closure_move(rear_passenger=CLOSURE_MOVE_CLOSE)
+    return await self.wait_for_response()
+
+  async def open_tonneau(self):
+    log.info("opening tonneau...")
+    await self.send_closure_move(tonneau=CLOSURE_MOVE_OPEN)
+    return await self.wait_for_response()
+
+  async def close_tonneau(self):
+    log.info("closing tonneau...")
+    await self.send_closure_move(tonneau=CLOSURE_MOVE_CLOSE)
+    return await self.wait_for_response()
+
+  # ── Key fob button simulation ──
+
+  async def single_press_top(self):
+    await self.send_rke(RKE_ACTION_SINGLE_PRESS_TOP)
+    return await self.wait_for_response()
+
+  async def double_press_top(self):
+    await self.send_rke(RKE_ACTION_DOUBLE_PRESS_TOP)
+    return await self.wait_for_response()
+
+  async def triple_press_top(self):
+    await self.send_rke(RKE_ACTION_TRIPLE_PRESS_TOP)
+    return await self.wait_for_response()
+
+  async def hold_top(self):
+    await self.send_rke(RKE_ACTION_HOLD_TOP)
+    return await self.wait_for_response()
+
+  async def single_press_front(self):
+    await self.send_rke(RKE_ACTION_SINGLE_PRESS_FRONT)
+    return await self.wait_for_response()
+
+  async def double_press_front(self):
+    await self.send_rke(RKE_ACTION_DOUBLE_PRESS_FRONT)
+    return await self.wait_for_response()
+
+  async def single_press_back(self):
+    await self.send_rke(RKE_ACTION_SINGLE_PRESS_BACK)
+    return await self.wait_for_response()
+
+  async def double_press_back(self):
+    await self.send_rke(RKE_ACTION_DOUBLE_PRESS_BACK)
     return await self.wait_for_response()
 
 
