@@ -124,7 +124,7 @@ async def connect(device):
   routing_address = os.urandom(16)
   rx_queue = asyncio.Queue()
 
-  async with BleakClient(device) as client:
+  async with BleakClient(device.address) as client:
     log.info(f"connected to {device.name}")
 
     version = await client.read_gatt_char(TESLA_VERSION_UUID)
