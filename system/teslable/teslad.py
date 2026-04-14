@@ -6,10 +6,9 @@ import logging
 import os
 import re
 import struct
+import time
 
 from bleak import BleakClient, BleakScanner
-
-import time
 
 from openpilot.system.teslable.crypto import load_or_create_key, ecdh_shared_key, encrypt_gcm, key_id
 from openpilot.system.teslable.proto import encode_field, decode_fields, get_field
@@ -30,92 +29,83 @@ TESLA_BLE_NAME_RE = re.compile(r"^S[0-9a-f]{16}C$")
 SCAN_DURATION = 5.0
 SCAN_INTERVAL = 10.0
 
+# ── RKE actions ──
 
-def ble_frame(msg):
-  """Prepend 2-byte big-endian length prefix."""
-  return struct.pack('>H', len(msg)) + msg
-
-
-# ── VCSEC message builders (all use ToVCSECMessage, NOT RoutableMessage) ──
-
-def build_ephemeral_key_request(kid_bytes):
-  """Request vehicle's ephemeral public key.
-  ToVCSECMessage { unsignedMessage (field 2) {
-    InformationRequest (field 1) {
-      informationRequestType (field 1) = GET_EPHEMERAL_PUBLIC_KEY (3)
-      keyId (field 2) { publicKeySHA1 (field 1) = <4 bytes> }
-    }
-  }}"""
-  key_id_msg = encode_field(1, kid_bytes)  # KeyIdentifier.publicKeySHA1
-  info_req = encode_field(1, 3) + encode_field(2, key_id_msg)  # type=3, keyId
-  unsigned_msg = encode_field(1, info_req)  # UnsignedMessage.InformationRequest
-  return encode_field(2, unsigned_msg)  # ToVCSECMessage.unsignedMessage
-
-
-def build_whitelist_request(public_key_bytes):
-  """Build a ToVCSECMessage to add our key to the whitelist.
-  ToVCSECMessage { signedMessage (field 1) {
-    protobufMessageAsBytes (field 2) = serialized UnsignedMessage
-    signatureType (field 3) = SIGNATURE_TYPE_PRESENT_KEY (2)
-  }}"""
-  pubkey_msg = encode_field(1, public_key_bytes)  # PublicKey.PublicKeyRaw
-  perm_change = encode_field(1, pubkey_msg) + encode_field(4, 2)  # key + keyRole=ROLE_OWNER
-  metadata = encode_field(1, 7)  # keyFormFactor = KEY_FORM_FACTOR_ANDROID_DEVICE
-  whitelist_op = encode_field(5, perm_change) + encode_field(6, metadata)
-  unsigned_msg = encode_field(16, whitelist_op)  # UnsignedMessage.WhitelistOperation
-
-  signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)  # PRESENT_KEY
-  return encode_field(1, signed_msg)  # ToVCSECMessage.signedMessage
-
-
-def build_signed_command(shared_key, kid_bytes, counter, unsigned_msg_bytes):
-  """Encrypt an UnsignedMessage with AES-GCM and wrap in ToVCSECMessage.signedMessage.
-
-  The plaintext is a serialized ToVCSECMessage { unsignedMessage = <unsigned_msg> },
-  NOT the raw UnsignedMessage bytes."""
-  # wrap UnsignedMessage in ToVCSECMessage.unsignedMessage (field 2) before encrypting
-  plaintext = encode_field(2, unsigned_msg_bytes)
-
-  ciphertext, tag = encrypt_gcm(shared_key, counter, plaintext)
-
-  signed_msg = b''
-  signed_msg += encode_field(2, ciphertext)
-  signed_msg += encode_field(3, 0)  # SIGNATURE_TYPE_AES_GCM
-  signed_msg += encode_field(4, tag)       # signature
-  signed_msg += encode_field(5, kid_bytes) # keyId
-  signed_msg += encode_field(6, counter)   # counter
-
-  return encode_field(1, signed_msg)  # ToVCSECMessage.signedMessage
-
-
-# RKEAction_E values
 RKE_ACTION_UNLOCK = 0
 RKE_ACTION_LOCK = 1
 RKE_ACTION_OPEN_TRUNK = 2
 RKE_ACTION_OPEN_FRUNK = 3
 RKE_ACTION_OPEN_CHARGE_PORT = 4
 RKE_ACTION_CLOSE_CHARGE_PORT = 5
+RKE_ACTION_REMOTE_DRIVE = 20
+RKE_ACTION_AUTO_SECURE_VEHICLE = 29
+RKE_ACTION_WAKE_VEHICLE = 30
+
+# ── Closure move types ──
+
+CLOSURE_MOVE_NONE = 0
+CLOSURE_MOVE_MOVE = 1
+CLOSURE_MOVE_STOP = 2
+CLOSURE_MOVE_OPEN = 3
+CLOSURE_MOVE_CLOSE = 4
+
+
+def ble_frame(msg):
+  return struct.pack('>H', len(msg)) + msg
+
+
+# ── VCSEC message builders ──
+
+def build_ephemeral_key_request(kid_bytes):
+  key_id_msg = encode_field(1, kid_bytes)
+  info_req = encode_field(1, 3) + encode_field(2, key_id_msg)
+  unsigned_msg = encode_field(1, info_req)
+  return encode_field(2, unsigned_msg)
+
+
+def build_whitelist_request(public_key_bytes):
+  pubkey_msg = encode_field(1, public_key_bytes)
+  perm_change = encode_field(1, pubkey_msg) + encode_field(4, 2)
+  metadata = encode_field(1, 7)
+  whitelist_op = encode_field(5, perm_change) + encode_field(6, metadata)
+  unsigned_msg = encode_field(16, whitelist_op)
+  signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)
+  return encode_field(1, signed_msg)
+
+
+def build_signed_command(shared_key, kid_bytes, counter, unsigned_msg_bytes):
+  plaintext = encode_field(2, unsigned_msg_bytes)
+  ciphertext, tag = encrypt_gcm(shared_key, counter, plaintext)
+  signed_msg = b''
+  signed_msg += encode_field(2, ciphertext)
+  signed_msg += encode_field(3, 0)         # SIGNATURE_TYPE_AES_GCM
+  signed_msg += encode_field(4, tag)       # signature
+  signed_msg += encode_field(5, kid_bytes) # keyId
+  signed_msg += encode_field(6, counter)   # counter
+  return encode_field(1, signed_msg)
 
 
 def build_rke_action(action):
-  """Build UnsignedMessage { RKEAction (field 2) = action }"""
   return encode_field(2, action)
 
 
-# ── VCSEC response parsers ──
+def build_closure_move(front_driver=0, front_passenger=0, rear_driver=0, rear_passenger=0,
+                       rear_trunk=0, front_trunk=0, charge_port=0, tonneau=0):
+  msg = b''
+  if front_driver: msg += encode_field(1, front_driver)
+  if front_passenger: msg += encode_field(2, front_passenger)
+  if rear_driver: msg += encode_field(3, rear_driver)
+  if rear_passenger: msg += encode_field(4, rear_passenger)
+  if rear_trunk: msg += encode_field(5, rear_trunk)
+  if front_trunk: msg += encode_field(6, front_trunk)
+  if charge_port: msg += encode_field(7, charge_port)
+  if tonneau: msg += encode_field(8, tonneau)
+  return encode_field(4, msg)
+
+
+# ── Response parser ──
 
 def parse_from_vcsec(data):
-  """Parse a FromVCSECMessage response.
-  FromVCSECMessage {
-    commandStatus (field 1)
-    sessionInfo (field 2) {
-      token (field 1)
-      counter (field 2)
-      publicKey (field 3) — 65-byte vehicle ephemeral key
-    }
-    whitelistInfo (field 3)
-    ...
-  }"""
   fields = decode_fields(data)
   result = {}
 
@@ -128,15 +118,97 @@ def parse_from_vcsec(data):
       'public_key': get_field(si, 3),
     }
 
-  command_status_bytes = get_field(fields, 1)
+  command_status_bytes = get_field(fields, 4)
   if command_status_bytes is not None:
     cs = decode_fields(command_status_bytes)
     result['command_status'] = {
       'operation_status': get_field(cs, 1),
-      'signed_message_fault': get_field(cs, 2),
+    }
+
+  vehicle_status_bytes = get_field(fields, 1)
+  if vehicle_status_bytes is not None:
+    vs = decode_fields(vehicle_status_bytes)
+    result['vehicle_status'] = {
+      'vehicle_lock_state': get_field(vs, 2),
+      'vehicle_sleep_status': get_field(vs, 3),
+      'user_presence': get_field(vs, 4),
     }
 
   return result
+
+
+# ── Tesla session ──
+
+class TeslaSession:
+  def __init__(self, client, shared_key, kid_bytes, rx_queue):
+    self.client = client
+    self.shared_key = shared_key
+    self.kid = kid_bytes
+    self.rx_queue = rx_queue
+    self.counter = int(time.time())
+
+  async def send_rke(self, action):
+    cmd = build_signed_command(self.shared_key, self.kid, self.counter, build_rke_action(action))
+    self.counter += 1
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(cmd))
+
+  async def send_closure_move(self, **kwargs):
+    cmd = build_signed_command(self.shared_key, self.kid, self.counter, build_closure_move(**kwargs))
+    self.counter += 1
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(cmd))
+
+  async def wait_for_response(self, timeout=5.0):
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+      try:
+        response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
+        payload = response[2:]
+        parsed = parse_from_vcsec(payload)
+        if parsed.get('command_status') is not None:
+          return parsed
+      except asyncio.TimeoutError:
+        break
+    return None
+
+  async def unlock(self):
+    log.info("unlocking...")
+    await self.send_rke(RKE_ACTION_UNLOCK)
+    return await self.wait_for_response()
+
+  async def lock(self):
+    log.info("locking...")
+    await self.send_rke(RKE_ACTION_LOCK)
+    return await self.wait_for_response()
+
+  async def open_trunk(self):
+    log.info("opening trunk...")
+    await self.send_rke(RKE_ACTION_OPEN_TRUNK)
+    return await self.wait_for_response()
+
+  async def close_trunk(self):
+    log.info("closing trunk...")
+    await self.send_closure_move(rear_trunk=CLOSURE_MOVE_CLOSE)
+    return await self.wait_for_response()
+
+  async def open_frunk(self):
+    log.info("opening frunk...")
+    await self.send_rke(RKE_ACTION_OPEN_FRUNK)
+    return await self.wait_for_response()
+
+  async def open_charge_port(self):
+    log.info("opening charge port...")
+    await self.send_rke(RKE_ACTION_OPEN_CHARGE_PORT)
+    return await self.wait_for_response()
+
+  async def close_charge_port(self):
+    log.info("closing charge port...")
+    await self.send_rke(RKE_ACTION_CLOSE_CHARGE_PORT)
+    return await self.wait_for_response()
+
+  async def wake(self):
+    log.info("waking vehicle...")
+    await self.send_rke(RKE_ACTION_WAKE_VEHICLE)
+    return await self.wait_for_response()
 
 
 async def scan_for_teslas():
@@ -148,125 +220,49 @@ async def scan_for_teslas():
   return teslas
 
 
-async def connect(device):
+async def establish_session(device):
+  """Connect to a Tesla and return a TeslaSession, or None on failure."""
   log.info(f"connecting to {device.name} ({device.address})...")
 
   private_key, public_key_bytes = load_or_create_key(TESLA_KEY_PATH)
   kid = key_id(public_key_bytes)
-  log.info(f"using key id: {kid.hex()}")
 
   rx_queue = asyncio.Queue()
 
-  async with BleakClient(device.address) as client:
-    log.info(f"connected to {device.name}")
+  client = BleakClient(device.address)
+  await client.connect(timeout=15.0)
+  log.info(f"connected to {device.name}")
 
-    version = await client.read_gatt_char(TESLA_VERSION_UUID)
-    log.info(f"protocol version: {version.hex()}")
+  await client.start_notify(TESLA_READ_UUID, lambda _h, d: rx_queue.put_nowait(bytes(d)))
+  await asyncio.sleep(0.5)
+  while not rx_queue.empty():
+    rx_queue.get_nowait()
 
-    def on_notify(_handle, data: bytearray):
-      rx_queue.put_nowait(bytes(data))
+  # request ephemeral key
+  msg = build_ephemeral_key_request(kid)
+  await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
-    try:
-      await client.start_notify(TESLA_READ_UUID, on_notify)
-    except Exception as e:
-      log.warning(f"start_notify failed ({e}), retrying...")
-      return
+  try:
+    response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
+  except asyncio.TimeoutError:
+    log.error("no response to ephemeral key request")
+    await client.disconnect()
+    return None
 
-    # drain unsolicited messages
-    await asyncio.sleep(0.5)
-    while not rx_queue.empty():
-      rx_queue.get_nowait()
+  parsed = parse_from_vcsec(response[2:])
+  vehicle_pubkey = None
+  if 'session_info' in parsed and parsed['session_info'].get('public_key'):
+    vehicle_pubkey = parsed['session_info']['public_key']
 
-    # request ephemeral key to check if we're whitelisted
-    msg = build_ephemeral_key_request(kid)
-    log.info("requesting vehicle ephemeral key...")
-    await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+  if vehicle_pubkey is None:
+    log.error("key not on whitelist — run whitelist.py first")
+    await client.disconnect()
+    return None
 
-    try:
-      response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
-    except asyncio.TimeoutError:
-      log.error("no response to ephemeral key request")
-      return
+  shared_key = ecdh_shared_key(private_key, vehicle_pubkey)
+  log.info("session established")
 
-    payload = response[2:]  # strip length prefix
-    parsed = parse_from_vcsec(payload)
-    log.info(f"response: {parsed}")
-
-    vehicle_pubkey = None
-    if 'session_info' in parsed and parsed['session_info'].get('public_key'):
-      vehicle_pubkey = parsed['session_info']['public_key']
-
-    if vehicle_pubkey is None:
-      # not whitelisted — send whitelist request and poll
-      log.info("key not on whitelist — sending whitelist request")
-      log.info(">>> TAP YOUR NFC KEY CARD ON THE CENTER CONSOLE <<<")
-
-      wl_msg = build_whitelist_request(public_key_bytes)
-      await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(wl_msg))
-
-      # poll for ephemeral key every 2s until whitelisted or timeout
-      for attempt in range(30):
-        await asyncio.sleep(2.0)
-
-        # drain and check for session info
-        while not rx_queue.empty():
-          resp = rx_queue.get_nowait()
-          p = parse_from_vcsec(resp[2:])
-          if 'session_info' in p and p['session_info'].get('public_key'):
-            vehicle_pubkey = p['session_info']['public_key']
-            break
-
-        if vehicle_pubkey:
-          break
-
-        # re-request ephemeral key
-        msg = build_ephemeral_key_request(kid)
-        await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
-        log.info(f"waiting for keycard tap... (attempt {attempt + 1}/30)")
-
-      if vehicle_pubkey is None:
-        log.error("whitelist timed out — key card not tapped")
-        return
-
-    log.info(f"vehicle public key: {vehicle_pubkey.hex()}")
-
-    # derive shared key
-    shared_key = ecdh_shared_key(private_key, vehicle_pubkey)
-    log.info("shared key derived, session established!")
-
-    # send open trunk command
-    counter = int(time.time())
-    unsigned_msg = build_rke_action(RKE_ACTION_OPEN_TRUNK)
-    cmd = build_signed_command(shared_key, kid, counter, unsigned_msg)
-    log.info(f"sending open trunk command (counter={counter})...")
-    await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(cmd))
-
-    # wait for response and decode ALL messages
-    deadline = asyncio.get_event_loop().time() + 5.0
-    while asyncio.get_event_loop().time() < deadline:
-      try:
-        response = await asyncio.wait_for(rx_queue.get(), timeout=2.0)
-        payload = response[2:]
-        fields = decode_fields(payload)
-        fnums = [f[0] for f in fields]
-        log.info(f"rx fields={fnums} hex={response.hex()}")
-        for fn, wt, val in fields:
-          if isinstance(val, bytes):
-            nested = decode_fields(val)
-            log.info(f"  field {fn}: sub={[(f[0], f[2] if not isinstance(f[2], bytes) else f[2].hex()) for f in nested]}")
-          else:
-            log.info(f"  field {fn}: {val}")
-      except asyncio.TimeoutError:
-        break
-
-    # hold connection
-    while client.is_connected:
-      while not rx_queue.empty():
-        data = rx_queue.get_nowait()
-        log.info(f"rx: {data.hex()}")
-      await asyncio.sleep(1.0)
-
-  log.info(f"disconnected from {device.name}")
+  return TeslaSession(client, shared_key, kid, rx_queue)
 
 
 async def run():
@@ -293,7 +289,16 @@ async def run():
       continue
 
     try:
-      await connect(target)
+      session = await establish_session(target)
+      if session is None:
+        await asyncio.sleep(SCAN_INTERVAL)
+        continue
+
+      # hold connection
+      while session.client.is_connected:
+        await asyncio.sleep(1.0)
+
+      log.info(f"disconnected from {target.name}")
     except Exception as e:
       log.error(f"connection failed: {e}")
 

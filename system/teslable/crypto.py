@@ -1,6 +1,5 @@
-"""Tesla BLE crypto — ECDH key exchange and session key derivation."""
+"""Tesla BLE crypto — ECDH key exchange and AES-GCM encryption."""
 import hashlib
-import hmac
 import os
 
 from Crypto.PublicKey import ECC
@@ -46,10 +45,6 @@ def ecdh_shared_key(private_key, peer_public_bytes):
 
   return hashlib.sha1(shared_secret).digest()[:16]
 
-
-def derive_session_key(shared_key, purpose):
-  """Derive a purpose-specific key: HMAC-SHA256(K, purpose)."""
-  return hmac.new(shared_key, purpose.encode(), hashlib.sha256).digest()
 
 
 def encrypt_gcm(key, counter, plaintext):
