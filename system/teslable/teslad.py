@@ -551,7 +551,9 @@ class TeslaSession:
       expires_at, action_bytes,
     )
     self.infotainment_counter += 1
-    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+    framed = ble_frame(msg)
+    log.info(f"infotainment cmd: {framed.hex()}")
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, framed)
 
     # wait for routable response
     deadline = asyncio.get_event_loop().time() + 5.0
@@ -560,7 +562,8 @@ class TeslaSession:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
         payload = response[2:]
         parsed = parse_routable_response(payload)
-        if parsed.get('message_status') is not None or parsed.get('payload') is not None:
+        log.info(f"infotainment rx: {parsed} raw={response.hex()}")
+        if parsed.get('message_status') is not None:
           return parsed
       except asyncio.TimeoutError:
         break
