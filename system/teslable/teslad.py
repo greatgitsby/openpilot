@@ -268,7 +268,8 @@ def build_infotainment_command(aes_key, public_key_bytes, routing_address, vin,
   sig_data += encode_field(1, epoch)
   sig_data += encode_field(2, nonce)
   sig_data += encode_field(3, counter)
-  sig_data += encode_field(4, struct.pack('<I', expires_at))  # fixed32 = little-endian
+  # field 4 expires_at is fixed32 (wire type 5): tag byte + 4 LE bytes, no length prefix
+  sig_data += bytes([(4 << 3) | 5]) + struct.pack('<I', expires_at)
   sig_data += encode_field(5, tag)
 
   # SignatureData { signer_identity (1), AES_GCM_Personalized_data (5) }
