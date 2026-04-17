@@ -115,9 +115,13 @@ def build_ephemeral_key_request(kid_bytes):
 
 
 def build_whitelist_request(public_key_bytes):
+  # PermissionChange { key=PublicKey, keyRole=OWNER(2) }
+  # KeyMetadata { keyFormFactor=CLOUD_KEY(9) }
+  # WhitelistOperation { addKeyToWhitelistAndAddPermissions (field 5) = perm_change,
+  #                      metadataForKey (field 6) = metadata }
   pubkey_msg = encode_field(1, public_key_bytes)
-  perm_change = encode_field(1, pubkey_msg) + encode_field(4, 2)
-  metadata = encode_field(1, 7)
+  perm_change = encode_field(1, pubkey_msg) + encode_field(4, 2)  # OWNER
+  metadata = encode_field(1, 9)                                    # CLOUD_KEY
   whitelist_op = encode_field(5, perm_change) + encode_field(6, metadata)
   unsigned_msg = encode_field(16, whitelist_op)
   signed_msg = encode_field(2, unsigned_msg) + encode_field(3, 2)
