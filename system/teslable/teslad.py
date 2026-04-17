@@ -10,6 +10,7 @@ import time
 
 from bleak import BleakClient, BleakScanner
 
+import cereal.messaging as messaging
 from openpilot.system.teslable.crypto import (
   load_or_create_key, ecdh_shared_key, encrypt_gcm, encrypt_gcm_personalized,
   derive_subkey, key_id,
@@ -756,7 +757,76 @@ async def establish_session(device, vin=None):
                       routing_address)
 
 
+async def dispatch_command(session, command, arg):
+  log.info(f"dispatch: command={command!r} arg={arg!r}")
+  try:
+    # VCSEC (RKE)
+    if command == "unlock":              return await session.unlock()
+    if command == "lock":                return await session.lock()
+    if command == "trunk":               return await session.open_trunk()
+    if command == "close_trunk":         return await session.close_trunk()
+    if command == "frunk":               return await session.open_frunk()
+    if command == "charge_port":         return await session.open_charge_port()
+    if command == "close_charge_port":   return await session.close_charge_port()
+    if command == "wake":                return await session.wake()
+    if command == "auto_secure":         return await session.auto_secure()
+    if command == "remote_drive":        return await session.remote_drive()
+    # Doors
+    if command == "door_fd_open":        return await session.open_front_driver_door()
+    if command == "door_fd_close":       return await session.close_front_driver_door()
+    if command == "door_fp_open":        return await session.open_front_passenger_door()
+    if command == "door_fp_close":       return await session.close_front_passenger_door()
+    if command == "door_rd_open":        return await session.open_rear_driver_door()
+    if command == "door_rd_close":       return await session.close_rear_driver_door()
+    if command == "door_rp_open":        return await session.open_rear_passenger_door()
+    if command == "door_rp_close":       return await session.close_rear_passenger_door()
+    if command == "tonneau_open":        return await session.open_tonneau()
+    if command == "tonneau_close":       return await session.close_tonneau()
+    # Infotainment
+    if command == "honk":                return await session.honk_horn()
+    if command == "flash":               return await session.flash_lights()
+    if command == "homelink":            return await session.trigger_homelink()
+    if command == "vent":                return await session.vent_windows()
+    if command == "close_windows":       return await session.close_windows()
+    if command == "ping":                return await session.ping()
+    if command == "sentry":              return await session.set_sentry_mode(arg == "on")
+    if command == "bioweapon":           return await session.bioweapon_mode(arg == "on")
+    if command == "steering_heat":       return await session.steering_wheel_heater(arg == "on")
+    if command == "hvac":
+      return await (session.hvac_on() if arg == "on" else session.hvac_off())
+    if command == "temp":
+      parts = [float(x) for x in arg.split(",")] if arg else []
+      d = parts[0] if len(parts) > 0 else None
+      p = parts[1] if len(parts) > 1 else None
+      return await session.set_hvac_temp(d, p)
+    if command == "seat_heat":
+      seat, level = [int(x) for x in arg.split(",")]
+      return await session.seat_heater(seat, level)
+    if command == "media":
+      if arg == "play": return await session.media_toggle()
+      if arg == "next": return await session.media_next()
+      if arg == "prev": return await session.media_prev()
+    if command == "charge":
+      if arg == "start": return await session.start_charging()
+      if arg == "stop":  return await session.stop_charging()
+    if command == "charge_limit":        return await session.set_charge_limit(int(arg))
+    if command == "name":                return await session.set_vehicle_name(arg)
+    log.warning(f"unknown command: {command}")
+  except Exception as e:
+    log.error(f"dispatch error for {command}: {e}")
+
+
+async def command_loop(session, sm):
+  while session.client.is_connected:
+    sm.update(0)
+    if sm.updated.get('teslaCommand'):
+      cmd = sm['teslaCommand']
+      await dispatch_command(session, cmd.command, cmd.arg)
+    await asyncio.sleep(0.05)
+
+
 async def run():
+  sm = messaging.SubMaster(['teslaCommand'])
   while True:
     try:
       with open(TESLA_VIN_PATH) as f:
@@ -785,10 +855,7 @@ async def run():
         await asyncio.sleep(SCAN_INTERVAL)
         continue
 
-      # hold connection
-      while session.client.is_connected:
-        await asyncio.sleep(1.0)
-
+      await command_loop(session, sm)
       log.info(f"disconnected from {target.name}")
     except Exception as e:
       log.error(f"connection failed: {e}")
