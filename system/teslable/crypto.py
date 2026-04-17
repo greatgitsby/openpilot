@@ -73,6 +73,14 @@ def encrypt_gcm_personalized(key, nonce, plaintext, aad):
   return ciphertext, tag
 
 
+def decrypt_gcm(key, nonce, ciphertext, aad, tag):
+  """AES-128-GCM decrypt with AAD. Raises on tag mismatch."""
+  from Crypto.Cipher import AES
+  cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+  cipher.update(aad)
+  return cipher.decrypt_and_verify(ciphertext, tag)
+
+
 def key_id(public_key_bytes):
   """Key ID = first 4 bytes of SHA1(public_key)."""
   return hashlib.sha1(public_key_bytes).digest()[:4]

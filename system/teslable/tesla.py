@@ -10,6 +10,11 @@ Usage:
 Commands (teslad must be running with an active BLE connection):
   whitelist                       send whitelist request (tap NFC card on console, 60s)
   reconnect                       re-negotiate VCSEC + infotainment sessions
+  get_status                      request fresh VCSEC VehicleStatus
+  data [kinds]                    fetch VehicleData. kinds: comma-separated subset of
+                                  charge,climate,drive,location,closures,tires,media,
+                                  media_detail,software  (or "all"). Default: charge,
+                                  climate,drive,location,media
 
   unlock | lock
   trunk | close_trunk | frunk
@@ -43,7 +48,7 @@ log = logging.getLogger("tesla")
 
 
 SESSION_COMMANDS = {
-  "whitelist", "reconnect", "get_status",
+  "whitelist", "reconnect", "get_status", "data",
   "unlock", "lock", "trunk", "close_trunk", "frunk",
   "charge_port", "close_charge_port", "wake", "auto_secure", "remote_drive",
   "door_fd_open", "door_fd_close", "door_fp_open", "door_fp_close",

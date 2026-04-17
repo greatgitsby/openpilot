@@ -13,7 +13,7 @@ from bleak import BleakClient, BleakScanner
 import cereal.messaging as messaging
 from openpilot.system.teslable.crypto import (
   load_or_create_key, ecdh_shared_key, encrypt_gcm, encrypt_gcm_personalized,
-  derive_subkey, key_id,
+  decrypt_gcm, derive_subkey, key_id,
 )
 from openpilot.system.teslable.proto import encode_field, decode_fields, get_field
 
@@ -211,6 +211,106 @@ def parse_from_vcsec(data):
 
 # ── Infotainment (RoutableMessage) builders ──
 
+def _bits_to_float(bits):
+  """Reinterpret a uint32 bit pattern (how decode_fields returns wire-type-5 values) as float32."""
+  if bits is None:
+    return None
+  return struct.unpack('<f', struct.pack('<I', bits))[0]
+
+
+CHARGING_STATE_NAMES = {
+  1: "Unknown", 2: "Disconnected", 3: "NoPower", 4: "Starting",
+  5: "Charging", 6: "Complete", 7: "Stopped", 8: "Calibrating",
+}
+SHIFT_STATE_NAMES = {1: "Invalid", 2: "P", 3: "R", 4: "N", 5: "D", 6: "SNA"}
+
+
+def _parse_oneof_void(submsg_bytes, names):
+  """A Tesla oneof-of-Void gets wire-encoded as the presence of a single length-delimited
+  field at the chosen field-number (with empty body). Return its name, or None."""
+  if not submsg_bytes:
+    return None
+  for fn, _, _ in decode_fields(submsg_bytes):
+    if fn in names:
+      return names[fn]
+  return None
+
+
+def parse_vehicle_data(plaintext, car_state):
+  """Decode carserver.Response { vehicleData: VehicleData } into car_state dict."""
+  if not plaintext:
+    return
+  fields = decode_fields(plaintext)
+  vd_bytes = get_field(fields, 2)
+  if not vd_bytes:
+    return
+  vf = decode_fields(vd_bytes)
+
+  def _sub(field_num):
+    b = get_field(vf, field_num)
+    return decode_fields(b) if b else None
+
+  # charge_state (field 3)
+  cs = _sub(3)
+  if cs:
+    state = _parse_oneof_void(get_field(cs, 1), CHARGING_STATE_NAMES)
+    if state is not None:
+      car_state['chargingState'] = state
+    if (v := get_field(cs, 114)) is not None: car_state['chargePercent'] = float(v)
+    if (v := get_field(cs, 111)) is not None: car_state['batteryRangeMiles'] = _bits_to_float(v)
+    if (v := get_field(cs, 104)) is not None: car_state['chargeLimitSoc'] = int(v)
+    if (v := get_field(cs, 122)) is not None: car_state['chargerPower'] = float(v)
+
+  # climate_state (field 4)
+  cc = _sub(4)
+  if cc:
+    if (v := get_field(cc, 101)) is not None: car_state['insideTempC'] = _bits_to_float(v)
+    if (v := get_field(cc, 102)) is not None: car_state['outsideTempC'] = _bits_to_float(v)
+    if (v := get_field(cc, 103)) is not None: car_state['driverTempSetpointC'] = _bits_to_float(v)
+    if (v := get_field(cc, 104)) is not None: car_state['passengerTempSetpointC'] = _bits_to_float(v)
+    if (v := get_field(cc, 110)) is not None: car_state['hvacOn'] = bool(v)
+
+  # drive_state (field 5)
+  dc = _sub(5)
+  if dc:
+    shift = _parse_oneof_void(get_field(dc, 1), SHIFT_STATE_NAMES)
+    if shift is not None:
+      car_state['gear'] = shift
+    if (v := get_field(dc, 106)) is not None: car_state['speedMph'] = _bits_to_float(v)
+    elif (v := get_field(dc, 102)) is not None: car_state['speedMph'] = float(v)
+    if (v := get_field(dc, 105)) is not None: car_state['odometerMiles'] = int(v) / 100.0
+
+  # location_state (field 8)
+  lc = _sub(8)
+  if lc:
+    if (v := get_field(lc, 101)) is not None: car_state['latitude'] = _bits_to_float(v)
+    if (v := get_field(lc, 102)) is not None: car_state['longitude'] = _bits_to_float(v)
+    if (v := get_field(lc, 103)) is not None: car_state['heading'] = float(v)
+
+  # media_state (field 20)
+  mc = _sub(20)
+  if mc:
+    if (v := get_field(mc, 3)) is not None:
+      car_state['mediaArtist'] = v.decode('utf-8', errors='replace') if isinstance(v, bytes) else str(v)
+    if (v := get_field(mc, 4)) is not None:
+      car_state['mediaTrack'] = v.decode('utf-8', errors='replace') if isinstance(v, bytes) else str(v)
+
+
+def build_response_aad(vin, domain, counter, flags, request_id, fault):
+  """Build AAD for AES-GCM Response decryption (per Tesla responseMetadata())."""
+  tlv = b''
+  tlv += bytes([0, 1, 9])                                 # TAG_SIGNATURE_TYPE = AES_GCM_RESPONSE (9)
+  tlv += bytes([1, 1, domain])                            # TAG_DOMAIN
+  vin_bytes = vin.encode()
+  tlv += bytes([2, len(vin_bytes)]) + vin_bytes           # TAG_PERSONALIZATION
+  tlv += bytes([5, 4]) + counter.to_bytes(4, 'big')       # TAG_COUNTER
+  tlv += bytes([7, 4]) + flags.to_bytes(4, 'big')         # TAG_FLAGS (always included for responses)
+  tlv += bytes([8, len(request_id)]) + request_id         # TAG_REQUEST_HASH
+  tlv += bytes([9, 4]) + fault.to_bytes(4, 'big')         # TAG_FAULT
+  tlv += bytes([0xFF])                                     # TAG_END
+  return hashlib.sha256(tlv).digest()
+
+
 def build_metadata_aad(vin, epoch, expires_at, counter, flags=0):
   """Build TLV metadata and return its SHA-256 hash for use as AES-GCM AAD."""
   tlv = b''
@@ -274,6 +374,23 @@ def parse_routable_response(data):
   if request_uuid is not None:
     result['request_uuid'] = request_uuid
 
+  # signature_data (field 13) carries AES_GCM_Response_Signature_Data (sub-field 9) for encrypted responses
+  sig_data = get_field(fields, 13)
+  if sig_data is not None:
+    sd = decode_fields(sig_data)
+    gcm_resp = get_field(sd, 9)
+    if gcm_resp is not None:
+      gr = decode_fields(gcm_resp)
+      result['response_sig'] = {
+        'nonce': get_field(gr, 1),
+        'counter': get_field(gr, 2),
+        'tag': get_field(gr, 3),
+      }
+
+  flags = get_field(fields, 53)
+  if flags is not None:
+    result['flags'] = flags
+
   return result
 
 
@@ -307,7 +424,7 @@ def build_infotainment_command(aes_key, public_key_bytes, routing_address, vin,
   msg += encode_field(10, ciphertext)   # encrypted payload
   msg += encode_field(13, signature_data)
   msg += encode_field(51, uuid)
-  return msg, uuid
+  return msg, uuid, tag
 
 
 # ── Infotainment action builders (carserver.Action > VehicleAction) ──
@@ -392,6 +509,28 @@ def action_set_charge_limit(percent):
 def action_ping():
   return build_vehicle_action(46)
 
+
+# GetVehicleData substate field numbers (inside GetVehicleData at VehicleAction field 1)
+GET_VEHICLE_DATA_KINDS = {
+  'charge':    2,  # getChargeState
+  'climate':   3,  # getClimateState
+  'drive':     4,  # getDriveState
+  'location':  7,  # getLocationState
+  'closures':  8,  # getClosuresState
+  'tires':     14, # getTirePressureState
+  'media':     15, # getMediaState
+  'media_detail': 16,
+  'software':  17,
+}
+
+
+def action_get_vehicle_data(kinds):
+  """kinds: iterable of field numbers selecting which substates to fetch."""
+  body = b''
+  for k in sorted(set(kinds)):
+    body += encode_field(k, b'')  # Void inside GetVehicleData
+  return build_vehicle_action(1, body)
+
 def action_bioweapon_mode(on=True):
   return build_vehicle_action(35, encode_field(1, 1 if on else 0))
 
@@ -442,6 +581,8 @@ class TeslaSession:
 
     # accumulated car state (VCSEC VehicleStatus broadcasts + infotainment query responses)
     self.car_state = {}
+    # most recent decrypted infotainment Response plaintext (carserver.Response bytes)
+    self.last_response_plaintext = None
 
   def _update_from_vcsec(self, parsed):
     """If parsed FromVCSECMessage has a vehicle_status, fold it into car_state. Returns True if updated."""
@@ -738,13 +879,16 @@ class TeslaSession:
     else:
       vehicle_clock = int(time.monotonic())
     expires_at = vehicle_clock + 10
-    msg, req_uuid = build_infotainment_command(
+    msg, req_uuid, req_tag = build_infotainment_command(
       self.infotainment_key, self.public_key_bytes, self.routing_address,
       self.vin, self.infotainment_epoch, self.infotainment_counter,
       expires_at, action_bytes,
     )
     self.infotainment_counter += 1
     await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+
+    # request_id for AES_GCM_PERSONALIZED requests = [SIGTYPE=5] ++ our encryption tag
+    request_id = bytes([5]) + req_tag
 
     log.info(f"infotainment sent req_uuid={req_uuid.hex()} raw={ble_frame(msg).hex()}")
     # wait for routable response matching our request uuid
@@ -763,8 +907,26 @@ class TeslaSession:
           continue
         ms = parsed.get('message_status') or {}
         status = ms.get('operation_status')
-        fault = ms.get('fault')
-        if status in (None, 0) and fault in (None, 0):
+        fault = ms.get('fault') or 0
+
+        # If the response carries an encrypted payload, decrypt it and stash on session.
+        self.last_response_plaintext = None
+        rsig = parsed.get('response_sig')
+        ciphertext = parsed.get('payload')
+        if rsig and ciphertext and rsig.get('nonce') and rsig.get('tag'):
+          try:
+            aad = build_response_aad(
+              self.vin, DOMAIN_INFOTAINMENT,
+              rsig.get('counter') or 0,
+              parsed.get('flags') or 0,
+              request_id, fault,
+            )
+            self.last_response_plaintext = decrypt_gcm(
+              self.infotainment_key, rsig['nonce'], ciphertext, aad, rsig['tag'])
+          except Exception as e:
+            log.warning(f"response decrypt failed: {e}")
+
+        if status in (None, 0) and fault == 0:
           return "ok"
         return f"status={status},fault={fault}"
       except asyncio.TimeoutError:
@@ -849,6 +1011,17 @@ class TeslaSession:
 
   async def ping(self):
     return await self.send_infotainment(action_ping())
+
+  async def get_vehicle_data(self, kinds):
+    """Request + decrypt + parse VehicleData. kinds: iterable of field numbers (see GET_VEHICLE_DATA_KINDS)."""
+    result = await self.send_infotainment(action_get_vehicle_data(kinds))
+    if result != "ok":
+      return result
+    if self.last_response_plaintext is None:
+      return "no_plaintext"
+    parse_vehicle_data(self.last_response_plaintext, self.car_state)
+    self.car_state['infotainmentUpdatedAt'] = time.monotonic()
+    return "ok"
 
 
 async def scan_for_teslas():
@@ -943,6 +1116,18 @@ async def dispatch_command(session, command, arg, pm):
 
   if command == "get_status":
     return await session.request_status()
+
+  if command == "data":
+    # arg is a comma-separated list of kinds, or "all" for everything
+    if not session.infotainment_ready:
+      return "no_infotainment"
+    tokens = [t.strip() for t in arg.split(",")] if arg else ["charge", "climate", "drive", "location", "media"]
+    if tokens == ["all"]:
+      tokens = list(GET_VEHICLE_DATA_KINDS.keys())
+    kinds = [GET_VEHICLE_DATA_KINDS[t] for t in tokens if t in GET_VEHICLE_DATA_KINDS]
+    if not kinds:
+      return f"bad_arg: {arg!r}"
+    return await session.get_vehicle_data(kinds)
 
   # Gate VCSEC-requiring commands
   if not session.whitelisted:
