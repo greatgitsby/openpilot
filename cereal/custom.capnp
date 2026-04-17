@@ -20,6 +20,57 @@ struct TeslaState @0xaedffd8f31e7b55d {
   whitelisted @1 :Bool;
   infotainmentReady @2 :Bool;
   lastEvent @3 :Text;
+  car @4 :TeslaCarState;
+}
+
+struct TeslaCarState @0xf35cc4560bbf6ec2 {
+  # ─── VCSEC VehicleStatus (unsolicited broadcasts from the car) ───
+  # lockState:    0=unlocked, 1=locked, 2=internal_locked, 3=selective_unlocked
+  # sleepStatus:  0=unknown, 1=awake, 2=asleep
+  # userPresence: 0=unknown, 1=not_present, 2=present
+  lockState @0 :UInt32;
+  sleepStatus @1 :UInt32;
+  userPresence @2 :UInt32;
+  # Closure state (from ClosureState_E):
+  # 0=closed, 1=open, 2=ajar, 3=unknown, 4=failed_unlatch, 5=opening, 6=closing
+  frontDriverDoor @3 :UInt32;
+  frontPassengerDoor @4 :UInt32;
+  rearDriverDoor @5 :UInt32;
+  rearPassengerDoor @6 :UInt32;
+  rearTrunk @7 :UInt32;
+  frontTrunk @8 :UInt32;
+  chargePort @9 :UInt32;
+  tonneau @10 :UInt32;
+
+  # ─── Infotainment data (populated by GetVehicleData queries) ───
+  # Charge
+  chargePercent @11 :Float32;
+  batteryRangeMiles @12 :Float32;
+  chargingState @13 :Text;
+  chargeLimitSoc @14 :UInt32;
+  chargerPower @15 :Float32;
+  # Climate
+  insideTempC @16 :Float32;
+  outsideTempC @17 :Float32;
+  hvacOn @18 :Bool;
+  driverTempSetpointC @19 :Float32;
+  passengerTempSetpointC @20 :Float32;
+  # Drive
+  speedMph @21 :Float32;
+  gear @22 :Text;
+  heading @23 :Float32;
+  # Location
+  latitude @24 :Float64;
+  longitude @25 :Float64;
+  # Odometer
+  odometerMiles @26 :Float32;
+  # Media
+  mediaPlaying @27 :Bool;
+  mediaTrack @28 :Text;
+  mediaArtist @29 :Text;
+  # Last update timestamps (monotonic seconds since teslad start, or 0 if never)
+  vcsecUpdatedAt @30 :Float64;
+  infotainmentUpdatedAt @31 :Float64;
 }
 
 struct CustomReserved2 @0xf35cc4560bbf6ec2 {

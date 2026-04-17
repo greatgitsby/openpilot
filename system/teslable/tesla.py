@@ -43,7 +43,7 @@ log = logging.getLogger("tesla")
 
 
 SESSION_COMMANDS = {
-  "whitelist", "reconnect",
+  "whitelist", "reconnect", "get_status",
   "unlock", "lock", "trunk", "close_trunk", "frunk",
   "charge_port", "close_charge_port", "wake", "auto_secure", "remote_drive",
   "door_fd_open", "door_fd_close", "door_fp_open", "door_fp_close",
@@ -89,9 +89,40 @@ def cmd_status():
   log.info(f"key id:   {kid}")
 
 
+LOCK_NAMES = {0: "unlocked", 1: "locked", 2: "internal_locked", 3: "selective_unlocked"}
+SLEEP_NAMES = {0: "unknown", 1: "awake", 2: "asleep"}
+PRESENCE_NAMES = {0: "unknown", 1: "not_present", 2: "present"}
+CLOSURE_NAMES = {0: "closed", 1: "open", 2: "ajar", 3: "unknown",
+                 4: "failed_unlatch", 5: "opening", 6: "closing"}
+
+
 def format_state(s):
-  return (f"connected={s.connected} whitelisted={s.whitelisted} "
-          f"infotainment={s.infotainmentReady} event={s.lastEvent!r}")
+  c = s.car
+  lines = [f"connected={s.connected} whitelisted={s.whitelisted} "
+           f"infotainment={s.infotainmentReady} event={s.lastEvent!r}"]
+  if c.vcsecUpdatedAt > 0:
+    lines.append(f"  lock={LOCK_NAMES.get(c.lockState, c.lockState)} "
+                 f"sleep={SLEEP_NAMES.get(c.sleepStatus, c.sleepStatus)} "
+                 f"presence={PRESENCE_NAMES.get(c.userPresence, c.userPresence)}")
+    lines.append("  " + " ".join(f"{k}={CLOSURE_NAMES.get(getattr(c, f), getattr(c, f))}"
+                                 for k, f in [("FD", "frontDriverDoor"), ("FP", "frontPassengerDoor"),
+                                              ("RD", "rearDriverDoor"), ("RP", "rearPassengerDoor"),
+                                              ("trunk", "rearTrunk"), ("frunk", "frontTrunk"),
+                                              ("charge_port", "chargePort"), ("tonneau", "tonneau")]))
+  if c.infotainmentUpdatedAt > 0:
+    if c.chargePercent or c.chargingState:
+      lines.append(f"  charge: {c.chargePercent}% range={c.batteryRangeMiles:.0f}mi "
+                   f"state={c.chargingState} limit={c.chargeLimitSoc}%")
+    if c.insideTempC or c.outsideTempC:
+      lines.append(f"  climate: inside={c.insideTempC}C outside={c.outsideTempC}C "
+                   f"hvac={'on' if c.hvacOn else 'off'}")
+    if c.speedMph or c.gear:
+      lines.append(f"  drive: speed={c.speedMph:.1f}mph gear={c.gear} heading={c.heading:.0f}°")
+    if c.latitude or c.longitude:
+      lines.append(f"  location: {c.latitude:.5f},{c.longitude:.5f} odo={c.odometerMiles:.0f}mi")
+    if c.mediaTrack:
+      lines.append(f"  media: playing={c.mediaPlaying} {c.mediaTrack!r} by {c.mediaArtist!r}")
+  return "\n".join(lines)
 
 
 def cmd_state():

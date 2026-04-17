@@ -114,6 +114,13 @@ def build_ephemeral_key_request(kid_bytes):
   return encode_field(2, unsigned_msg)
 
 
+def build_get_status_request():
+  # InformationRequest { informationRequestType = GET_STATUS (0) }
+  info_req = encode_field(1, 0)
+  unsigned_msg = encode_field(1, info_req)
+  return encode_field(2, unsigned_msg)
+
+
 def build_whitelist_request(public_key_bytes):
   # PermissionChange { key=PublicKey, keyRole=OWNER(2) }
   # KeyMetadata { keyFormFactor=CLOUD_KEY(9) }
@@ -183,10 +190,20 @@ def parse_from_vcsec(data):
   vehicle_status_bytes = get_field(fields, 1)
   if vehicle_status_bytes is not None:
     vs = decode_fields(vehicle_status_bytes)
+    closures = {}
+    closure_bytes = get_field(vs, 1)
+    if closure_bytes is not None:
+      cs = decode_fields(closure_bytes)
+      for idx, name in enumerate([
+        'frontDriverDoor', 'frontPassengerDoor', 'rearDriverDoor', 'rearPassengerDoor',
+        'rearTrunk', 'frontTrunk', 'chargePort', 'tonneau',
+      ], start=1):
+        closures[name] = get_field(cs, idx)
     result['vehicle_status'] = {
       'vehicle_lock_state': get_field(vs, 2),
       'vehicle_sleep_status': get_field(vs, 3),
       'user_presence': get_field(vs, 4),
+      'closures': closures,
     }
 
   return result
@@ -423,6 +440,23 @@ class TeslaSession:
     self.infotainment_clock_anchor = None    # our monotonic time at that moment
     self.infotainment_counter = int(time.monotonic())
 
+    # accumulated car state (VCSEC VehicleStatus broadcasts + infotainment query responses)
+    self.car_state = {}
+
+  def _update_from_vcsec(self, parsed):
+    """If parsed FromVCSECMessage has a vehicle_status, fold it into car_state. Returns True if updated."""
+    vs = parsed.get('vehicle_status') if parsed else None
+    if not vs:
+      return False
+    self.car_state['lockState'] = vs.get('vehicle_lock_state') or 0
+    self.car_state['sleepStatus'] = vs.get('vehicle_sleep_status') or 0
+    self.car_state['userPresence'] = vs.get('user_presence') or 0
+    for name, val in (vs.get('closures') or {}).items():
+      if val is not None:
+        self.car_state[name] = val
+    self.car_state['vcsecUpdatedAt'] = time.monotonic()
+    return True
+
   @property
   def infotainment_ready(self):
     return self.infotainment_key is not None
@@ -488,6 +522,20 @@ class TeslaSession:
     log.warning(f"infotainment session incomplete: {si}")
     return False
 
+  async def request_status(self):
+    """Send VCSEC GET_STATUS; car replies with a VehicleStatus broadcast."""
+    log.info("requesting VCSEC status...")
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(build_get_status_request()))
+    deadline = asyncio.get_event_loop().time() + 3.0
+    while asyncio.get_event_loop().time() < deadline:
+      try:
+        response = await asyncio.wait_for(self.rx_queue.get(), timeout=1.0)
+        if self._update_from_vcsec(parse_from_vcsec(response)):
+          return "ok"
+      except asyncio.TimeoutError:
+        break
+    return "timeout"
+
   async def whitelist(self):
     """Send whitelist request; wait up to 60s for NFC card tap on center console."""
     log.info(">>> TAP NFC KEY CARD ON CENTER CONSOLE <<<")
@@ -523,6 +571,7 @@ class TeslaSession:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
         parsed = parse_from_vcsec(response)
+        self._update_from_vcsec(parsed)
         if parsed.get('command_status') is not None:
           status = parsed['command_status'].get('operation_status')
           return "ok" if status in (None, 0) else f"status={status}"
@@ -824,12 +873,52 @@ async def connect_to_tesla(device, vin):
   return TeslaSession(client, rx_queue, private_key, public_key_bytes, kid, vin=vin)
 
 
+CLOSURE_FIELDS = (
+  'frontDriverDoor', 'frontPassengerDoor', 'rearDriverDoor', 'rearPassengerDoor',
+  'rearTrunk', 'frontTrunk', 'chargePort', 'tonneau',
+)
+
+
 def publish_state(pm, session, last_event=""):
   msg = messaging.new_message('teslaState')
-  msg.teslaState.connected = bool(session and session.client.is_connected)
-  msg.teslaState.whitelisted = bool(session and session.whitelisted)
-  msg.teslaState.infotainmentReady = bool(session and session.infotainment_ready)
-  msg.teslaState.lastEvent = last_event
+  s = msg.teslaState
+  s.connected = bool(session and session.client.is_connected)
+  s.whitelisted = bool(session and session.whitelisted)
+  s.infotainmentReady = bool(session and session.infotainment_ready)
+  s.lastEvent = last_event
+
+  if session is not None:
+    car = s.car
+    cs = session.car_state
+    # VCSEC status
+    car.lockState = int(cs.get('lockState') or 0)
+    car.sleepStatus = int(cs.get('sleepStatus') or 0)
+    car.userPresence = int(cs.get('userPresence') or 0)
+    for f in CLOSURE_FIELDS:
+      setattr(car, f, int(cs.get(f) or 0))
+    # Infotainment data (populated by GetVehicleData)
+    car.chargePercent = float(cs.get('chargePercent') or 0.0)
+    car.batteryRangeMiles = float(cs.get('batteryRangeMiles') or 0.0)
+    car.chargingState = str(cs.get('chargingState') or '')
+    car.chargeLimitSoc = int(cs.get('chargeLimitSoc') or 0)
+    car.chargerPower = float(cs.get('chargerPower') or 0.0)
+    car.insideTempC = float(cs.get('insideTempC') or 0.0)
+    car.outsideTempC = float(cs.get('outsideTempC') or 0.0)
+    car.hvacOn = bool(cs.get('hvacOn') or False)
+    car.driverTempSetpointC = float(cs.get('driverTempSetpointC') or 0.0)
+    car.passengerTempSetpointC = float(cs.get('passengerTempSetpointC') or 0.0)
+    car.speedMph = float(cs.get('speedMph') or 0.0)
+    car.gear = str(cs.get('gear') or '')
+    car.heading = float(cs.get('heading') or 0.0)
+    car.latitude = float(cs.get('latitude') or 0.0)
+    car.longitude = float(cs.get('longitude') or 0.0)
+    car.odometerMiles = float(cs.get('odometerMiles') or 0.0)
+    car.mediaPlaying = bool(cs.get('mediaPlaying') or False)
+    car.mediaTrack = str(cs.get('mediaTrack') or '')
+    car.mediaArtist = str(cs.get('mediaArtist') or '')
+    car.vcsecUpdatedAt = float(cs.get('vcsecUpdatedAt') or 0.0)
+    car.infotainmentUpdatedAt = float(cs.get('infotainmentUpdatedAt') or 0.0)
+
   pm.send('teslaState', msg)
 
 
@@ -851,6 +940,9 @@ async def dispatch_command(session, command, arg, pm):
     if session.whitelisted and session.vin:
       await session.negotiate_infotainment()
     return "ok" if session.whitelisted else "not_whitelisted"
+
+  if command == "get_status":
+    return await session.request_status()
 
   # Gate VCSEC-requiring commands
   if not session.whitelisted:
@@ -925,6 +1017,16 @@ async def dispatch_command(session, command, arg, pm):
 
 async def command_loop(session, sm, pm):
   while session.client.is_connected:
+    # drain unsolicited rx (e.g. VCSEC VehicleStatus broadcasts)
+    updated = False
+    while not session.rx_queue.empty():
+      msg = session.rx_queue.get_nowait()
+      parsed = parse_from_vcsec(msg)
+      if session._update_from_vcsec(parsed):
+        updated = True
+    if updated:
+      publish_state(pm, session, "vcsec_update")
+
     sm.update(0)
     if sm.updated.get('teslaCommand'):
       cmd = sm['teslaCommand']

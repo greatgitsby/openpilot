@@ -2487,7 +2487,7 @@ struct Event {
     # DON'T change which struct it points to
     teslaCommand @107 :Custom.TeslaCommand;
     teslaState @108 :Custom.TeslaState;
-    customReserved2 @109 :Custom.CustomReserved2;
+    teslaCarState @109 :Custom.TeslaCarState;
     customReserved3 @110 :Custom.CustomReserved3;
     customReserved4 @111 :Custom.CustomReserved4;
     customReserved5 @112 :Custom.CustomReserved5;
