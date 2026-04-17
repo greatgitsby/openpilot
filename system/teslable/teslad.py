@@ -17,8 +17,8 @@ from openpilot.system.teslable.crypto import (
 )
 from openpilot.system.teslable.proto import encode_field, decode_fields, get_field
 
-TESLA_VIN_PATH = "/data/teslable/vin"
-TESLA_KEY_PATH = "/data/teslable/key.pem"
+TESLA_VIN_PATH = "/data/tesla/vin"
+TESLA_KEY_PATH = "/data/tesla/key.pem"
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("teslad")
