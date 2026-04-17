@@ -456,8 +456,9 @@ class TeslaSession:
       return False
     si = info_response['session_info']
     if si.get('public_key') and si.get('epoch'):
-      info_shared = ecdh_shared_key(self.private_key, si['public_key'])
-      self.infotainment_key = derive_subkey(info_shared, "authenticated command")[:16]
+      # AES-GCM-personalized uses the raw ECDH-derived 16-byte key directly.
+      # (The "authenticated command" subkey is for HMAC-personalized, not AES-GCM.)
+      self.infotainment_key = ecdh_shared_key(self.private_key, si['public_key'])
       self.infotainment_epoch = si['epoch']
       self.infotainment_clock_time = si.get('clock_time', 0)
       self.infotainment_clock_anchor = time.monotonic()
