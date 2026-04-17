@@ -1221,7 +1221,8 @@ AUTO_REFRESH_KINDS = [2, 3, 4, 7, 15]  # charge, climate, drive, location, media
 
 
 async def command_loop(session, sm, pm):
-  last_auto_refresh = 0.0
+  # Trigger the first auto-refresh on the very first tick regardless of wall time.
+  last_auto_refresh = time.monotonic() - AUTO_REFRESH_INTERVAL
   while session.client.is_connected:
     # drain unsolicited rx (e.g. VCSEC VehicleStatus broadcasts)
     updated = False
