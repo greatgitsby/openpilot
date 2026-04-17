@@ -82,6 +82,29 @@ def ble_frame(msg):
   return struct.pack('>H', len(msg)) + msg
 
 
+def make_reassembler(rx_queue):
+  """Reassemble fragmented BLE notifications using the 2-byte length prefix.
+  Puts complete messages (without the length prefix) into rx_queue."""
+  buffer = bytearray()
+  expected = [None]  # nonlocal-as-list so closure can mutate
+
+  def on_notify(_handle, data):
+    buffer.extend(bytes(data))
+    while True:
+      if expected[0] is None:
+        if len(buffer) < 2:
+          return
+        expected[0] = int.from_bytes(buffer[:2], 'big')
+      if len(buffer) < 2 + expected[0]:
+        return
+      message = bytes(buffer[2:2 + expected[0]])
+      del buffer[:2 + expected[0]]
+      expected[0] = None
+      rx_queue.put_nowait(message)
+
+  return on_notify
+
+
 # ── VCSEC message builders ──
 
 def build_ephemeral_key_request(kid_bytes):
@@ -395,7 +418,7 @@ class TeslaSession:
     except asyncio.TimeoutError:
       log.error("no response to ephemeral key request")
       return False
-    parsed = parse_from_vcsec(response[2:])
+    parsed = parse_from_vcsec(response)
     vehicle_pubkey = parsed.get('session_info', {}).get('public_key') if 'session_info' in parsed else None
     if vehicle_pubkey is None:
       log.warning("key not on whitelist — run whitelist command")
@@ -418,7 +441,7 @@ class TeslaSession:
     for _ in range(10):
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=3.0)
-        parsed = parse_routable_response(response[2:])
+        parsed = parse_routable_response(response)
         log.info(f"infotainment rx: {parsed}")
         if 'session_info' in parsed:
           info_response = parsed
@@ -449,7 +472,7 @@ class TeslaSession:
     while asyncio.get_event_loop().time() < deadline:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
-        fields = decode_fields(response[2:])
+        fields = decode_fields(response)
         if 4 in [f[0] for f in fields]:
           log.info("whitelist accepted!")
           return True
@@ -473,7 +496,7 @@ class TeslaSession:
     while asyncio.get_event_loop().time() < deadline:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
-        parsed = parse_from_vcsec(response[2:])
+        parsed = parse_from_vcsec(response)
         if parsed.get('command_status') is not None:
           status = parsed['command_status'].get('operation_status')
           return "ok" if status in (None, 0) else f"status={status}"
@@ -649,7 +672,7 @@ class TeslaSession:
     while asyncio.get_event_loop().time() < deadline:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
-        parsed = parse_routable_response(response[2:])
+        parsed = parse_routable_response(response)
         log.info(f"infotainment rx parsed={parsed} raw={response.hex()}")
         if parsed.get('request_uuid') != req_uuid:
           continue
@@ -761,7 +784,7 @@ async def connect_to_tesla(device, vin):
   client = BleakClient(device.address)
   await client.connect(timeout=15.0)
   log.info(f"connected to {device.name}")
-  await client.start_notify(TESLA_READ_UUID, lambda _h, d: rx_queue.put_nowait(bytes(d)))
+  await client.start_notify(TESLA_READ_UUID, make_reassembler(rx_queue))
   return TeslaSession(client, rx_queue, private_key, public_key_bytes, kid, vin=vin)
 
 
