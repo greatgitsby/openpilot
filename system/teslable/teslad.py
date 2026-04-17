@@ -1216,7 +1216,12 @@ async def dispatch_command(session, command, arg, pm):
     return f"error: {e}"
 
 
+AUTO_REFRESH_INTERVAL = 60.0  # seconds
+AUTO_REFRESH_KINDS = [2, 3, 4, 7, 15]  # charge, climate, drive, location, media
+
+
 async def command_loop(session, sm, pm):
+  last_auto_refresh = 0.0
   while session.client.is_connected:
     # drain unsolicited rx (e.g. VCSEC VehicleStatus broadcasts)
     updated = False
@@ -1227,6 +1232,16 @@ async def command_loop(session, sm, pm):
         updated = True
     if updated:
       publish_state(pm, session, "vcsec_update")
+
+    # periodic infotainment data refresh — keeps home screen fresh
+    now = time.monotonic()
+    if session.infotainment_ready and now - last_auto_refresh > AUTO_REFRESH_INTERVAL:
+      last_auto_refresh = now
+      try:
+        result = await session.get_vehicle_data(AUTO_REFRESH_KINDS)
+        publish_state(pm, session, f"auto_refresh={result}")
+      except Exception as e:
+        log.warning(f"auto refresh failed: {e}")
 
     sm.update(0)
     if sm.updated.get('teslaCommand'):
