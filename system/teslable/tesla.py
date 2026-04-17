@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Tesla CLI — setup the connection and send commands to teslad over cereal.
+"""Tesla CLI — talk to a running teslad over cereal.
 
 Usage:
   tesla.py setup <VIN>            write VIN + generate key
-  tesla.py whitelist              whitelist key with Tesla (tap NFC card)
-  tesla.py status                 show current VIN and key id
+  tesla.py status                 show local VIN/key state
+  tesla.py state                  subscribe to teslaState (live, ctrl-C to exit)
+  tesla.py <command> [args...]    send command to teslad, wait for state update
 
-  tesla.py <command> [args...]    send command to teslad via cereal
+Commands (teslad must be running with an active BLE connection):
+  whitelist                       send whitelist request (tap NFC card on console, 60s)
+  reconnect                       re-negotiate VCSEC + infotainment sessions
 
-Commands (session must be established by a running teslad):
   unlock | lock
   trunk | close_trunk | frunk
   charge_port | close_charge_port
@@ -41,6 +43,7 @@ log = logging.getLogger("tesla")
 
 
 SESSION_COMMANDS = {
+  "whitelist", "reconnect",
   "unlock", "lock", "trunk", "close_trunk", "frunk",
   "charge_port", "close_charge_port", "wake", "auto_secure", "remote_drive",
   "door_fd_open", "door_fd_close", "door_fp_open", "door_fp_close",
@@ -51,6 +54,10 @@ SESSION_COMMANDS = {
   "vent", "close_windows",
   "temp", "seat_heat", "media", "charge", "charge_limit", "name",
 }
+
+# commands that take longer than the default response window
+LONG_COMMANDS = {"whitelist": 70, "reconnect": 15}
+DEFAULT_TIMEOUT = 10
 
 
 def cmd_setup(vin):
@@ -63,12 +70,6 @@ def cmd_setup(vin):
   log.info(f"BLE name:    S{hashlib.sha1(vin.encode()).hexdigest()[:16]}C")
   log.info(f"key id:      {key_id(pub).hex()}")
   log.info(f"wrote {TESLA_VIN_PATH} and {TESLA_KEY_PATH}")
-
-
-def cmd_whitelist():
-  import asyncio
-  from openpilot.system.teslable.whitelist import main as wl_main
-  asyncio.run(wl_main())
 
 
 def cmd_status():
@@ -88,15 +89,45 @@ def cmd_status():
   log.info(f"key id:   {kid}")
 
 
+def format_state(s):
+  return (f"connected={s.connected} whitelisted={s.whitelisted} "
+          f"infotainment={s.infotainmentReady} event={s.lastEvent!r}")
+
+
+def cmd_state():
+  sm = messaging.SubMaster(['teslaState'])
+  log.info("subscribed to teslaState (ctrl-C to exit)")
+  try:
+    while True:
+      sm.update(1000)
+      if sm.updated.get('teslaState'):
+        log.info(format_state(sm['teslaState']))
+  except KeyboardInterrupt:
+    pass
+
+
 def cmd_send(command, args):
   arg = " ".join(args) if args else ""
   pm = messaging.PubMaster(['teslaCommand'])
+  sm = messaging.SubMaster(['teslaState'])
+  time.sleep(0.3)  # let sockets bind
+
   msg = messaging.new_message('teslaCommand')
   msg.teslaCommand.command = command
   msg.teslaCommand.arg = arg
-  time.sleep(0.2)  # let subscriber bind
   pm.send('teslaCommand', msg)
   log.info(f"sent: {command}" + (f" {arg!r}" if arg else ""))
+
+  timeout = LONG_COMMANDS.get(command, DEFAULT_TIMEOUT)
+  deadline = time.time() + timeout
+  while time.time() < deadline:
+    sm.update(500)
+    if sm.updated.get('teslaState'):
+      s = sm['teslaState']
+      log.info(format_state(s))
+      if s.lastEvent.startswith(f"{command}="):
+        return
+  log.warning(f"no response within {timeout}s — is teslad running and connected?")
 
 
 def usage():
@@ -119,10 +150,10 @@ def main():
       log.error("setup requires a VIN")
       sys.exit(1)
     cmd_setup(rest[0])
-  elif sub == "whitelist":
-    cmd_whitelist()
   elif sub == "status":
     cmd_status()
+  elif sub == "state":
+    cmd_state()
   elif sub in SESSION_COMMANDS:
     cmd_send(sub, rest)
   else:

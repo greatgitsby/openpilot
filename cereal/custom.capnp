@@ -15,7 +15,11 @@ struct TeslaCommand @0x81c2f05a394cf4af {
   arg @1 :Text;
 }
 
-struct CustomReserved1 @0xaedffd8f31e7b55d {
+struct TeslaState @0xaedffd8f31e7b55d {
+  connected @0 :Bool;
+  whitelisted @1 :Bool;
+  infotainmentReady @2 :Bool;
+  lastEvent @3 :Text;
 }
 
 struct CustomReserved2 @0xf35cc4560bbf6ec2 {

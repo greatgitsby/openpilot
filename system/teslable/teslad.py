@@ -353,21 +353,106 @@ def action_hvac_temp(driver_temp=None, passenger_temp=None):
 # ── Tesla session ──
 
 class TeslaSession:
-  def __init__(self, client, shared_key, kid_bytes, rx_queue, public_key_bytes,
-               vin=None, infotainment_key=None, infotainment_epoch=None,
-               infotainment_clock_time=None, routing_address=None):
+  def __init__(self, client, rx_queue, private_key, public_key_bytes, kid_bytes,
+               vin=None, routing_address=None):
     self.client = client
-    self.shared_key = shared_key
-    self.kid = kid_bytes
     self.rx_queue = rx_queue
-    self.counter = int(time.time())
+    self.private_key = private_key
     self.public_key_bytes = public_key_bytes
+    self.kid = kid_bytes
     self.vin = vin
-    self.infotainment_key = infotainment_key
-    self.infotainment_epoch = infotainment_epoch
-    self.infotainment_clock_time = infotainment_clock_time
-    self.infotainment_counter = int(time.time())
     self.routing_address = routing_address or os.urandom(16)
+
+    # session state (populated by negotiate_*/whitelist)
+    self.shared_key = None
+    self.counter = int(time.time())
+    self.whitelisted = False
+    self.infotainment_key = None
+    self.infotainment_epoch = None
+    self.infotainment_clock_time = None
+    self.infotainment_counter = int(time.time())
+
+  @property
+  def infotainment_ready(self):
+    return self.infotainment_key is not None
+
+  async def _drain_rx(self):
+    await asyncio.sleep(0.5)
+    while not self.rx_queue.empty():
+      self.rx_queue.get_nowait()
+
+  async def negotiate_vcsec(self):
+    """Send ephemeral key request. Sets self.whitelisted and self.shared_key."""
+    await self._drain_rx()
+    msg = build_ephemeral_key_request(self.kid)
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+    try:
+      response = await asyncio.wait_for(self.rx_queue.get(), timeout=5.0)
+    except asyncio.TimeoutError:
+      log.error("no response to ephemeral key request")
+      return False
+    parsed = parse_from_vcsec(response[2:])
+    vehicle_pubkey = parsed.get('session_info', {}).get('public_key') if 'session_info' in parsed else None
+    if vehicle_pubkey is None:
+      log.warning("key not on whitelist — run whitelist command")
+      self.whitelisted = False
+      return False
+    self.shared_key = ecdh_shared_key(self.private_key, vehicle_pubkey)
+    self.whitelisted = True
+    log.info("VCSEC session established")
+    return True
+
+  async def negotiate_infotainment(self):
+    """Establish infotainment session. Requires VCSEC session + VIN."""
+    if not self.whitelisted or self.vin is None:
+      return False
+    await self._drain_rx()
+    msg, _uuid = build_session_info_request(self.public_key_bytes, DOMAIN_INFOTAINMENT, self.routing_address)
+    log.info("requesting infotainment session...")
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
+    info_response = None
+    for _ in range(10):
+      try:
+        response = await asyncio.wait_for(self.rx_queue.get(), timeout=3.0)
+        parsed = parse_routable_response(response[2:])
+        log.info(f"infotainment rx: {parsed}")
+        if 'session_info' in parsed:
+          info_response = parsed
+          break
+      except asyncio.TimeoutError:
+        break
+    if info_response is None:
+      log.warning("no infotainment session response")
+      return False
+    si = info_response['session_info']
+    if si.get('public_key') and si.get('epoch'):
+      info_shared = ecdh_shared_key(self.private_key, si['public_key'])
+      self.infotainment_key = derive_subkey(info_shared, "authenticated command")[:16]
+      self.infotainment_epoch = si['epoch']
+      self.infotainment_clock_time = si.get('clock_time', 0)
+      log.info("infotainment session established")
+      return True
+    log.warning(f"infotainment session incomplete: {si}")
+    return False
+
+  async def whitelist(self):
+    """Send whitelist request; wait up to 60s for NFC card tap on center console."""
+    log.info(">>> TAP NFC KEY CARD ON CENTER CONSOLE <<<")
+    await self._drain_rx()
+    wl_msg = build_whitelist_request(self.public_key_bytes)
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(wl_msg))
+    deadline = asyncio.get_event_loop().time() + 60
+    while asyncio.get_event_loop().time() < deadline:
+      try:
+        response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
+        fields = decode_fields(response[2:])
+        if 4 in [f[0] for f in fields]:
+          log.info("whitelist accepted!")
+          return True
+      except asyncio.TimeoutError:
+        continue
+    log.warning("whitelist timed out — card not tapped in 60s")
+    return False
 
   async def send_rke(self, action):
     cmd = build_signed_command(self.shared_key, self.kid, self.counter, build_rke_action(action))
@@ -659,106 +744,50 @@ async def scan_for_teslas():
   return teslas
 
 
-async def establish_session(device, vin=None):
-  """Connect to a Tesla and return a TeslaSession, or None on failure."""
+async def connect_to_tesla(device, vin):
+  """Open BLE connection and return a bare TeslaSession (no session negotiated yet)."""
   log.info(f"connecting to {device.name} ({device.address})...")
-
   private_key, public_key_bytes = load_or_create_key(TESLA_KEY_PATH)
   kid = key_id(public_key_bytes)
-  routing_address = os.urandom(16)
-
   rx_queue = asyncio.Queue()
-
   client = BleakClient(device.address)
   await client.connect(timeout=15.0)
   log.info(f"connected to {device.name}")
-
   await client.start_notify(TESLA_READ_UUID, lambda _h, d: rx_queue.put_nowait(bytes(d)))
-  await asyncio.sleep(0.5)
-  while not rx_queue.empty():
-    rx_queue.get_nowait()
+  return TeslaSession(client, rx_queue, private_key, public_key_bytes, kid, vin=vin)
 
-  # ── VCSEC session ──
-  msg = build_ephemeral_key_request(kid)
-  await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
-  try:
-    response = await asyncio.wait_for(rx_queue.get(), timeout=5.0)
-  except asyncio.TimeoutError:
-    log.error("no response to ephemeral key request")
-    await client.disconnect()
-    return None
-
-  parsed = parse_from_vcsec(response[2:])
-  vehicle_pubkey = None
-  if 'session_info' in parsed and parsed['session_info'].get('public_key'):
-    vehicle_pubkey = parsed['session_info']['public_key']
-
-  if vehicle_pubkey is None:
-    log.error("key not on whitelist — run whitelist.py first")
-    await client.disconnect()
-    return None
-
-  shared_key = ecdh_shared_key(private_key, vehicle_pubkey)
-  log.info("VCSEC session established")
-
-  # ── Infotainment session ──
-  infotainment_key = None
-  infotainment_epoch = None
-  infotainment_clock_time = None
-
-  if vin:
-    await asyncio.sleep(0.5)
-    while not rx_queue.empty():
-      rx_queue.get_nowait()
-
-    msg, uuid = build_session_info_request(public_key_bytes, DOMAIN_INFOTAINMENT, routing_address)
-    log.info("requesting infotainment session...")
-    await client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
-
-    # drain responses until we get a RoutableMessage with session_info
-    info_response = None
-    for _ in range(10):
-      try:
-        response = await asyncio.wait_for(rx_queue.get(), timeout=3.0)
-        payload = response[2:]
-        parsed = parse_routable_response(payload)
-        log.info(f"infotainment rx: {parsed} (raw={response.hex()})")
-        if 'session_info' in parsed:
-          info_response = parsed
-          break
-      except asyncio.TimeoutError:
-        break
-
-    if info_response is None:
-      log.warning("no infotainment session response — infotainment commands unavailable")
-      return TeslaSession(client, shared_key, kid, rx_queue, public_key_bytes, vin,
-                          routing_address=routing_address)
-
-    parsed = info_response
-
-    if 'session_info' in parsed:
-      si = parsed['session_info']
-      if si.get('public_key') and si.get('epoch'):
-        info_pubkey = si['public_key']
-        infotainment_epoch = si['epoch']
-        infotainment_clock_time = si.get('clock_time', 0)
-
-        info_shared = ecdh_shared_key(private_key, info_pubkey)
-        infotainment_key = derive_subkey(info_shared, "authenticated command")[:16]
-        log.info("infotainment session established")
-      elif si.get('status') == 1:
-        log.warning("infotainment: key not on whitelist")
-      else:
-        log.warning(f"infotainment session incomplete: {si}")
-
-  return TeslaSession(client, shared_key, kid, rx_queue, public_key_bytes, vin,
-                      infotainment_key, infotainment_epoch, infotainment_clock_time,
-                      routing_address)
+def publish_state(pm, session, last_event=""):
+  msg = messaging.new_message('teslaState')
+  msg.teslaState.connected = bool(session and session.client.is_connected)
+  msg.teslaState.whitelisted = bool(session and session.whitelisted)
+  msg.teslaState.infotainmentReady = bool(session and session.infotainment_ready)
+  msg.teslaState.lastEvent = last_event
+  pm.send('teslaState', msg)
 
 
 async def dispatch_command(session, command, arg):
   log.info(f"dispatch: command={command!r} arg={arg!r}")
+
+  # Session setup commands
+  if command == "whitelist":
+    ok = await session.whitelist()
+    if ok:
+      await session.negotiate_vcsec()
+      if session.whitelisted and session.vin:
+        await session.negotiate_infotainment()
+    return "ok" if ok else "timeout"
+
+  if command == "reconnect":
+    await session.negotiate_vcsec()
+    if session.whitelisted and session.vin:
+      await session.negotiate_infotainment()
+    return "ok" if session.whitelisted else "not_whitelisted"
+
+  # Gate VCSEC-requiring commands
+  if not session.whitelisted:
+    return "not_whitelisted"
+
   try:
     # VCSEC (RKE)
     if command == "unlock":              return await session.unlock()
@@ -782,7 +811,10 @@ async def dispatch_command(session, command, arg):
     if command == "door_rp_close":       return await session.close_rear_passenger_door()
     if command == "tonneau_open":        return await session.open_tonneau()
     if command == "tonneau_close":       return await session.close_tonneau()
-    # Infotainment
+
+    # Infotainment (requires infotainment session)
+    if not session.infotainment_ready:
+      return "no_infotainment"
     if command == "honk":                return await session.honk_horn()
     if command == "flash":               return await session.flash_lights()
     if command == "homelink":            return await session.trigger_homelink()
@@ -811,22 +843,27 @@ async def dispatch_command(session, command, arg):
       if arg == "stop":  return await session.stop_charging()
     if command == "charge_limit":        return await session.set_charge_limit(int(arg))
     if command == "name":                return await session.set_vehicle_name(arg)
-    log.warning(f"unknown command: {command}")
+    return "unknown_command"
   except Exception as e:
     log.error(f"dispatch error for {command}: {e}")
+    return f"error: {e}"
 
 
-async def command_loop(session, sm):
+async def command_loop(session, sm, pm):
   while session.client.is_connected:
     sm.update(0)
     if sm.updated.get('teslaCommand'):
       cmd = sm['teslaCommand']
-      await dispatch_command(session, cmd.command, cmd.arg)
+      result = await dispatch_command(session, cmd.command, cmd.arg)
+      publish_state(pm, session, f"{cmd.command}={result}")
     await asyncio.sleep(0.05)
 
 
 async def run():
   sm = messaging.SubMaster(['teslaCommand'])
+  pm = messaging.PubMaster(['teslaState'])
+  publish_state(pm, None, "idle")
+
   while True:
     try:
       with open(TESLA_VIN_PATH) as f:
@@ -838,27 +875,29 @@ async def run():
 
     teslas = await scan_for_teslas()
     if not teslas:
-      log.info("no Tesla found, retrying...")
       await asyncio.sleep(SCAN_INTERVAL)
       continue
 
     expected_name = "S" + hashlib.sha1(vin.encode()).hexdigest()[:16] + "C"
     target = next((t for t in teslas if t.name == expected_name), None)
     if target is None:
-      log.info(f"target Tesla ({expected_name}) not found, retrying...")
+      log.info(f"target {expected_name} not found")
       await asyncio.sleep(SCAN_INTERVAL)
       continue
 
+    session = None
     try:
-      session = await establish_session(target, vin=vin)
-      if session is None:
-        await asyncio.sleep(SCAN_INTERVAL)
-        continue
-
-      await command_loop(session, sm)
+      session = await connect_to_tesla(target, vin)
+      await session.negotiate_vcsec()
+      if session.whitelisted:
+        await session.negotiate_infotainment()
+      publish_state(pm, session, "connected" if session.whitelisted else "needs_whitelist")
+      await command_loop(session, sm, pm)
       log.info(f"disconnected from {target.name}")
     except Exception as e:
       log.error(f"connection failed: {e}")
+    finally:
+      publish_state(pm, None, "disconnected")
 
     await asyncio.sleep(SCAN_INTERVAL)
 
