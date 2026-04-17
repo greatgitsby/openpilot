@@ -103,12 +103,16 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._openpilot_label = UnifiedLabel("openpilot", font_size=96, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False)
+    self._openpilot_label = UnifiedLabel("s3xypilot", font_size=96, font_weight=FontWeight.DISPLAY, max_width=600, wrap_text=False)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._date_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._branch_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, scroll=True)
     self._version_commit_label = UnifiedLabel("", font_size=36, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
+
+    # Tesla charge display (top-right)
+    self._charge_pct_label = UnifiedLabel("", font_size=96, font_weight=FontWeight.DISPLAY, max_width=400, wrap_text=False)
+    self._charge_sub_label = UnifiedLabel("", font_size=32, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=400, wrap_text=False)
 
   def show_event(self):
     super().show_event()
@@ -196,6 +200,28 @@ class MiciHomeLayout(Widget):
         self._version_commit_label.set_text(self._version_text[2])
         self._version_commit_label.set_position(version_pos.x, version_pos.y + self._date_label.font_size + 7)
         self._version_commit_label.render()
+
+    # ***** Tesla charge display (top-right) *****
+    ts = ui_state.sm['teslaState']
+    car = ts.car
+    if ts.connected and car.infotainmentUpdatedAt > 0 and car.chargePercent > 0:
+      pct_text = f"{int(round(car.chargePercent))}%"
+      self._charge_pct_label.set_text(pct_text)
+      # right-align
+      right_edge = self.rect.x + self.rect.width - HOME_PADDING
+      pct_x = right_edge - self._charge_pct_label.text_width
+      pct_y = self.rect.y - 16
+      self._charge_pct_label.set_position(pct_x, pct_y)
+      self._charge_pct_label.render()
+
+      sub_parts = [f"{int(round(car.batteryRangeMiles))} mi"]
+      if car.chargingState and car.chargingState not in ("Disconnected", "Unknown"):
+        sub_parts.append(car.chargingState.lower())
+      self._charge_sub_label.set_text(" • ".join(sub_parts))
+      sub_x = right_edge - self._charge_sub_label.text_width
+      sub_y = pct_y + self._charge_pct_label.font_size + 12
+      self._charge_sub_label.set_position(sub_x, sub_y)
+      self._charge_sub_label.render()
 
     # ***** Center-aligned bottom section icons *****
     self._experimental_icon.set_visible(self._experimental_mode)
