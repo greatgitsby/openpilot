@@ -469,13 +469,13 @@ class TeslaSession:
     while asyncio.get_event_loop().time() < deadline:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
-        payload = response[2:]
-        parsed = parse_from_vcsec(payload)
+        parsed = parse_from_vcsec(response[2:])
         if parsed.get('command_status') is not None:
-          return parsed
+          status = parsed['command_status'].get('operation_status')
+          return "ok" if status in (None, 0) else f"status={status}"
       except asyncio.TimeoutError:
         break
-    return None
+    return "timeout"
 
   # ── Door lock/unlock ──
 
@@ -628,7 +628,7 @@ class TeslaSession:
   async def send_infotainment(self, action_bytes):
     if self.infotainment_key is None:
       log.error("infotainment session not established")
-      return None
+      return "no_infotainment"
 
     expires_at = (self.infotainment_clock_time or int(time.time())) + 5
     msg = build_infotainment_command(
@@ -646,14 +646,18 @@ class TeslaSession:
     while asyncio.get_event_loop().time() < deadline:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
-        payload = response[2:]
-        parsed = parse_routable_response(payload)
-        log.info(f"infotainment rx: {parsed} raw={response.hex()}")
+        parsed = parse_routable_response(response[2:])
+        log.info(f"infotainment rx: {parsed}")
         if parsed.get('message_status') is not None:
-          return parsed
+          ms = parsed['message_status']
+          status = ms.get('operation_status')
+          fault = ms.get('fault')
+          if status in (None, 0) and fault in (None, 0):
+            return "ok"
+          return f"status={status},fault={fault}"
       except asyncio.TimeoutError:
         break
-    return None
+    return "timeout"
 
   async def flash_lights(self):
     log.info("flashing lights...")
