@@ -294,6 +294,9 @@ def parse_vehicle_data(plaintext, car_state):
       car_state['mediaArtist'] = v.decode('utf-8', errors='replace') if isinstance(v, bytes) else str(v)
     if (v := get_field(mc, 4)) is not None:
       car_state['mediaTrack'] = v.decode('utf-8', errors='replace') if isinstance(v, bytes) else str(v)
+    # media_playback_status is an enum varint: 0=Stopped, 1=Playing, 2=Paused
+    if (v := get_field(mc, 9)) is not None:
+      car_state['mediaPlaying'] = int(v) == 1
 
 
 def build_response_aad(vin, domain, counter, flags, request_id, fault):
