@@ -207,12 +207,12 @@ class MiciHomeLayout(Widget):
     footer_rect = rl.Rectangle(self.rect.x + HOME_PADDING, self.rect.y + self.rect.height - 48, self.rect.width - HOME_PADDING, 48)
     self._status_bar_layout.render(footer_rect)
 
-    # Tesla charge beside the status bar
+    # Tesla charge at the right edge of the status bar
     ts = ui_state.sm['teslaState']
     car = ts.car
     if ts.connected and car.infotainmentUpdatedAt > 0 and car.chargePercent > 0:
       self._charge_label.set_text(f"{int(round(car.chargePercent))}%")
-      charge_x = footer_rect.x + self._status_bar_layout.rect.width + 24
+      charge_x = footer_rect.x + footer_rect.width - self._charge_label.text_width - HOME_PADDING
       charge_y = footer_rect.y + (footer_rect.height - self._charge_label.font_size) / 2
       self._charge_label.set_position(charge_x, charge_y)
       self._charge_label.render()
