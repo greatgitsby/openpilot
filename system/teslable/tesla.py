@@ -22,7 +22,7 @@ Commands (teslad must be running with an active BLE connection):
   hvac <on|off>
   vent | close_windows
   temp <driver>[,<passenger>]
-  seat_heat <seat>,<level>
+  seat_heat <fl|fr|rl|rc|rr|driver|passenger>,<off|low|med|high>
   media <play|next|prev>
   charge <start|stop>
   charge_limit <pct>

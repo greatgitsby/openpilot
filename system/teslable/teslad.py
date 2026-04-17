@@ -345,11 +345,19 @@ def action_window(vent=False, close=False):
     body += encode_field(4, b'')
   return build_vehicle_action(34, body)
 
+# HvacSeatHeaterAction oneofs are Void fields:
+# seat_heater_level: UNKNOWN=1, OFF=2, LOW=3, MED=4, HIGH=5
+# seat_position: UNKNOWN=6, FL=7, FR=8, RL=9, RL_BACK=10, R_CENTER=11, RR=12, RR_BACK=13, 3L=14, 3R=15
+SEAT_HEATER_LEVELS = {'off': 2, 'low': 3, 'med': 4, 'high': 5}
+SEAT_POSITIONS = {
+  'fl': 7, 'fr': 8, 'rl': 9, 'rc': 11, 'rr': 12,
+  'driver': 7, 'passenger': 8,
+}
+
 def action_seat_heater(seat, level):
-  # HvacSeatHeaterActions { hvacSeatHeaterAction (field 1, repeated) { ... } }
-  # Each: SeatPosition (field 1) = seat enum, SeatHeaterLevel (field 2) = level enum
-  seat_action = encode_field(1, seat) + encode_field(2, level)
-  return build_vehicle_action(36, encode_field(1, seat_action))
+  # HvacSeatHeaterActions { hvacSeatHeaterAction (field 1, repeated) { level Void, seat Void } }
+  inner = encode_field(level, b'') + encode_field(seat, b'')
+  return build_vehicle_action(36, encode_field(1, inner))
 
 def action_charging_start():
   return build_vehicle_action(6, encode_field(1, 1))  # start
@@ -888,7 +896,13 @@ async def dispatch_command(session, command, arg, pm):
       p = parts[1] if len(parts) > 1 else None
       return await session.set_hvac_temp(d, p)
     if command == "seat_heat":
-      seat, level = [int(x) for x in arg.split(",")]
+      # arg format: "<seat>,<level>" where seat is fl/fr/rl/rc/rr or driver/passenger,
+      # and level is off/low/med/high
+      seat_str, level_str = arg.split(",")
+      seat = SEAT_POSITIONS.get(seat_str.strip().lower())
+      level = SEAT_HEATER_LEVELS.get(level_str.strip().lower())
+      if seat is None or level is None:
+        return f"bad_arg: seat={seat_str} level={level_str}"
       return await session.seat_heater(seat, level)
     if command == "media":
       if arg == "play": return await session.media_toggle()
