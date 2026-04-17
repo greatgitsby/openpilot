@@ -337,12 +337,12 @@ def action_trigger_homelink():
   return build_vehicle_action(33)
 
 def action_window(vent=False, close=False):
-  # VehicleControlWindowAction
+  # VehicleControlWindowAction: oneof { unknown=2, vent=3, close=4 } all Void
   body = b''
   if vent:
-    body += encode_field(1, 1)  # action = Vent
+    body += encode_field(3, b'')
   elif close:
-    body += encode_field(1, 2)  # action = Close
+    body += encode_field(4, b'')
   return build_vehicle_action(34, body)
 
 def action_seat_heater(seat, level):
