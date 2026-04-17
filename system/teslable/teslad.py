@@ -375,12 +375,18 @@ def _encode_float(field_number, value):
 
 
 def action_hvac_temp(driver_temp=None, passenger_temp=None):
-  # HvacTemperatureAdjustmentAction: driver_temp_celsius=6, passenger_temp_celsius=7 (float)
+  # HvacTemperatureAdjustmentAction:
+  #   absolute_celsius=3 (sets both zones)
+  #   driver_temp_celsius=6, passenger_temp_celsius=7
+  # If only one value is given, use absolute_celsius so passenger doesn't default to 0 (LO).
   body = b''
-  if driver_temp is not None:
-    body += _encode_float(6, driver_temp)
-  if passenger_temp is not None:
-    body += _encode_float(7, passenger_temp)
+  if driver_temp is not None and passenger_temp is None:
+    body += _encode_float(3, driver_temp)
+  else:
+    if driver_temp is not None:
+      body += _encode_float(6, driver_temp)
+    if passenger_temp is not None:
+      body += _encode_float(7, passenger_temp)
   return build_vehicle_action(14, body)
 
 
