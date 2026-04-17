@@ -766,11 +766,12 @@ def publish_state(pm, session, last_event=""):
   pm.send('teslaState', msg)
 
 
-async def dispatch_command(session, command, arg):
+async def dispatch_command(session, command, arg, pm):
   log.info(f"dispatch: command={command!r} arg={arg!r}")
 
   # Session setup commands
   if command == "whitelist":
+    publish_state(pm, session, "whitelist=awaiting_tap")
     ok = await session.whitelist()
     if ok:
       await session.negotiate_vcsec()
@@ -854,7 +855,7 @@ async def command_loop(session, sm, pm):
     sm.update(0)
     if sm.updated.get('teslaCommand'):
       cmd = sm['teslaCommand']
-      result = await dispatch_command(session, cmd.command, cmd.arg)
+      result = await dispatch_command(session, cmd.command, cmd.arg, pm)
       publish_state(pm, session, f"{cmd.command}={result}")
     await asyncio.sleep(0.05)
 

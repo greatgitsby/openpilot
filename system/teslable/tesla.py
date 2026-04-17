@@ -124,8 +124,11 @@ def cmd_send(command, args):
     sm.update(500)
     if sm.updated.get('teslaState'):
       s = sm['teslaState']
+      if s.lastEvent == "whitelist=awaiting_tap":
+        log.info(">>> TAP NFC KEY CARD ON CENTER CONSOLE <<<")
+        continue
       log.info(format_state(s))
-      if s.lastEvent.startswith(f"{command}="):
+      if s.lastEvent.startswith(f"{command}=") and s.lastEvent != f"{command}=awaiting_tap":
         return
   log.warning(f"no response within {timeout}s — is teslad running and connected?")
 
