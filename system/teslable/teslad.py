@@ -643,15 +643,16 @@ class TeslaSession:
     self.infotainment_counter += 1
     await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
+    log.info(f"infotainment sent req_uuid={req_uuid.hex()} raw={ble_frame(msg).hex()}")
     # wait for routable response matching our request uuid
     deadline = asyncio.get_event_loop().time() + 5.0
     while asyncio.get_event_loop().time() < deadline:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
         parsed = parse_routable_response(response[2:])
+        log.info(f"infotainment rx parsed={parsed} raw={response.hex()}")
         if parsed.get('request_uuid') != req_uuid:
-          continue  # not our response
-        log.info(f"infotainment rx: {parsed}")
+          continue
         ms = parsed.get('message_status') or {}
         status = ms.get('operation_status')
         fault = ms.get('fault')
