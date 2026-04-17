@@ -324,9 +324,9 @@ def action_media_volume(volume_delta=0, volume_abs=-1):
   # MediaUpdateVolume { media_volume_delta (field 1) = float }
   body = b''
   if volume_abs >= 0:
-    body += encode_field(4, struct.pack('<f', volume_abs))  # absolute volume (fixed32/float)
+    body += _encode_float(4, volume_abs)  # absolute volume
   else:
-    body += encode_field(1, struct.pack('<f', volume_delta))
+    body += _encode_float(1, volume_delta)
   return build_vehicle_action(16, body)
 
 def action_sentry_mode(on=True):
@@ -369,13 +369,18 @@ def action_bioweapon_mode(on=True):
 def action_set_vehicle_name(name):
   return build_vehicle_action(54, encode_field(1, name.encode()))
 
+def _encode_float(field_number, value):
+  """Encode a proto float (fixed32, wire type 5): tag byte + 4 LE bytes."""
+  return bytes([(field_number << 3) | 5]) + struct.pack('<f', value)
+
+
 def action_hvac_temp(driver_temp=None, passenger_temp=None):
-  # HvacTemperatureAdjustmentAction
+  # HvacTemperatureAdjustmentAction: driver_temp_celsius=6, passenger_temp_celsius=7 (float)
   body = b''
   if driver_temp is not None:
-    body += encode_field(1, struct.pack('<f', driver_temp))
+    body += _encode_float(6, driver_temp)
   if passenger_temp is not None:
-    body += encode_field(2, struct.pack('<f', passenger_temp))
+    body += _encode_float(7, passenger_temp)
   return build_vehicle_action(14, body)
 
 
