@@ -393,13 +393,13 @@ class TeslaSession:
 
     # session state (populated by negotiate_*/whitelist)
     self.shared_key = None
-    self.counter = int(time.time())
+    self.counter = int(time.monotonic())
     self.whitelisted = False
     self.infotainment_key = None
     self.infotainment_epoch = None
     self.infotainment_clock_time = None      # vehicle's session clock at negotiation
     self.infotainment_clock_anchor = None    # our monotonic time at that moment
-    self.infotainment_counter = int(time.time())
+    self.infotainment_counter = int(time.monotonic())
 
   @property
   def infotainment_ready(self):
@@ -664,7 +664,7 @@ class TeslaSession:
     if self.infotainment_clock_anchor is not None:
       vehicle_clock = self.infotainment_clock_time + int(time.monotonic() - self.infotainment_clock_anchor)
     else:
-      vehicle_clock = int(time.time())
+      vehicle_clock = int(time.monotonic())
     expires_at = vehicle_clock + 10
     msg, req_uuid = build_infotainment_command(
       self.infotainment_key, self.public_key_bytes, self.routing_address,
