@@ -387,18 +387,22 @@ def parse_routable_response(data):
         'tag': get_field(gr, 3),
       }
 
-  flags = get_field(fields, 53)
+  flags = get_field(fields, 52)
   if flags is not None:
     result['flags'] = flags
 
   return result
 
 
+FLAG_ENCRYPT_RESPONSE = 1 << 1   # bit 1 (FLAG_ENCRYPT_RESPONSE enum = 1 → value = 2)
+
+
 def build_infotainment_command(aes_key, public_key_bytes, routing_address, vin,
-                                epoch, counter, expires_at, action_bytes):
+                                epoch, counter, expires_at, action_bytes,
+                                flags=FLAG_ENCRYPT_RESPONSE):
   """Build a signed RoutableMessage for an infotainment command."""
   nonce = os.urandom(12)
-  aad = build_metadata_aad(vin, epoch, expires_at, counter)
+  aad = build_metadata_aad(vin, epoch, expires_at, counter, flags=flags)
   ciphertext, tag = encrypt_gcm_personalized(aes_key, nonce, action_bytes, aad)
 
   # AES_GCM_Personalized_Signature_Data
@@ -424,6 +428,8 @@ def build_infotainment_command(aes_key, public_key_bytes, routing_address, vin,
   msg += encode_field(10, ciphertext)   # encrypted payload
   msg += encode_field(13, signature_data)
   msg += encode_field(51, uuid)
+  if flags:
+    msg += encode_field(52, flags)
   return msg, uuid, tag
 
 
