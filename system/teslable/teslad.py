@@ -225,6 +225,10 @@ def parse_routable_response(data):
       'fault': get_field(sf, 2),
     }
 
+  request_uuid = get_field(fields, 52)
+  if request_uuid is not None:
+    result['request_uuid'] = request_uuid
+
   return result
 
 
@@ -257,7 +261,7 @@ def build_infotainment_command(aes_key, public_key_bytes, routing_address, vin,
   msg += encode_field(10, ciphertext)   # encrypted payload
   msg += encode_field(13, signature_data)
   msg += encode_field(51, uuid)
-  return msg
+  return msg, uuid
 
 
 # ── Infotainment action builders (carserver.Action > VehicleAction) ──
@@ -631,30 +635,29 @@ class TeslaSession:
       return "no_infotainment"
 
     expires_at = (self.infotainment_clock_time or int(time.time())) + 5
-    msg = build_infotainment_command(
+    msg, req_uuid = build_infotainment_command(
       self.infotainment_key, self.public_key_bytes, self.routing_address,
       self.vin, self.infotainment_epoch, self.infotainment_counter,
       expires_at, action_bytes,
     )
     self.infotainment_counter += 1
-    framed = ble_frame(msg)
-    log.info(f"infotainment cmd: {framed.hex()}")
-    await self.client.write_gatt_char(TESLA_WRITE_UUID, framed)
+    await self.client.write_gatt_char(TESLA_WRITE_UUID, ble_frame(msg))
 
-    # wait for routable response
+    # wait for routable response matching our request uuid
     deadline = asyncio.get_event_loop().time() + 5.0
     while asyncio.get_event_loop().time() < deadline:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
         parsed = parse_routable_response(response[2:])
+        if parsed.get('request_uuid') != req_uuid:
+          continue  # not our response
         log.info(f"infotainment rx: {parsed}")
-        if parsed.get('message_status') is not None:
-          ms = parsed['message_status']
-          status = ms.get('operation_status')
-          fault = ms.get('fault')
-          if status in (None, 0) and fault in (None, 0):
-            return "ok"
-          return f"status={status},fault={fault}"
+        ms = parsed.get('message_status') or {}
+        status = ms.get('operation_status')
+        fault = ms.get('fault')
+        if status in (None, 0) and fault in (None, 0):
+          return "ok"
+        return f"status={status},fault={fault}"
       except asyncio.TimeoutError:
         break
     return "timeout"
