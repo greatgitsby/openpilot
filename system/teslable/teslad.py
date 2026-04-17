@@ -1019,14 +1019,21 @@ class TeslaSession:
     return await self.send_infotainment(action_ping())
 
   async def get_vehicle_data(self, kinds):
-    """Request + decrypt + parse VehicleData. kinds: iterable of field numbers (see GET_VEHICLE_DATA_KINDS)."""
-    result = await self.send_infotainment(action_get_vehicle_data(kinds))
-    if result != "ok":
-      return result
-    if self.last_response_plaintext is None:
-      return "no_plaintext"
-    parse_vehicle_data(self.last_response_plaintext, self.car_state)
-    self.car_state['infotainmentUpdatedAt'] = time.monotonic()
+    """Request each kind separately (BLE response MTU is small). Fold all successes into car_state."""
+    errors = []
+    any_ok = False
+    for k in kinds:
+      result = await self.send_infotainment(action_get_vehicle_data([k]))
+      if result != "ok":
+        errors.append(f"k{k}:{result}")
+        continue
+      if self.last_response_plaintext is not None:
+        parse_vehicle_data(self.last_response_plaintext, self.car_state)
+        any_ok = True
+    if any_ok:
+      self.car_state['infotainmentUpdatedAt'] = time.monotonic()
+    if errors:
+      return "ok_partial: " + ",".join(errors) if any_ok else errors[0]
     return "ok"
 
 
