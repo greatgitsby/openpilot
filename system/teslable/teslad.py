@@ -248,7 +248,8 @@ def parse_routable_response(data):
       'fault': get_field(sf, 2),
     }
 
-  request_uuid = get_field(fields, 52)
+  # Tesla's response uses field 50 for request_uuid (not 52 as in the proto)
+  request_uuid = get_field(fields, 50)
   if request_uuid is not None:
     result['request_uuid'] = request_uuid
 
@@ -396,7 +397,8 @@ class TeslaSession:
     self.whitelisted = False
     self.infotainment_key = None
     self.infotainment_epoch = None
-    self.infotainment_clock_time = None
+    self.infotainment_clock_time = None      # vehicle's session clock at negotiation
+    self.infotainment_clock_anchor = None    # our monotonic time at that moment
     self.infotainment_counter = int(time.time())
 
   @property
@@ -457,6 +459,7 @@ class TeslaSession:
       self.infotainment_key = derive_subkey(info_shared, "authenticated command")[:16]
       self.infotainment_epoch = si['epoch']
       self.infotainment_clock_time = si.get('clock_time', 0)
+      self.infotainment_clock_anchor = time.monotonic()
       log.info("infotainment session established")
       return True
     log.warning(f"infotainment session incomplete: {si}")
@@ -657,7 +660,12 @@ class TeslaSession:
       log.error("infotainment session not established")
       return "no_infotainment"
 
-    expires_at = (self.infotainment_clock_time or int(time.time())) + 5
+    # extrapolate the vehicle's session clock forward from the anchor
+    if self.infotainment_clock_anchor is not None:
+      vehicle_clock = self.infotainment_clock_time + int(time.monotonic() - self.infotainment_clock_anchor)
+    else:
+      vehicle_clock = int(time.time())
+    expires_at = vehicle_clock + 10
     msg, req_uuid = build_infotainment_command(
       self.infotainment_key, self.public_key_bytes, self.routing_address,
       self.vin, self.infotainment_epoch, self.infotainment_counter,
@@ -673,7 +681,12 @@ class TeslaSession:
       try:
         response = await asyncio.wait_for(self.rx_queue.get(), timeout=2.0)
         parsed = parse_routable_response(response)
-        log.info(f"infotainment rx parsed={parsed} raw={response.hex()}")
+        log.info(f"infotainment rx parsed={parsed}")
+        # if the car returned a fresh session_info, re-anchor the clock
+        si = parsed.get('session_info')
+        if si and si.get('clock_time') is not None:
+          self.infotainment_clock_time = si['clock_time']
+          self.infotainment_clock_anchor = time.monotonic()
         if parsed.get('request_uuid') != req_uuid:
           continue
         ms = parsed.get('message_status') or {}
