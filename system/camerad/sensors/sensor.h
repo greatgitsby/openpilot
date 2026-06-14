@@ -15,6 +15,12 @@
 
 #define ANALOG_GAIN_MAX_CNT 55
 
+// MIPI CSI-2 data type codes (frame_data_type / ISP in-port .dt).
+// Standard MIPI values; previously pulled in from the AGNOS msm_cam_sensor.h
+// headers, which the recent camera_kt UAPI does not provide.
+#define CSI_RAW10 0x2B
+#define CSI_RAW12 0x2C
+
 class SensorInfo {
 public:
   SensorInfo() = default;

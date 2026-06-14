@@ -1105,7 +1105,7 @@ void SpectraCamera::configISP() {
     .batch_size = 0x0,
     .dsp_mode = CAM_ISP_DSP_MODE_NONE,
     .hbi_cnt = 0x0,
-    .custom_csid = 0x0,
+    // .custom_csid removed: not present in recent camera_kt v0 cam_isp_in_port_info
 
     // ISP outputs
     .num_out_res = 0x1,
@@ -1278,11 +1278,12 @@ void SpectraCamera::configCSIPHY() {
     buf_desc[0].size = buf_desc[0].length = sizeof(struct cam_csiphy_info);
     buf_desc[0].type = CAM_CMD_BUF_GENERIC;
 
+    // recent camera_kt cam_csiphy_info dropped lane_mask/csiphy_3phase/combo_mode;
+    // 2-phase DPHY / no-combo is now expressed via mipi_flags=0 and the acquire dev info.
     auto csiphy_info = m->mem_mgr.alloc<struct cam_csiphy_info>(buf_desc[0].size, (uint32_t*)&buf_desc[0].mem_handle);
-    csiphy_info->lane_mask = 0x1f;
+    csiphy_info->reserved = 0x0;
     csiphy_info->lane_assign = 0x3210;// skip clk. How is this 16 bit for 5 channels??
-    csiphy_info->csiphy_3phase = 0x0; // no 3 phase, only 2 conductors per lane
-    csiphy_info->combo_mode = 0x0;
+    csiphy_info->mipi_flags = 0x0;    // DPHY, no combo
     csiphy_info->lane_cnt = 0x4;
     csiphy_info->secure_mode = 0x0;
     csiphy_info->settle_time = MIPI_SETTLE_CNT * 200000000ULL;
