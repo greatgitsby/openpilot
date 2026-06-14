@@ -17,6 +17,8 @@
 #include "system/camerad/cameras/ife.h"
 #include "system/camerad/cameras/nv12_info.h"
 #include "system/camerad/cameras/spectra.h"
+#include "system/camerad/cameras/spectra_uapi_version.h"
+#include "system/camerad/cameras/spectra_device_nodes.h"
 #include "system/camerad/cameras/bps_blobs.h"
 
 
@@ -132,6 +134,19 @@ static cam_cmd_power *power_set_wait(cam_cmd_power *power, int16_t delay_ms) {
   return (struct cam_cmd_power *)(unconditional_wait + 1);
 }
 
+// Bytes for one power-command block: header + count power_settings entries.
+static constexpr size_t power_block_size(int count) {
+  return sizeof(struct cam_cmd_power) + (count - 1) * sizeof(struct cam_power_settings);
+}
+
+// Exact size of the sensor probe power buffer, computed from sizeof so it tracks
+// UAPI struct changes. Mirrors the power-command sequence in openSensor():
+// six blocks each followed by an unconditional_wait, then a final block.
+static constexpr size_t kProbePowerBufSize =
+    power_block_size(4) + sizeof(struct cam_cmd_unconditional_wait) +  // power on
+    (power_block_size(1) + sizeof(struct cam_cmd_unconditional_wait)) * 5 +  // clock/reset/power-down steps
+    power_block_size(3);  // power off (no trailing wait)
+
 // *** MemoryManager ***
 
 void *MemoryManager::alloc_buf(int size, uint32_t *handle) {
@@ -175,14 +190,23 @@ MemoryManager::~MemoryManager() {
 // *** SpectraMaster ***
 
 void SpectraMaster::init() {
-  LOG("-- Opening devices");
-  // video0 is req_mgr, the target of many ioctls
-  video0_fd = HANDLE_EINTR(open("/dev/v4l/by-path/platform-soc:qcom_cam-req-mgr-video-index0", O_RDWR | O_NONBLOCK));
-  assert(video0_fd >= 0);
-  LOGD("opened video0");
+  // ABI banner: makes a header/driver UAPI mismatch obvious in device logs.
+  LOGW("Spectra UAPI: %s | CAM_COMMON_OPCODE_MAX=0x%x sizeof(req_mgr_sched)=%zu sizeof(csiphy_info)=%zu sizeof(isp_in_port)=%zu",
+       spectra_uapi_version(), CAM_COMMON_OPCODE_MAX,
+       sizeof(struct cam_req_mgr_sched_request), sizeof(struct cam_csiphy_info),
+       sizeof(struct cam_isp_in_port_info));
 
-  // video1 is cam_sync, the target of some ioctls
-  cam_sync_fd = HANDLE_EINTR(open("/dev/v4l/by-path/platform-cam_sync-video-index0", O_RDWR | O_NONBLOCK));
+  LOG("-- Opening devices");
+  // video0 is req_mgr, the target of many ioctls. Discover by sysfs name, with
+  // the legacy by-path string as fallback.
+  video0_fd = open_v4l_video_by_name("cam-req-mgr",
+                                     "/dev/v4l/by-path/platform-soc:qcom_cam-req-mgr-video-index0");
+  assert(video0_fd >= 0);
+  LOGD("opened video0 (cam-req-mgr)");
+
+  // video1 is cam_sync, the target of some ioctls.
+  cam_sync_fd = open_v4l_video_by_name("cam_sync",
+                                       "/dev/v4l/by-path/platform-cam_sync-video-index0");
   assert(cam_sync_fd >= 0);
   LOGD("opened video1 (cam_sync)");
 
@@ -384,8 +408,9 @@ int SpectraCamera::sensors_init() {
   probe->expected_data = sensor->probe_expected_data;
   probe->data_mask = 0;
 
-  //buf_desc[1].size = buf_desc[1].length = 148;
-  buf_desc[1].size = buf_desc[1].length = 196;
+  // computed from sizeof so it tracks UAPI struct sizes (was hardcoded 196,
+  // which underflows the recent camera_kt layout).
+  buf_desc[1].size = buf_desc[1].length = kProbePowerBufSize;
   buf_desc[1].type = CAM_CMD_BUF_I2C;
   auto power_settings = m->mem_mgr.alloc<struct cam_cmd_power>(buf_desc[1].size, (uint32_t*)&buf_desc[1].mem_handle);
 
