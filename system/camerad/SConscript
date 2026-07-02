@@ -16,3 +16,7 @@ if arch != "Darwin":
 
 if GetOption("extras") and arch == "x86_64":
   env.Program('test/test_ae_gray', ['test/test_ae_gray.cc', camera_obj], LIBS=libs)
+
+# vamos-dbg: standalone multi-camera snapshot (camerad-less bring-up probe).
+if arch != "Darwin":
+  env.Program("snapshot_standalone", ["snapshot_standalone.cc", camera_obj], LIBS=libs)

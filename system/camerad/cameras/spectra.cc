@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <stdint.h>
 #include <cassert>
+#include <cstring>  // vamos-dbg: strerror
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 
@@ -22,6 +23,13 @@
 #include "system/camerad/cameras/bps_blobs.h"
 
 
+// vamos-dbg: verbose camera bring-up tracing for the mainline Spectra port.
+// Every line is prefixed "vamos-dbg" so it is trivially greppable in dmesg /
+// the camerad log. Strip this whole instrumentation before landing the port.
+#define VDBG(fmt, ...) LOGE("vamos-dbg " fmt, ## __VA_ARGS__)
+// per-camera variant: most call sites have `cc.camera_num` in scope
+#define VDBGC(fmt, ...) LOGE("vamos-dbg cam%d " fmt, cc.camera_num, ## __VA_ARGS__)
+
 // ************** low level camera helpers ****************
 
 int do_cam_control(int fd, int op_code, void *handle, int size) {
@@ -39,6 +47,10 @@ int do_cam_control(int fd, int op_code, void *handle, int size) {
   int ret = HANDLE_EINTR(ioctl(fd, VIDIOC_CAM_CONTROL, &camcontrol));
   if (ret == -1) {
     LOGE("VIDIOC_CAM_CONTROL error: op_code %d - errno %d", op_code, errno);
+    VDBG("CAM_CONTROL FAIL fd=%d op_code=0x%X size=%d handle_type=%d -> ret=%d errno=%d(%s)",
+         fd, op_code, camcontrol.size, camcontrol.handle_type, ret, errno, strerror(errno));
+  } else {
+    VDBG("CAM_CONTROL ok   fd=%d op_code=0x%X size=%d -> ret=%d", fd, op_code, camcontrol.size, ret);
   }
   return ret;
 }
@@ -71,6 +83,8 @@ std::optional<int32_t> device_acquire(int fd, int32_t session_handle, void *data
     .resource_hdl = (uint64_t)data,
   };
   int err = do_cam_control(fd, CAM_ACQUIRE_DEV, &cmd, sizeof(cmd));
+  VDBG("device_acquire fd=%d session=0x%X num_resources=%u -> err=%d dev_handle=0x%X",
+       fd, session_handle, cmd.num_resources, err, err == 0 ? cmd.dev_handle : 0);
   return err == 0 ? std::make_optional(cmd.dev_handle) : std::nullopt;
 }
 
@@ -80,13 +94,19 @@ int device_config(int fd, int32_t session_handle, int32_t dev_handle, uint64_t p
     .dev_handle = dev_handle,
     .packet_handle = packet_handle,
   };
-  return do_cam_control(fd, CAM_CONFIG_DEV, &cmd, sizeof(cmd));
+  int ret = do_cam_control(fd, CAM_CONFIG_DEV, &cmd, sizeof(cmd));
+  VDBG("device_config fd=%d session=0x%X dev_handle=0x%X packet_handle=0x%llX -> ret=%d",
+       fd, session_handle, dev_handle, (unsigned long long)packet_handle, ret);
+  return ret;
 }
 
 int device_control(int fd, int op_code, int session_handle, int dev_handle) {
   // start stop and release are all the same
   struct cam_start_stop_dev_cmd cmd { .session_handle = session_handle, .dev_handle = dev_handle };
-  return do_cam_control(fd, op_code, &cmd, sizeof(cmd));
+  int ret = do_cam_control(fd, op_code, &cmd, sizeof(cmd));
+  VDBG("device_control fd=%d op_code=0x%X session=0x%X dev_handle=0x%X -> ret=%d",
+       fd, op_code, session_handle, dev_handle, ret);
+  return ret;
 }
 
 void *alloc_w_mmu_hdl(int video0_fd, int len, uint32_t *handle, int align, int flags, int mmu_hdl, int mmu_hdl2) {
@@ -113,7 +133,9 @@ void *alloc_w_mmu_hdl(int video0_fd, int len, uint32_t *handle, int align, int f
     assert(ptr != MAP_FAILED);
   }
 
-  // LOGD("allocated: %x %d %llx mapped %p", mem_mgr_alloc_cmd.out.buf_handle, mem_mgr_alloc_cmd.out.fd, mem_mgr_alloc_cmd.out.vaddr, ptr);
+  VDBG("alloc_w_mmu_hdl len=%d align=%d flags=0x%X mmu_hdl=0x%X/0x%X -> buf_handle=0x%X fd=%d vaddr=0x%llX mapped=%p",
+       len, align, flags, mmu_hdl, mmu_hdl2, mem_mgr_alloc_cmd.out.buf_handle,
+       mem_mgr_alloc_cmd.out.fd, (unsigned long long)mem_mgr_alloc_cmd.out.vaddr, ptr);
 
   return ptr;
 }
@@ -197,25 +219,32 @@ void SpectraMaster::init() {
        sizeof(struct cam_isp_in_port_info));
 
   LOG("-- Opening devices");
+  VDBG("SpectraMaster::init START");
   // video0 is req_mgr, the target of many ioctls. Discover by sysfs name, with
   // the legacy by-path string as fallback.
   video0_fd = open_v4l_video_by_name("cam-req-mgr",
                                      "/dev/v4l/by-path/platform-soc:qcom_cam-req-mgr-video-index0");
+  VDBG("open cam-req-mgr (video0) -> fd=%d errno=%d(%s)", (int)video0_fd, video0_fd < 0 ? errno : 0,
+       video0_fd < 0 ? strerror(errno) : "ok");
   assert(video0_fd >= 0);
   LOGD("opened video0 (cam-req-mgr)");
 
   // video1 is cam_sync, the target of some ioctls.
   cam_sync_fd = open_v4l_video_by_name("cam_sync",
                                        "/dev/v4l/by-path/platform-cam_sync-video-index0");
+  VDBG("open cam_sync (video1) -> fd=%d errno=%d(%s)", (int)cam_sync_fd, cam_sync_fd < 0 ? errno : 0,
+       cam_sync_fd < 0 ? strerror(errno) : "ok");
   assert(cam_sync_fd >= 0);
   LOGD("opened video1 (cam_sync)");
 
   // looks like there's only one of these
   isp_fd = open_v4l_by_name_and_index("cam-isp");
+  VDBG("open cam-isp -> fd=%d", (int)isp_fd);
   assert(isp_fd >= 0);
   LOGD("opened isp %d", (int)isp_fd);
 
   icp_fd = open_v4l_by_name_and_index("cam-icp");
+  VDBG("open cam-icp -> fd=%d", (int)icp_fd);
   assert(icp_fd >= 0);
   LOGD("opened icp %d", (int)icp_fd);
 
@@ -232,6 +261,7 @@ void SpectraMaster::init() {
   LOGD("using MMU handle: %x", isp_query_cap_cmd.cdm_iommu.non_secure);
   device_iommu = isp_query_cap_cmd.device_iommu.non_secure;
   cdm_iommu = isp_query_cap_cmd.cdm_iommu.non_secure;
+  VDBG("ISP MMU handles: device_iommu=0x%X cdm_iommu=0x%X", device_iommu, cdm_iommu);
 
   // query ICP for MMU handles
   struct cam_icp_query_cap_cmd icp_query_cap_cmd = {0};
@@ -249,8 +279,11 @@ void SpectraMaster::init() {
   sub.id = V4L_EVENT_CAM_REQ_MGR_SOF_BOOT_TS;
   ret = HANDLE_EINTR(ioctl(video0_fd, VIDIOC_SUBSCRIBE_EVENT, &sub));
   LOGD("req mgr subscribe: %d", ret);
+  VDBG("icp_device_iommu=0x%X ; req-mgr subscribe SOF_BOOT_TS -> ret=%d", icp_device_iommu, ret);
 
   mem_mgr.init(video0_fd);
+  VDBG("SpectraMaster::init DONE (video0=%d cam_sync=%d isp=%d icp=%d)",
+       (int)video0_fd, (int)cam_sync_fd, (int)isp_fd, (int)icp_fd);
 }
 
 // *** SpectraCamera ***
@@ -298,7 +331,10 @@ int SpectraCamera::clear_req_queue() {
 }
 
 void SpectraCamera::camera_open(VisionIpcServer *v) {
+  VDBGC("camera_open START phy=0x%X stream_type=%d output_type=%d enabled=%d",
+        cc.phy, cc.stream_type, cc.output_type, enabled);
   if (!openSensor()) {
+    VDBGC("camera_open ABORT — openSensor() failed (sensor disabled)");
     return;
   }
 
@@ -311,23 +347,34 @@ void SpectraCamera::camera_open(VisionIpcServer *v) {
   // the video encoder has certain alignment requirements in this case
   std::tie(stride, y_height, uv_height, yuv_size) = get_nv12_info(buf.out_img_width, buf.out_img_height);
   uv_offset = stride * y_height;
+  VDBGC("geometry: frame=%ux%u out_img=%ux%u stride=%u y_height=%u uv_height=%u uv_offset=%u yuv_size=%u",
+        sensor->frame_width, sensor->frame_height, buf.out_img_width, buf.out_img_height,
+        stride, y_height, uv_height, uv_offset, yuv_size);
 
   open = true;
+  VDBGC("-> configISP");
   configISP();
-  if (cc.output_type == ISP_BPS_PROCESSED) configICP();
+  if (cc.output_type == ISP_BPS_PROCESSED) { VDBGC("-> configICP"); configICP(); }
+  VDBGC("-> configCSIPHY");
   configCSIPHY();
+  VDBGC("-> linkDevices");
   linkDevices();
 
   LOGD("camera init %d", cc.camera_num);
+  VDBGC("-> buf.init + camera_map_bufs + clearAndRequeue(1)");
   buf.init(this, v, ife_buf_depth, cc.stream_type);
   camera_map_bufs();
   clearAndRequeue(1);
+  VDBGC("camera_open DONE (session=0x%X sensor_dh=0x%X isp_dh=0x%X csiphy_dh=0x%X icp_dh=0x%X link=0x%X)",
+        session_handle, sensor_dev_handle, isp_dev_handle, csiphy_dev_handle, icp_dev_handle, link_handle);
 }
 
 void SpectraCamera::sensors_start() {
-  if (!enabled) return;
+  if (!enabled) { VDBGC("sensors_start SKIP (disabled)"); return; }
   LOGD("starting sensor %d", cc.camera_num);
+  VDBGC("sensors_start: writing start_reg_array (%zu regs) — streamon", sensor->start_reg_array.size());
   sensors_i2c(sensor->start_reg_array.data(), sensor->start_reg_array.size(), CAM_SENSOR_PACKET_OPCODE_SENSOR_CONFIG, sensor->data_word);
+  VDBGC("sensors_start DONE");
 }
 
 void SpectraCamera::sensors_poke(int request_id) {
@@ -371,8 +418,10 @@ void SpectraCamera::sensors_i2c(const struct i2c_random_wr_payload* dat, int len
   memcpy(i2c_random_wr->random_wr_payload, dat, len*sizeof(struct i2c_random_wr_payload));
 
   int ret = device_config(sensor_fd, session_handle, sensor_dev_handle, cam_packet_handle);
+  VDBGC("sensors_i2c: op_code=0x%X %d regs data_word=%d -> ret=%d", op_code, len, data_word, ret);
   if (ret != 0) {
     LOGE("** sensor %d FAILED i2c, disabling", cc.camera_num);
+    VDBGC("sensors_i2c FAILED -> disabling camera");
     enabled = false;
     return;
   }
@@ -469,8 +518,12 @@ int SpectraCamera::sensors_init() {
   power->power_settings[1].power_seq_type = 1;
   power->power_settings[2].power_seq_type = 3;
 
+  VDBGC("sensors_init: PROBE slave_addr=0x%X freq_mode=%d(fast) reg_addr=0x%X expected_data=0x%X data/addr_type=WORD",
+        i2c_info->slave_addr, i2c_info->i2c_freq_mode, sensor->probe_reg_addr, sensor->probe_expected_data);
   int ret = do_cam_control(sensor_fd, CAM_SENSOR_PROBE_CMD, (void *)(uintptr_t)cam_packet_handle, 0);
   LOGD("probing the sensor: %d", ret);
+  VDBGC("sensors_init: CAM_SENSOR_PROBE_CMD -> ret=%d %s (chip-id read; expected 0x%X)",
+        ret, ret == 0 ? "PROBE OK" : "PROBE FAIL (NACK / chip-id mismatch)", sensor->probe_expected_data);
   return ret;
 }
 
@@ -1060,12 +1113,14 @@ void SpectraCamera::camera_map_bufs() {
 
 bool SpectraCamera::openSensor() {
   sensor_fd = open_v4l_by_name_and_index("cam-sensor-driver", cc.camera_num);
+  VDBGC("openSensor: open cam-sensor-driver[%d] -> fd=%d", cc.camera_num, (int)sensor_fd);
   assert(sensor_fd >= 0);
   LOGD("opened sensor for %d", cc.camera_num);
 
   LOGD("-- Probing sensor %d", cc.camera_num);
 
   auto init_sensor_lambda = [this](SensorInfo *s) {
+    VDBGC("openSensor: trying sensor type, probe expected 0x%X @reg 0x%X", s->probe_expected_data, s->probe_reg_addr);
     sensor.reset(s);
     return (sensors_init() == 0);
   };
@@ -1074,16 +1129,19 @@ bool SpectraCamera::openSensor() {
   if (!init_sensor_lambda(new OS04C10) &&
       !init_sensor_lambda(new OX03C10)) {
     LOGE("** sensor %d FAILED bringup, disabling", cc.camera_num);
+    VDBGC("openSensor: ALL sensor probes FAILED -> disabling camera (this is the CCI chip-id NACK gate)");
     enabled = false;
     return false;
   }
   LOGD("-- Probing sensor %d success", cc.camera_num);
+  VDBGC("openSensor: PROBE SUCCESS — detected sensor, expected 0x%X matched", sensor->probe_expected_data);
 
   // create session
   struct cam_req_mgr_session_info session_info = {};
   int ret = do_cam_control(m->video0_fd, CAM_REQ_MGR_CREATE_SESSION, &session_info, sizeof(session_info));
   LOGD("get session: %d 0x%X", ret, session_info.session_hdl);
   session_handle = session_info.session_hdl;
+  VDBGC("openSensor: CREATE_SESSION -> ret=%d session_handle=0x%X", ret, session_handle);
 
   // access the sensor
   LOGD("-- Accessing sensor");
@@ -1091,9 +1149,12 @@ bool SpectraCamera::openSensor() {
   assert(sensor_dev_handle_);
   sensor_dev_handle = *sensor_dev_handle_;
   LOGD("acquire sensor dev");
+  VDBGC("openSensor: acquired sensor_dev_handle=0x%X", sensor_dev_handle);
 
   LOG("-- Configuring sensor");
+  VDBGC("openSensor: writing init_reg_array (%zu regs)", sensor->init_reg_array.size());
   sensors_i2c(sensor->init_reg_array.data(), sensor->init_reg_array.size(), CAM_SENSOR_PACKET_OPCODE_SENSOR_CONFIG, sensor->data_word);
+  VDBGC("openSensor DONE");
   return true;
 }
 
@@ -1159,10 +1220,13 @@ void SpectraCamera::configISP() {
     .length = sizeof(in_port_info),
   };
 
+  VDBGC("configISP: acquiring ISP res_type(phy)=0x%X dt=0x%X format=0x%X %ux%u",
+        cc.phy, sensor->frame_data_type, sensor->mipi_format, sensor->frame_width, sensor->frame_height);
   auto isp_dev_handle_ = device_acquire(m->isp_fd, session_handle, &isp_resource);
   assert(isp_dev_handle_);
   isp_dev_handle = *isp_dev_handle_;
   LOGD("acquire isp dev");
+  VDBGC("configISP: acquired isp_dev_handle=0x%X", isp_dev_handle);
 
   // allocate IFE memory, then configure it
   ife_cmd.init(m, 67984, 0x20, false, m->device_iommu, m->cdm_iommu, ife_buf_depth);
@@ -1280,6 +1344,7 @@ void SpectraCamera::configICP() {
 
 void SpectraCamera::configCSIPHY() {
   csiphy_fd = open_v4l_by_name_and_index("cam-csiphy-driver", cc.camera_num);
+  VDBGC("configCSIPHY: open cam-csiphy-driver[%d] -> fd=%d", cc.camera_num, (int)csiphy_fd);
   assert(csiphy_fd >= 0);
   LOGD("opened csiphy for %d", cc.camera_num);
 
@@ -1288,6 +1353,7 @@ void SpectraCamera::configCSIPHY() {
   assert(csiphy_dev_handle_);
   csiphy_dev_handle = *csiphy_dev_handle_;
   LOGD("acquire csiphy dev");
+  VDBGC("configCSIPHY: acquired csiphy_dev_handle=0x%X settle_cnt=%d data_rate=48000000", csiphy_dev_handle, MIPI_SETTLE_CNT);
 
   // config csiphy
   LOG("-- Config CSI PHY");
@@ -1315,12 +1381,15 @@ void SpectraCamera::configCSIPHY() {
     csiphy_info->data_rate = 48000000;  // Calculated by camera_freqs.py
 
     int ret_ = device_config(csiphy_fd, session_handle, csiphy_dev_handle, cam_packet_handle);
+    VDBGC("configCSIPHY: device_config -> ret=%d", ret_);
     assert(ret_ == 0);
   }
+  VDBGC("configCSIPHY DONE");
 }
 
 void SpectraCamera::linkDevices() {
   LOG("-- Link devices");
+  VDBGC("linkDevices START");
   struct cam_req_mgr_link_info req_mgr_link_info = {0};
   req_mgr_link_info.session_hdl = session_handle;
   req_mgr_link_info.num_devices = 2;
@@ -1341,15 +1410,19 @@ void SpectraCamera::linkDevices() {
 
   ret = device_control(csiphy_fd, CAM_START_DEV, session_handle, csiphy_dev_handle);
   LOGD("start csiphy: %d", ret);
+  VDBGC("linkDevices: START_DEV csiphy -> ret=%d", ret);
   assert(ret == 0);
   ret = device_control(m->isp_fd, CAM_START_DEV, session_handle, isp_dev_handle);
   LOGD("start isp: %d", ret);
+  VDBGC("linkDevices: START_DEV isp -> ret=%d", ret);
   assert(ret == 0);
   if (cc.output_type == ISP_BPS_PROCESSED) {
     ret = device_control(m->icp_fd, CAM_START_DEV, session_handle, icp_dev_handle);
     LOGD("start icp: %d", ret);
+    VDBGC("linkDevices: START_DEV icp -> ret=%d", ret);
     assert(ret == 0);
   }
+  VDBGC("linkDevices DONE");
 }
 
 void SpectraCamera::camera_close() {
@@ -1427,6 +1500,9 @@ bool SpectraCamera::handle_camera_event(const cam_req_mgr_message *event_data) {
   uint64_t frame_id_raw = event_data->u.frame_msg.frame_id;  // raw as opposed to our re-indexed frame ID
   uint64_t timestamp = event_data->u.frame_msg.timestamp;    // timestamped in the kernel's SOF IRQ callback
   //LOGD("handle cam %d ts %lu req id %lu frame id %lu", cc.camera_num, timestamp, request_id, frame_id_raw);
+  VDBGC("SOF event: req_id=%lu frame_id_raw=%lu ts=%.3fms sof_status=%d (last_req=%lu last_raw=%lu)",
+        request_id, frame_id_raw, timestamp / 1e6, event_data->u.frame_msg.sof_status,
+        request_id_last, frame_id_raw_last);
 
   // if there's a lag, some more frames could have already come in before
   // we cleared the queue, so we'll still get them with valid (> 0) request IDs.
@@ -1523,6 +1599,8 @@ bool SpectraCamera::waitForFrameReady(uint64_t request_id) {
     bool ret = do_sync_control(m->cam_sync_fd, CAM_SYNC_WAIT, &sync_wait, sizeof(sync_wait)) == 0;
     double et = millis_since_boot();
     if (!ret) LOGE("camera %d %s failed after %.2fms", cc.camera_num, sync_type, et-st);
+    VDBGC("%s sync_obj=%u timeout=%dms -> %s after %.2fms", sync_type, sync_obj,
+          timeout_ms, ret ? "READY" : "TIMEOUT", et - st);
     return ret;
   };
 
@@ -1555,6 +1633,8 @@ bool SpectraCamera::processFrame(int buf_idx, uint64_t request_id, uint64_t fram
     .timestamp_eof = timestamp_eof,
     .processing_time = float((nanos_since_boot() - timestamp_eof) * 1e-9)
   };
+  VDBGC("processFrame OK: frame_id=%u req_id=%lu buf_idx=%d proc_time=%.2fms",
+        buf.cur_frame_data.frame_id, request_id, buf_idx, buf.cur_frame_data.processing_time * 1e3);
   return true;
 }
 
