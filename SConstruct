@@ -243,14 +243,24 @@ if arch == "larch64":
   SConscript(['system/camerad/SConscript'])
 
 # Build selfdrive
-SConscript([
+#
+# vamos-dbg: modeld's SConscript runs a tinygrad device probe at build time
+# (selfdrive/modeld/SConscript: probe_devices() -> subprocess check=True). On the
+# vamOS mainline kernel / comma four that probe can abort the whole scons build,
+# even when we only want camerad. Set NO_MODELD=1 to drop modeld from the build
+# so `scons system/camerad/camerad system/camerad/snapshot_standalone` runs to
+# completion on-device without hand-editing this file.
+selfdrive_sconscripts = [
   'selfdrive/pandad/SConscript',
   'selfdrive/controls/lib/lateral_mpc_lib/SConscript',
   'selfdrive/controls/lib/longitudinal_mpc_lib/SConscript',
   'selfdrive/locationd/SConscript',
   'selfdrive/modeld/SConscript',
   'selfdrive/ui/SConscript',
-])
+]
+if os.getenv('NO_MODELD') == '1':
+  selfdrive_sconscripts.remove('selfdrive/modeld/SConscript')
+SConscript(selfdrive_sconscripts)
 
 # Build desktop-only tools
 if GetOption('extras') and arch != "larch64":
