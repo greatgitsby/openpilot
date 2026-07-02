@@ -10,6 +10,7 @@ env = env.Clone()
 # v1.0.3 layout the migrated call sites target. Stopgap until the kernel build
 # installs headers to /usr; see third_party/qcom_spectra_uapi/README.md.
 env.PrependUnique(CPPPATH=[Dir('#third_party/qcom_spectra_uapi').abspath])
+env.Append(CCFLAGS=['-include', Dir('#third_party/qcom_spectra_uapi').abspath + '/uapi_compat.h'])
 
 libs = [common, messaging, visionipc]
 
