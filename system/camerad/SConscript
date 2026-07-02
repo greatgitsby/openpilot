@@ -1,5 +1,16 @@
 Import('env', 'arch', 'messaging', 'common', 'visionipc')
 
+env = env.Clone()
+
+# vamos-dbg: vendor the camera_kt v1.0.3 Spectra UAPI headers.
+# The vamOS mainline 6.18 kernel does not yet install the Qualcomm camera UAPI
+# headers to /usr, so `#include "media/cam_req_mgr.h"` (and friends) would either
+# not resolve or resolve to the stale AGNOS 4.9 layout. Prepend the vendored copy
+# (third_party/qcom_spectra_uapi) so every camerad object compiles against the
+# v1.0.3 layout the migrated call sites target. Stopgap until the kernel build
+# installs headers to /usr; see third_party/qcom_spectra_uapi/README.md.
+env.PrependUnique(CPPPATH=[Dir('#third_party/qcom_spectra_uapi').abspath])
+
 libs = [common, messaging, visionipc]
 
 if arch != "Darwin":
@@ -11,12 +22,9 @@ if arch != "Darwin":
   # TEMP(spectra-verify): standalone camera bring-up tool. Reuses the camerad
   # camera objects to bring every camera up through the Spectra stack, capture
   # one image each, and exit 0/1. Dev loop for the spectra UAPI migration; not
-  # for upstream. See tools/camera/README in vamOS for the build/run recipe.
+  # for upstream. Writes snap_{wide,road,driver}.{nv12,png} and exits 0 iff every
+  # enabled camera produced a frame.
   env.Program('snapshot_standalone', ['snapshot_standalone.cc', camera_obj], LIBS=libs)
 
 if GetOption("extras") and arch == "x86_64":
   env.Program('test/test_ae_gray', ['test/test_ae_gray.cc', camera_obj], LIBS=libs)
-
-# vamos-dbg: standalone multi-camera snapshot (camerad-less bring-up probe).
-if arch != "Darwin":
-  env.Program("snapshot_standalone", ["snapshot_standalone.cc", camera_obj], LIBS=libs)
