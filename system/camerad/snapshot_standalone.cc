@@ -242,6 +242,14 @@ int main(int argc, char *argv[]) {
             fwrite(yuv->addr, 1, yuv->len, f);
             fclose(f);
           }
+          // one-shot RAW (bayer RDI) dump for stride forensics
+          if (cam->cc.output_type == ISP_BPS_PROCESSED) {
+            VisionBuf *rb = &cam->buf.camera_bufs_raw[cam->buf.cur_buf_idx];
+            if (FILE *f = fopen((base + "_bayer.raw").c_str(), "wb")) {
+              fwrite(rb->addr, 1, rb->len, f);
+              fclose(f);
+            }
+          }
           std::vector<uint8_t> rgb;
           nv12_to_rgb(yuv, rgb);
           bool ok = write_png(base + ".png", rgb.data(), (int)yuv->width, (int)yuv->height);

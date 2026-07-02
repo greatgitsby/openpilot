@@ -670,18 +670,16 @@ void SpectraCamera::config_bps(int idx, int request_id) {
     cdm_len += write_cont((unsigned char *)bps_cdm_program_array.ptr + cdm_len, 0x1878, bps_lin_reg);
     cdm_len += write_cont((unsigned char *)bps_cdm_program_array.ptr + cdm_len, 0x1888, bps_lin_reg);
     cdm_len += write_cont((unsigned char *)bps_cdm_program_array.ptr + cdm_len, 0x1898, bps_lin_reg);
-    uint64_t addr;
-    cdm_len += write_dmi((unsigned char *)bps_cdm_program_array.ptr + cdm_len, &addr, sensor->linearization_lut.size()*sizeof(uint32_t), 0x1808, 1, CAM_CDM_CMD_DMI);
-    patches.push_back(addr - (uint64_t)bps_cdm_program_array.ptr);
+    // NOTE(sdm845 2018 ICP FW): no DMI commands in the BPS CDM program.
+    // The legacy-proven v0.11.0 stack runs the BPS with zero DMI writes
+    // (linearization DMI is commented out there, no gamma DMI); the 2018
+    // FW's CDM parser mis-handles CAM_CDM_CMD_DMI in the BPS program,
+    // corrupting the subsequent geometry programming (driver frame
+    // repeated 3x horizontally + dead bottom band). Keep the plain
+    // register writes, skip the DMI + its patches.
 
     // color correction
     cdm_len += write_cont((unsigned char *)bps_cdm_program_array.ptr + cdm_len, 0x2e68, bps_ccm_reg);
-
-    // gamma
-    for (uint8_t ch = 1; ch <= 3; ch++) {
-      cdm_len += write_dmi((unsigned char *)bps_cdm_program_array.ptr + cdm_len, &addr, sensor->gamma_lut_rgb.size()*sizeof(uint32_t), 0x3208, ch, CAM_CDM_CMD_DMI);
-      patches.push_back(addr - (uint64_t)bps_cdm_program_array.ptr);
-    }
 
     cdm_len += build_common_ife_bps((unsigned char *)bps_cdm_program_array.ptr + cdm_len, cc, sensor.get(), patches, false);
 
@@ -797,14 +795,7 @@ void SpectraCamera::config_bps(int idx, int request_id) {
     assert(patches.size() == 0 || patches.size() == 4);
     pkt->patch_offset = sizeof(struct cam_cmd_buf_desc)*pkt->num_cmd_buf + sizeof(struct cam_buf_io_cfg)*pkt->num_io_configs;
 
-    if (patches.size() > 0) {
-      // linearization LUT
-      add_patch(pkt.get(), bps_cdm_program_array.handle, patches[0], bps_linearization_lut.handle, 0);
-      // gamma LUTs
-      for (int i = 0; i < 3; i++) {
-        add_patch(pkt.get(), bps_cdm_program_array.handle, patches[i+1], bps_gamma_lut.handle, 0);
-      }
-    }
+    assert(patches.size() == 0);  // no BPS DMI patches on the 2018 FW (see note above)
 
     // input frame
     add_patch(pkt.get(), bps_cmd.handle, buf_desc[0].offset + offsetof(bps_tmp, frames[0].ptr[0]), buf_handle_raw[idx], 0);
