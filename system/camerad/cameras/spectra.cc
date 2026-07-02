@@ -1131,6 +1131,14 @@ bool SpectraCamera::openSensor() {
 
   auto init_sensor_lambda = [this](SensorInfo *s) {
     VDBGC("openSensor: trying sensor type, probe expected 0x%X @reg 0x%X", s->probe_expected_data, s->probe_reg_addr);
+    // OS04C10: full-res + downscale only on the IFE outputs (road/wide).
+    // The BPS (driver cam) keeps the sensor-binned 1344x760 mode: the
+    // sdm845 2018 ICP FW mishandles the BPS downscale striping (image
+    // repeated 3x horizontally + dead band), and the legacy stack never
+    // used it either.
+    if (s->image_sensor == cereal::FrameData::ImageSensor::OS04C10 && cc.output_type == ISP_IFE_PROCESSED) {
+      ((OS04C10*)s)->ife_downscale_configure();
+    }
     sensor.reset(s);
     return (sensors_init() == 0);
   };
