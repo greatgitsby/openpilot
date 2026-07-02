@@ -11,6 +11,7 @@ env = env.Clone()
 # installs headers to /usr; see third_party/qcom_spectra_uapi/README.md.
 env.PrependUnique(CPPPATH=[Dir('#third_party/qcom_spectra_uapi').abspath])
 env.Append(CCFLAGS=['-include', Dir('#third_party/qcom_spectra_uapi').abspath + '/uapi_compat.h'])
+env.Append(CCFLAGS=['-Wno-gnu-variable-sized-type-not-at-end'])
 
 libs = [common, messaging, visionipc]
 
