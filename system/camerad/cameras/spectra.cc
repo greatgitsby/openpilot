@@ -696,7 +696,9 @@ void SpectraCamera::config_bps(int idx, int request_id) {
     tmp.header = CAM_ICP_CMD_GENERIC_BLOB_CLK;
     tmp.header |= (sizeof(cam_icp_clk_bw_request)) << 8;
     tmp.clk.budget_ns = 0x1fca058;
-    tmp.clk.frame_cycles = sensor->frame_width * sensor->frame_height; // matches striping lib pixelCount
+    // from the BPSStripingLib for the binned 1344x760 pipeline (v0.11.0
+    // value; must match the precomputed bps_blobs.h striping output)
+    tmp.clk.frame_cycles = 2329024;
     tmp.clk.rt_flag = 0x0;
     tmp.clk.uncompressed_bw = 0x38512180;
     tmp.clk.compressed_bw = 0x38512180;
@@ -1325,7 +1327,7 @@ void SpectraCamera::configICP() {
 
   // used internally by the BPS, we just allocate it.
   // size comes from the BPSStripingLib
-  bps_cdm_striping_bl.init(m, 0xcfe0, 0x20, true, m->icp_device_iommu);
+  bps_cdm_striping_bl.init(m, 0xa100, 0x20, true, m->icp_device_iommu);
 
   if (sensor->out_scale > 1) {
     uint32_t full_stride, full_y_h, full_uv_h, full_yuv_size;
