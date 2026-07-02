@@ -176,6 +176,7 @@ int main(int argc, char *argv[]) {
 
   SpectraMaster m;
   m.init();
+  if (getenv("STOP_AFTER_INIT")) { LOG("-- STOP_AFTER_INIT"); return 42; }
 
   std::vector<std::unique_ptr<SpectraCamera>> cams;
   for (const auto &config : ALL_CAMERA_CONFIGS) {
@@ -183,6 +184,7 @@ int main(int argc, char *argv[]) {
     cam->camera_open(&v);
     cams.emplace_back(std::move(cam));
   }
+  if (getenv("STOP_AFTER_OPEN")) { LOG("-- STOP_AFTER_OPEN"); return 42; }
   v.start_listener();
 
   LOG("-- starting devices");
@@ -196,6 +198,7 @@ int main(int argc, char *argv[]) {
   int n_enabled = 0, n_captured = 0;
   for (auto &cam : cams) if (cam->enabled) n_enabled++;
 
+  if (getenv("STOP_AFTER_START")) { LOG("-- STOP_AFTER_START"); return 42; }
   LOG("-- dequeueing video events (%d enabled cameras)", n_enabled);
   int idle_polls = 0;
   while (n_captured < n_enabled && idle_polls < 20) {
