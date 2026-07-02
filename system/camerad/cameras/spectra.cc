@@ -316,12 +316,19 @@ int SpectraCamera::clear_req_queue() {
   }
 
   // for "realtime" devices
-  struct cam_req_mgr_flush_info req_mgr_flush_request = {0};
-  req_mgr_flush_request.session_hdl = session_handle;
-  req_mgr_flush_request.link_hdl = link_handle;
-  req_mgr_flush_request.flush_type = CAM_REQ_MGR_FLUSH_TYPE_ALL;
-  int ret = do_cam_control(m->video0_fd, CAM_REQ_MGR_FLUSH_REQ, &req_mgr_flush_request, sizeof(req_mgr_flush_request));
-  LOGD("flushed all req: %d", ret);  // returns a "time until timeout" on clearing the workq
+  // camera_kt: a CRM flush-all moves the ISP context to CAM_CTX_FLUSHED,
+  // which rejects update packets until a fresh INIT+START_DEV. Skip the
+  // flush when nothing was ever queued (startup path) so the context
+  // stays ACTIVATED.
+  int ret = 0;
+  if (ever_queued) {
+    struct cam_req_mgr_flush_info req_mgr_flush_request = {0};
+    req_mgr_flush_request.session_hdl = session_handle;
+    req_mgr_flush_request.link_hdl = link_handle;
+    req_mgr_flush_request.flush_type = CAM_REQ_MGR_FLUSH_TYPE_ALL;
+    ret = do_cam_control(m->video0_fd, CAM_REQ_MGR_FLUSH_REQ, &req_mgr_flush_request, sizeof(req_mgr_flush_request));
+    LOGD("flushed all req: %d", ret);  // returns a "time until timeout" on clearing the workq
+  }
 
   for (int i = 0; i < MAX_IFE_BUFS; ++i) {
     destroySyncObjectAt(i);
@@ -379,7 +386,9 @@ void SpectraCamera::sensors_start() {
 
 void SpectraCamera::sensors_poke(int request_id) {
   uint32_t cam_packet_handle = 0;
-  int size = sizeof(struct cam_packet);
+  // kernel packet parser requires the buffer to be strictly larger than
+  // struct cam_packet (offset window check), pad the nop packet
+  int size = sizeof(struct cam_packet) + sizeof(uint64_t);
   auto pkt = m->mem_mgr.alloc<struct cam_packet>(size, &cam_packet_handle);
   pkt->num_cmd_buf = 0;
   pkt->kmd_cmd_buf_index = -1;
@@ -1021,6 +1030,7 @@ void SpectraCamera::config_ife(int idx, int request_id, bool init) {
 }
 
 void SpectraCamera::enqueue_frame(uint64_t request_id) {
+  ever_queued = true;
   int i = request_id % ife_buf_depth;
   assert(sync_objs_ife[i] == 0);
 
