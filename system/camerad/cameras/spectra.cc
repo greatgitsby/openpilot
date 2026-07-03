@@ -1585,7 +1585,15 @@ bool SpectraCamera::validateEvent(uint64_t request_id, uint64_t frame_id_raw) {
 void SpectraCamera::clearAndRequeue(uint64_t from_request_id) {
   // clear everything, then queue up a fresh set of frames
   LOGW("clearing and requeuing camera %d from %lu", cc.camera_num, from_request_id);
+  bool runtime_flush = ever_queued;
   clear_req_queue();
+  // camera_kt: a runtime CRM flush-all leaves the ISP context in CAM_CTX_FLUSHED,
+  // where update packets are rejected (EINVAL, "wrong state:4"). The driver's
+  // re-arm path is an INIT config packet: __cam_isp_ctx_config_dev_in_flushed
+  // resumes the HW and re-issues START_DEV internally, returning to ACTIVATED.
+  if (runtime_flush) {
+    config_ife(0, 1, true);
+  }
   last_requeue_ts = nanos_since_boot();
   for (uint64_t id = from_request_id; id < from_request_id + ife_buf_depth; ++id) {
     enqueue_frame(id);
