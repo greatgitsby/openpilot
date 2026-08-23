@@ -23,9 +23,6 @@ DESCRIPTIONS = {
     "In relaxed mode openpilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with " +
     "your steering wheel distance button."
   ),
-  "NavigationEnabled": tr_noop(
-    "Enable turn-by-turn navigation. Requires a Mapbox token in the MapboxToken param and a destination set from a shell."
-  ),
   "IsLdwEnabled": tr_noop(
     "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line " +
     "without a turn signal activated while driving over 31 mph (50 km/h)."
@@ -62,12 +59,6 @@ class TogglesLayout(Widget):
         DESCRIPTIONS["DisengageOnAccelerator"],
         "disengage_on_accelerator.png",
         False,
-      ),
-      "NavigationEnabled": (
-        lambda: tr("Enable Navigation"),
-        DESCRIPTIONS["NavigationEnabled"],
-        "road.png",
-        True,
       ),
       "IsLdwEnabled": (
         lambda: tr("Enable Lane Departure Warnings"),

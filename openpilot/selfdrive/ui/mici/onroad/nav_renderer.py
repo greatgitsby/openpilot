@@ -16,8 +16,6 @@ ICON_DIR = "navigation"
 ICON_PATH = f"{BASEDIR}/openpilot/selfdrive/assets/{ICON_DIR}"
 FALLBACK_ICON = "direction_invalid"
 
-CHIME_PATH = f"{BASEDIR}/openpilot/selfdrive/assets/sounds/warning.wav"
-
 METER_TO_FOOT = 3.28084
 METER_TO_MILE = 0.000621371
 
@@ -44,54 +42,23 @@ def _icon_name(maneuver_type: str, modifier: str) -> str:
   return f"{base}_{mod}" if mod else base
 
 
-class NavChime:
-  """Plays the prompt chime in the UI process. Falls back to silence if the audio device is unavailable."""
+class NavRenderer(Widget):
+  PANEL_WIDTH = 243
+  PADDING = 10
+  ICON_SIZE = 38
+  GAP = 3
+
+  DISTANCE_SIZE = 22
+  PRIMARY_SIZE = 15
+  ETA_SIZE = 12
 
   def __init__(self):
-    self._sound: rl.Sound | None = None
-    self._failed = False
-
-  def play(self) -> None:
-    if self._failed:
-      return
-
-    try:
-      if self._sound is None:
-        if not rl.is_audio_device_ready():
-          rl.init_audio_device()
-        if not rl.is_audio_device_ready():
-          self._failed = True
-          return
-        self._sound = rl.load_sound(CHIME_PATH)
-      rl.play_sound(self._sound)
-    except Exception:
-      self._failed = True
-
-
-class NavRenderer(Widget):
-  PANEL_WIDTH = 760
-  PADDING = 30
-  ICON_SIZE = 120
-
-  def __init__(self, scale: float = 1.0):
     super().__init__()
-    self._scale = scale
-
     self._font_bold: rl.Font = gui_app.font(FontWeight.BOLD)
     self._font_medium: rl.Font = gui_app.font(FontWeight.MEDIUM)
 
-    self._icon_size = round(self.ICON_SIZE * scale)
-    self._padding = round(self.PADDING * scale)
-    self._panel_width = round(self.PANEL_WIDTH * scale)
-    self._distance_size = round(70 * scale)
-    self._primary_size = round(48 * scale)
-    self._eta_size = round(36 * scale)
-
     self._available_icons = {f[:-4] for f in os.listdir(ICON_PATH) if f.endswith(".png")}
     self._textures: dict[str, rl.Texture] = {}
-
-    self._chime = NavChime()
-    self._lane_advice_prev = "none"
 
     self._valid = False
     self._icon: rl.Texture | None = None
@@ -106,7 +73,7 @@ class NavRenderer(Widget):
     if name not in self._available_icons:
       return None
     if name not in self._textures:
-      self._textures[name] = gui_app.texture(f"{ICON_DIR}/{name}.png", self._icon_size, self._icon_size)
+      self._textures[name] = gui_app.texture(f"{ICON_DIR}/{name}.png", self.ICON_SIZE, self.ICON_SIZE)
     return self._textures[name]
 
   def _lookup_icon(self, maneuver_type: str, modifier: str) -> rl.Texture | None:
@@ -144,10 +111,6 @@ class NavRenderer(Widget):
                    sm.recv_frame['navInstruction'] > ui_state.started_frame)
 
     advice = self._lane_advice()
-    if advice != self._lane_advice_prev:
-      if advice in LANE_ADVICE_TEXT and self._valid:
-        self._chime.play()
-      self._lane_advice_prev = advice
     self._advice_text = tr(LANE_ADVICE_TEXT[advice]) if advice in LANE_ADVICE_TEXT else ""
 
     if not self._valid:
@@ -158,39 +121,37 @@ class NavRenderer(Widget):
     self._distance_text = self._format_distance(instruction.maneuverDistance)
     self._eta_text = self._format_remaining(instruction)
 
-    text_width = self._panel_width - 3 * self._padding - self._icon_size
-    self._primary_lines = wrap_text(self._font_medium, instruction.maneuverPrimaryText, self._primary_size, text_width)[:2]
+    text_width = self.PANEL_WIDTH - 3 * self.PADDING - self.ICON_SIZE
+    self._primary_lines = wrap_text(self._font_medium, instruction.maneuverPrimaryText, self.PRIMARY_SIZE, text_width)[:2]
 
   def _render(self, rect: rl.Rectangle) -> None:
-    line_height = self._primary_size + round(8 * self._scale)
-    body_height = max(self._icon_size, self._distance_size + len(self._primary_lines) * line_height)
-    panel_height = body_height + 2 * self._padding + self._eta_size + round(10 * self._scale)
+    line_height = self.PRIMARY_SIZE + self.GAP
+    body_height = max(self.ICON_SIZE, self.DISTANCE_SIZE + len(self._primary_lines) * line_height)
+    panel_height = body_height + 2 * self.PADDING + self.ETA_SIZE + self.GAP
     if self._advice_text:
-      panel_height += self._primary_size + round(10 * self._scale)
+      panel_height += self.PRIMARY_SIZE + self.GAP
 
-    x = rect.x + self._padding
-    y = rect.y + self._padding
-    panel = rl.Rectangle(x, y, self._panel_width, panel_height)
-    rl.draw_rectangle_rounded(panel, 0.15, 10, COLORS.BG)
+    x = rect.x + self.PADDING
+    y = rect.y + self.PADDING
+    rl.draw_rectangle_rounded(rl.Rectangle(x, y, self.PANEL_WIDTH, panel_height), 0.15, 10, COLORS.BG)
 
-    text_x = x + self._padding
+    text_x = x + self.PADDING
     if self._icon is not None:
-      rl.draw_texture_ex(self._icon, rl.Vector2(x + self._padding, y + self._padding), 0, 1.0, rl.WHITE)
-      text_x += self._icon_size + self._padding
+      rl.draw_texture_ex(self._icon, rl.Vector2(text_x, y + self.PADDING), 0, 1.0, rl.WHITE)
+      text_x += self.ICON_SIZE + self.PADDING
 
-    text_y = y + self._padding
-    rl.draw_text_ex(self._font_bold, self._distance_text, rl.Vector2(text_x, text_y), self._distance_size, 0, COLORS.WHITE)
-    text_y += self._distance_size
+    text_y = y + self.PADDING
+    rl.draw_text_ex(self._font_bold, self._distance_text, rl.Vector2(text_x, text_y), self.DISTANCE_SIZE, 0, COLORS.WHITE)
+    text_y += self.DISTANCE_SIZE
 
     for line in self._primary_lines:
-      rl.draw_text_ex(self._font_medium, line, rl.Vector2(text_x, text_y), self._primary_size, 0, COLORS.WHITE)
+      rl.draw_text_ex(self._font_medium, line, rl.Vector2(text_x, text_y), self.PRIMARY_SIZE, 0, COLORS.WHITE)
       text_y += line_height
 
     if self._advice_text:
-      advice_width = measure_text_cached(self._font_bold, self._advice_text, self._primary_size).x
-      rl.draw_text_ex(self._font_bold, self._advice_text,
-                      rl.Vector2(x + (self._panel_width - advice_width) / 2, text_y), self._primary_size, 0, COLORS.ADVICE)
-      text_y += self._primary_size + round(10 * self._scale)
+      advice_width = measure_text_cached(self._font_bold, self._advice_text, self.PRIMARY_SIZE).x
+      rl.draw_text_ex(self._font_bold, self._advice_text, rl.Vector2(x + (self.PANEL_WIDTH - advice_width) / 2, text_y),
+                      self.PRIMARY_SIZE, 0, COLORS.ADVICE)
 
-    eta_y = y + panel_height - self._padding - self._eta_size
-    rl.draw_text_ex(self._font_medium, self._eta_text, rl.Vector2(x + self._padding, eta_y), self._eta_size, 0, COLORS.DIM)
+    eta_y = y + panel_height - self.PADDING - self.ETA_SIZE
+    rl.draw_text_ex(self._font_medium, self._eta_text, rl.Vector2(x + self.PADDING, eta_y), self.ETA_SIZE, 0, COLORS.DIM)
