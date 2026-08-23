@@ -32,6 +32,8 @@ if HARDWARE.get_device_type() == "tizi":
 
 AudibleAlert = log.SelfdriveState.AudibleAlert
 
+NAV_LANE_ADVICE_ALERT = AudibleAlert.prompt
+
 
 sound_list: dict[int, tuple[str, int | None, float]] = {
   # AudibleAlert, file name, play count (none for infinite)
@@ -72,6 +74,7 @@ class Soundd:
 
     self.selfdrive_timeout_alert = False
     self.pending_stop = False
+    self.nav_lane_advice = "none"
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
@@ -140,9 +143,26 @@ class Soundd:
       self.current_alert = new_alert
       self.current_sound_frame = 0
 
+  def nav_chime_playing(self):
+    sound = self.loaded_sounds[NAV_LANE_ADVICE_ALERT]
+    return self.current_alert == NAV_LANE_ADVICE_ALERT and self.current_sound_frame < len(sound)
+
+  def update_nav_lane_advice(self, sm):
+    if not sm.updated['modelV2']:
+      return
+
+    advice = str(getattr(sm['modelV2'].meta, 'navLaneAdvice', 'none'))
+    if advice != self.nav_lane_advice:
+      self.nav_lane_advice = advice
+      if advice != "none" and self.current_alert == AudibleAlert.none:
+        self.update_alert(NAV_LANE_ADVICE_ALERT)
+
   def get_audible_alert(self, sm):
     if sm.updated['selfdriveState']:
       new_alert = sm['selfdriveState'].alertSound.raw
+      # let a nav chime finish rather than being cut off by the next selfdriveState
+      if new_alert == AudibleAlert.none and self.nav_chime_playing():
+        return
       self.update_alert(new_alert)
     elif check_selfdrive_timeout_alert(sm):
       self.update_alert(AudibleAlert.warningImmediate)
@@ -167,7 +187,7 @@ class Soundd:
     import sounddevice as sd
     micd.patch_sounddevice(sd)
 
-    sm = messaging.SubMaster(['selfdriveState', 'soundPressure'])
+    sm = messaging.SubMaster(['selfdriveState', 'soundPressure', 'modelV2'])
 
     with self.get_stream(sd) as stream:
       rk = Ratekeeper(20)
@@ -183,6 +203,7 @@ class Soundd:
             self.current_volume = self.calculate_volume(float(self.spl_filter_weighted.x))
 
         self.get_audible_alert(sm)
+        self.update_nav_lane_advice(sm)
 
         # Ramp up immediate warning sound over 4s
         if self.current_alert == AudibleAlert.warningImmediate:
