@@ -71,6 +71,8 @@ _services: dict[str, tuple] = {
   "drivingModelData": (True, 20., 10),
   "modelV2": (True, 20., None, QueueSize.BIG),
   "managerState": (True, 2., 1),
+  "navInstruction": (True, 1., 10),
+  "navRoute": (True, 0., 1),
   "qNarrowRoadEncodeIdx": (False, 20.),
   "userBookmark": (True, 0., 1),
   "soundPressure": (True, 10., 10),
