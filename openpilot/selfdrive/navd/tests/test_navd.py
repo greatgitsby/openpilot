@@ -208,6 +208,31 @@ class TestNavd(OpenpilotTestCase):
     assert self.params.get("NavDestination") is None
     assert self.route_engine.step_idx is None
 
+  def test_test_destination_fallback(self, mocker):
+    self.params.remove("NavDestination")
+    get = mocker.patch.object(navd.requests, "get", return_value=FakeResponse())
+
+    self.route_engine.last_position = position(0)
+    self.route_engine.recompute_route()
+
+    assert get.call_count == 1
+    assert self.route_engine.nav_destination == Coordinate(navd.TEST_DESTINATION["latitude"],
+                                                           navd.TEST_DESTINATION["longitude"])
+
+  def test_test_destination_not_reused_after_arrival(self, mocker):
+    self.params.remove("NavDestination")
+    self.load_route(mocker)
+
+    self.route_engine.step_idx = len(self.route_engine.route) - 1
+    self.route_engine.last_position = position(400)
+    self.route_engine.send_instruction()
+    assert not self.route_engine.test_destination_available
+
+    get = mocker.patch.object(navd.requests, "get", return_value=FakeResponse())
+    self.route_engine.recompute_route()
+    assert get.call_count == 0
+    assert self.route_engine.route is None
+
   def test_idle_without_token(self, mocker):
     self.params.remove("MapboxToken")
     get = mocker.patch.object(navd.requests, "get", return_value=FakeResponse())

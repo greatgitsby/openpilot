@@ -22,6 +22,14 @@ REROUTE_COUNTER_MIN = 5
 
 MAPBOX_HOST = "https://api.mapbox.com"
 
+# TODO: temporary, remove once destinations can be set from the UI. Used only while
+# NavDestination is unset so navd always has something to route to during testing.
+TEST_DESTINATION = {
+  "latitude": 33.4360037,
+  "longitude": -112.0088027,
+  "place_name": "3400 E Sky Harbor Blvd, Phoenix, AZ 85034",
+}
+
 GPS_ACCURACY_THRESHOLD = 50.0  # meters
 BEARING_SPEED_THRESHOLD = 2.0  # m/s
 LAST_POSITION_WRITE_INTERVAL = 10.0  # seconds
@@ -59,6 +67,9 @@ class RouteEngine:
     self.reroute_counter = 0
 
     self.gps_location_service = get_gps_location_service(self.params)
+
+    # TODO: temporary, see TEST_DESTINATION
+    self.test_destination_available = True
 
   @property
   def mapbox_token(self) -> str | None:
@@ -111,6 +122,10 @@ class RouteEngine:
       return
 
     new_destination = coordinate_from_param("NavDestination", self.params)
+    if new_destination is None and self.test_destination_available:
+      # TODO: temporary, see TEST_DESTINATION
+      new_destination = Coordinate(TEST_DESTINATION["latitude"], TEST_DESTINATION["longitude"])
+
     if new_destination is None:
       self.clear_route()
       self.reset_recompute_limits()
@@ -310,6 +325,8 @@ class RouteEngine:
         dist = self.nav_destination.distance_to(self.last_position)
         if dist > REROUTE_DISTANCE:
           self.params.remove("NavDestination")
+          # TODO: temporary, see TEST_DESTINATION. Don't route to it again until navd restarts
+          self.test_destination_available = False
           self.clear_route()
 
   def send_route(self):
