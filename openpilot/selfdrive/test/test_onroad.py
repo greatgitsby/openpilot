@@ -56,6 +56,7 @@ PROCS = {
   "openpilot.selfdrive.locationd.locationd": 25.0,
   "openpilot.selfdrive.locationd.paramsd": 9.0,
   "openpilot.selfdrive.locationd.lagd": 11.0,
+  "openpilot.selfdrive.navd.navd": 1.0,
   "openpilot.selfdrive.ui.soundd": 3.0,
   "openpilot.selfdrive.monitoring.dmonitoringd": 4.0,
   "openpilot.system.proclogd": 7.0,

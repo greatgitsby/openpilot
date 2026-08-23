@@ -58,6 +58,9 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
+def nav_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return params.get_bool("NavigationEnabled")
+
 def livestream(started: bool, params: Params, CP: car.CarParams) -> bool:
   return params.get_bool("IsLiveStreaming")
 
@@ -89,6 +92,7 @@ procs = [
   PythonProcess("ui", "openpilot.selfdrive.ui.ui", always_run),
   PythonProcess("soundd", "openpilot.selfdrive.ui.soundd", driverview),
   PythonProcess("locationd", "openpilot.selfdrive.locationd.locationd", only_onroad),
+  PythonProcess("navd", "openpilot.selfdrive.navd.navd", and_(only_onroad, nav_enabled)),
   NativeProcess("_pandad", "openpilot/selfdrive/pandad", ["./pandad"], always_run, enabled=False),
   PythonProcess("calibrationd", "openpilot.selfdrive.locationd.calibrationd", only_onroad),
   PythonProcess("torqued", "openpilot.selfdrive.locationd.torqued", only_onroad),
