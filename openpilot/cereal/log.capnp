@@ -1116,6 +1116,8 @@ struct ModelDataV2 {
     hardBrakePredicted @7 :Bool;
     laneChangeState @8 :LaneChangeState;
     laneChangeDirection @9 :LaneChangeDirection;
+    navLaneAdvice @10 :NavLaneAdvice;
+    navLaneAdviceAuto @11 :Bool;
 
 
     deprecated :group {
@@ -1129,6 +1131,12 @@ struct ModelDataV2 {
     red @0;
     yellow @1;
     green @2;
+  }
+
+  enum NavLaneAdvice {
+    none @0;
+    moveLeft @1;
+    moveRight @2;
   }
 
   struct DisengagePredictions {
