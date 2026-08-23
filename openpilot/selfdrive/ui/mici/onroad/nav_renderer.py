@@ -43,14 +43,14 @@ def _icon_name(maneuver_type: str, modifier: str) -> str:
 
 
 class NavRenderer(Widget):
-  PANEL_WIDTH = 243
-  PADDING = 10
-  ICON_SIZE = 38
-  GAP = 3
+  PANEL_WIDTH = 320
+  PADDING = 12
+  ICON_SIZE = 64
+  GAP = 4
 
-  DISTANCE_SIZE = 22
-  PRIMARY_SIZE = 15
-  ETA_SIZE = 12
+  DISTANCE_SIZE = 44
+  PRIMARY_SIZE = 26
+  ETA_SIZE = 18
 
   def __init__(self):
     super().__init__()
