@@ -34,6 +34,7 @@
     align-items: center; justify-content: center;
     gap: 2px;
     border-right: 1px solid #222;
+    padding-bottom: 30px;   /* keep clear of the torque bar at full height */
   }
   .arrow { font-size: 120px; line-height: 1; color: #fff;
            transition: transform 0.25s; }
@@ -44,7 +45,7 @@
 
   .trip {
     flex: 1; display: flex; flex-direction: column;
-    justify-content: center; padding: 0 6px 24px 20px; gap: 6px;
+    justify-content: center; padding: 0 6px 30px 20px; gap: 6px;
   }
   /* big remaining time / distance, no clock */
   .big-row { font-size: 60px; font-weight: 800; letter-spacing: -1px; line-height: 1;
@@ -94,10 +95,11 @@
   .maneuver, .trip { transition: opacity 0.3s, filter 0.3s; }
   .screen.dim-mid .trip { opacity: 0.08; }
   .screen.dim-card .maneuver { opacity: 0.08; }
+  /* ball is not hidden by alerts: it stacks below them (z-index) and gets occluded */
   .screen.dim-full .trip, .screen.dim-full .maneuver,
-  .screen.dim-full .conf-ball, .screen.dim-full .torque-track { opacity: 0; }
+  .screen.dim-full .torque-track { opacity: 0; }
   .screen.dim-soft .trip, .screen.dim-soft .maneuver,
-  .screen.dim-soft .conf-ball, .screen.dim-soft .torque-track { opacity: 0.05; }
+  .screen.dim-soft .torque-track { opacity: 0.05; }
 
   /* ---------- lane change treatments ---------- */
 

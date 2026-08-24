@@ -178,13 +178,14 @@ class NavUIDemo(Widget):
     self._draw_maneuver_card(rect, a)
     self._draw_trip(rect, a)
 
+    # ball renders below any overlay so alerts occlude it naturally
+    self._ball.render(rect)
+    # fade the ball against the black background while a right lane change runs
+    fade = 1.0 - self._ball_alpha.x
+    if fade > 0.01:
+      rl.draw_rectangle(int(rect.x + rect.width - 48), int(rect.y), 48, int(rect.height),
+                        rl.Color(0, 0, 0, int(255 * fade)))
     if a > 0.02:
-      self._ball.render(rect)
-      # fade the ball against the black background while a right lane change runs
-      fade = 1.0 - self._ball_alpha.x
-      if fade > 0.01:
-        rl.draw_rectangle(int(rect.x + rect.width - 48), int(rect.y), 48, int(rect.height),
-                          rl.Color(0, 0, 0, int(255 * fade)))
       self._draw_torque_bar(rect, a)
 
     mode, _, arg = self._scene()
@@ -206,7 +207,8 @@ class NavUIDemo(Widget):
     dist_text = f"{num} {unit}"
 
     total_h = ICON_SIZE + 2 + 58 + 4 + 22
-    y = rect.y + (rect.height - total_h) / 2
+    # keep clear of the torque bar at its full 27px height
+    y = rect.y + (rect.height - 30 - total_h) / 2
     cx = rect.x + CARD_WIDTH / 2
 
     icon = self._icons[icon_name]
@@ -230,7 +232,7 @@ class NavUIDemo(Widget):
     white = rl.Color(255, 255, 255, a8)
     x = rect.x + CARD_WIDTH + 24
     total_h = 60 + 8 + 60 + 12 + 22
-    y = rect.y + (rect.height - 20 - total_h) / 2
+    y = rect.y + (rect.height - 30 - total_h) / 2
 
     # big time and miles remaining stacked, no clock
     for value, unit in ((str(round(self._secs_left / 60)), "min"), (f"{self._miles_left:.1f}", "mi")):
