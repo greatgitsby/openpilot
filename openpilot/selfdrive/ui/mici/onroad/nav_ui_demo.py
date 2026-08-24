@@ -16,8 +16,8 @@ from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
 from openpilot.common.filter_simple import FirstOrderFilter
 
-CARD_WIDTH = 200
-ICON_SIZE = 84
+CARD_WIDTH = 240
+ICON_SIZE = 120
 EDGE_GLOW_WIDTH = 70
 BLINK_PERIOD = 0.75
 
@@ -205,17 +205,17 @@ class NavUIDemo(Widget):
     num, unit = fmt_dist(max(0.0, self._m_dist))
     dist_text = f"{num} {unit}"
 
-    total_h = ICON_SIZE + 4 + 48 + 6 + 22
+    total_h = ICON_SIZE + 2 + 58 + 4 + 22
     y = rect.y + (rect.height - total_h) / 2
     cx = rect.x + CARD_WIDTH / 2
 
     icon = self._icons[icon_name]
     rl.draw_texture_ex(icon, rl.Vector2(cx - ICON_SIZE / 2, y), 0, 1.0, rl.Color(255, 255, 255, a8))
-    y += ICON_SIZE + 4
+    y += ICON_SIZE + 2
 
-    w = measure_text_cached(self._font_bold, dist_text, 48).x
-    rl.draw_text_ex(self._font_bold, dist_text, rl.Vector2(cx - w / 2, y), 48, -1, rl.Color(255, 255, 255, a8))
-    y += 48 + 6
+    w = measure_text_cached(self._font_bold, dist_text, 58).x
+    rl.draw_text_ex(self._font_bold, dist_text, rl.Vector2(cx - w / 2, y), 58, -1, rl.Color(255, 255, 255, a8))
+    y += 58 + 4
 
     fs = 22
     w = measure_text_cached(self._font_medium, street, fs).x
@@ -228,43 +228,24 @@ class NavUIDemo(Widget):
   def _draw_trip(self, rect: rl.Rectangle, alpha: float):
     a8 = int(255 * alpha)
     white = rl.Color(255, 255, 255, a8)
-    x = rect.x + CARD_WIDTH + 20
-    total_h = 68 + 6 + 28 + 6 + 24
-    y = rect.y + (rect.height - 24 - total_h) / 2
+    x = rect.x + CARD_WIDTH + 24
+    total_h = 60 + 8 + 60 + 12 + 22
+    y = rect.y + (rect.height - 20 - total_h) / 2
 
-    # big ETA
-    eta_secs = self._sim_clock + self._secs_left
-    lt = time.localtime(eta_secs)
-    hour12 = lt.tm_hour % 12 or 12
-    ampm = "am" if lt.tm_hour < 12 else "pm"
-    eta_text = f"{hour12}:{lt.tm_min:02d}"
-    rl.draw_text_ex(self._font_bold, eta_text, rl.Vector2(x, y), 68, -2, white)
-    w = measure_text_cached(self._font_bold, eta_text, 68).x
-    rl.draw_text_ex(self._font_medium, f" {ampm}", rl.Vector2(x + w, y + 68 - 34), 28, 0,
-                    rl.Color(154, 154, 162, a8))
-    y += 68 + 6
-
-    # min / miles row
-    tx = x
+    # big time and miles remaining stacked, no clock
     for value, unit in ((str(round(self._secs_left / 60)), "min"), (f"{self._miles_left:.1f}", "mi")):
-      rl.draw_text_ex(self._font_medium, value, rl.Vector2(tx, y), 28, 0,
-                      rl.Color(TRIP_COLOR.r, TRIP_COLOR.g, TRIP_COLOR.b, a8))
-      tx += measure_text_cached(self._font_medium, value, 28).x + 6
-      rl.draw_text_ex(self._font_regular, unit, rl.Vector2(tx, y + 5), 21, 0,
-                      rl.Color(UNIT_COLOR.r, UNIT_COLOR.g, UNIT_COLOR.b, a8))
-      tx += measure_text_cached(self._font_regular, unit, 21).x + 18
-    y += 28 + 6
+      rl.draw_text_ex(self._font_bold, value, rl.Vector2(x, y), 60, -1, white)
+      w = measure_text_cached(self._font_bold, value, 60).x
+      rl.draw_text_ex(self._font_medium, f" {unit}", rl.Vector2(x + w, y + 60 - 32), 28, 0,
+                      rl.Color(154, 154, 162, a8))
+      y += 60 + 8
 
-    # advice line: lane advice when active, otherwise preview of the next maneuver
+    y += 4
+    # small next-up line: lane advice when active, otherwise preview of the next maneuver
     advice = MANEUVERS[self._m_idx][3]
-    if advice:
-      rl.draw_text_ex(self._font_bold, advice, rl.Vector2(x, y), 24, 0,
-                      rl.Color(ADVICE_COLOR.r, ADVICE_COLOR.g, ADVICE_COLOR.b, a8))
-    else:
-      nxt = MANEUVERS[(self._m_idx + 1) % len(MANEUVERS)]
-      text = f"then {nxt[1]}"
-      rl.draw_text_ex(self._font_bold, text, rl.Vector2(x, y), 24, 0,
-                      rl.Color(ADVICE_COLOR.r, ADVICE_COLOR.g, ADVICE_COLOR.b, a8))
+    text = advice if advice else f"then {MANEUVERS[(self._m_idx + 1) % len(MANEUVERS)][1]}"
+    rl.draw_text_ex(self._font_bold, text, rl.Vector2(x, y), 22, 0,
+                    rl.Color(ADVICE_COLOR.r, ADVICE_COLOR.g, ADVICE_COLOR.b, a8))
 
   def _draw_torque_bar(self, rect: rl.Rectangle, alpha: float):
     # thin bottom strip, center-out fill: grows 8->27px as |torque| goes 0.5->1,

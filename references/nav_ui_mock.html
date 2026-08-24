@@ -28,31 +28,29 @@
   }
 
   .maneuver {
-    flex: none; width: 200px;
+    flex: none; width: 240px;
     background: #101014;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     gap: 2px;
     border-right: 1px solid #222;
   }
-  .arrow { font-size: 84px; line-height: 1; color: #fff;
+  .arrow { font-size: 120px; line-height: 1; color: #fff;
            transition: transform 0.25s; }
-  .dist  { font-size: 48px; font-weight: 800; letter-spacing: -1px;
+  .dist  { font-size: 58px; font-weight: 800; letter-spacing: -1px;
            font-variant-numeric: tabular-nums; }
   .street { font-size: 22px; color: #b9b9c0; text-align: center; padding: 0 10px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
 
   .trip {
     flex: 1; display: flex; flex-direction: column;
     justify-content: center; padding: 0 6px 24px 20px; gap: 6px;
   }
-  .eta-big { font-size: 68px; font-weight: 800; letter-spacing: -2px; line-height: 1;
-             font-variant-numeric: tabular-nums; }
-  .eta-big small { font-size: 28px; font-weight: 600; color: #9a9aa2; letter-spacing: 0; }
-  .trip-row { display: flex; gap: 18px; font-size: 28px; color: #cfcfd6; font-weight: 600;
-              font-variant-numeric: tabular-nums; }
-  .trip-row .unit { color: #85858e; font-weight: 500; font-size: 21px; }
-  .advice-line { font-size: 24px; min-height: 28px; color: #80d8a6; font-weight: 700;
+  /* big remaining time / distance, no clock */
+  .big-row { font-size: 60px; font-weight: 800; letter-spacing: -1px; line-height: 1;
+             color: #fff; font-variant-numeric: tabular-nums; }
+  .big-row .unit { font-size: 28px; font-weight: 600; color: #9a9aa2; letter-spacing: 0; }
+  .advice-line { font-size: 22px; min-height: 26px; color: #80d8a6; font-weight: 700;
                  opacity: 0; transition: opacity 0.4s; }
   .advice-line.on { opacity: 1; }
   .advice-line .next-arrow { font-weight: 400; }
@@ -183,11 +181,8 @@
     <div class="street" id="street">Fremont Blvd</div>
   </div>
   <div class="trip">
-    <div class="eta-big"><span id="eta">5:42</span><small> pm</small></div>
-    <div class="trip-row">
-      <span><span id="mins">28</span> <span class="unit">min</span></span>
-      <span><span id="miles">19.3</span> <span class="unit">mi</span></span>
-    </div>
+    <div class="big-row"><span id="mins">28</span> <span class="unit">min</span></div>
+    <div class="big-row"><span id="miles">19.3</span> <span class="unit">mi</span></div>
     <div class="advice-line" id="advice">Move right</div>
   </div>
   <div class="conf-ball" id="ball"></div>
@@ -279,10 +274,6 @@ function tickSim(dt) {
   $('dist').textContent = fmtDist(Math.max(0, maneuverDist));
   $('mins').textContent = Math.round(secsLeft / 60);
   $('miles').textContent = milesLeft.toFixed(1);
-
-  const eta = new Date(simNow + secsLeft * 1000);
-  let h = eta.getHours() % 12 || 12;
-  $('eta').textContent = h + ':' + String(eta.getMinutes()).padStart(2, '0');
 }
 
 // ---------------- confidence ball ----------------
