@@ -72,10 +72,10 @@
   .alert.on > * { transform: scale(1); }
   .alert .a-text { display: flex; flex-direction: column; min-width: 0; }
   /* matches alert_renderer.py: DISPLAY weight, line_height 0.86,
-     letter_spacing -0.02em / +0.025em, text2 = 16px */
+     letter_spacing -0.02em / +0.025em, text2 = 26px */
   .alert .a1 { font-weight: 900; letter-spacing: -0.02em; line-height: 0.86;
                color: rgba(255,255,255,0.9); text-transform: lowercase; }
-  .alert .a2 { font-weight: 400; letter-spacing: 0.025em; font-size: 16px;
+  .alert .a2 { font-weight: 400; letter-spacing: 0.025em; font-size: 26px;
                color: rgba(255,255,255,0.9); text-transform: lowercase; margin-top: 4px; }
   .alert .signal { font-size: 52px; line-height: 1; margin-right: 10px;
                    animation: blink 0.75s step-start infinite; }
@@ -414,12 +414,13 @@ function setAlert(key) {
   screen.classList.add('dim-full');
 
   el.style.height = '240px';
-  el.style.background = `linear-gradient(rgba(${a.color},0.9) 20%, rgba(${a.color},0) 100%)`;
+  el.style.background = `rgb(${a.color})`;   // solid full-bleed, fades in as a whole
 
   $('atext1').textContent = a.t1;
   // same tiers as alert_renderer.py: 82 / 70 / 54, minus 10 when an icon shows
   let fs = a.t1.length <= 12 ? 82 : a.t1.length <= 16 ? 70 : 54;
   if (a.signal || a.bsIcon) fs -= 10;
+  if (a.t2) fs -= 10;   // make room for the larger subtitle
   $('atext1').style.fontSize = fs + 'px';
   $('atext2').textContent = a.t2;
   $('atext2').style.display = a.t2 ? '' : 'none';

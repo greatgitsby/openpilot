@@ -77,7 +77,7 @@ TIMELINE = [
   ("idle", 4.0, None),
 ]
 
-# one pattern for every alert: full-screen top gradient, centered lowercase text,
+# one pattern for every alert: solid full-screen color, centered lowercase text,
 # optional icon left of the text block. text1, text2, color, blind spot icon
 ALERTS = {
   "blocked": ("car in blind spot", "", ORANGE, True),
@@ -313,17 +313,14 @@ class NavUIDemo(Widget):
       ty += line_h
 
   def _draw_alert(self, rect: rl.Rectangle, key: str):
-    # every alert follows one pattern: full-screen top gradient, optional icon
+    # every alert follows one pattern: solid full-screen color, optional icon
     # left of a centered text block, text2 centered under text1
     text1, text2, (r, g, b), bs_icon = ALERTS[key]
     oa = self._overlay_alpha.x
 
-    solid_h = round(rect.height * 0.2)
-    color = rl.Color(r, g, b, int(255 * 0.9 * oa))
-    clear = rl.Color(r, g, b, 0)
-    rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), solid_h, color)
-    rl.draw_rectangle_gradient_v(int(rect.x), int(rect.y + solid_h), int(rect.width),
-                                 int(rect.height - solid_h), color, clear)
+    # solid full-bleed color that fades in as a whole
+    rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height),
+                      rl.Color(r, g, b, int(255 * oa)))
 
     white = rl.Color(255, 255, 255, int(255 * 0.9 * oa))
     icon = self._bs_icon if bs_icon else None
@@ -332,12 +329,14 @@ class NavUIDemo(Widget):
     fs = 82 if len(text1) <= 12 else 70 if len(text1) <= 16 else 54
     if icon:
       fs -= 10
+    if text2:
+      fs -= 10  # make room for the larger subtitle
     while fs > 24 and icon_w + measure_text_cached(self._font_bold, text1, fs).x > rect.width - 36:
       fs -= 2
     t1_w = measure_text_cached(self._font_bold, text1, fs).x
 
     block_x = rect.x + (rect.width - icon_w - t1_w) / 2
-    text_h = fs + ((4 + 16) if text2 else 0)
+    text_h = fs + ((6 + 26) if text2 else 0)
     text_y = rect.y + (rect.height - text_h) / 2
 
     if icon:
@@ -348,8 +347,8 @@ class NavUIDemo(Widget):
 
     if text2:
       dim = rl.Color(255, 255, 255, int(255 * 0.65 * oa))
-      w2 = measure_text_cached(self._font_regular, text2, 16).x
-      rl.draw_text_ex(self._font_regular, text2, rl.Vector2(tx + (t1_w - w2) / 2, text_y + fs + 4), 16, 0.4, dim)
+      w2 = measure_text_cached(self._font_regular, text2, 26).x
+      rl.draw_text_ex(self._font_regular, text2, rl.Vector2(tx + (t1_w - w2) / 2, text_y + fs + 6), 26, 0.4, dim)
 
 
 def main():
