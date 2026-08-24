@@ -101,8 +101,8 @@
 
   /* ---------- lane change treatments ---------- */
   /* direction is carried by the big flashing turn signal arrow (.ts-arrow);
-     state is communicated by the lane text color:
-     req = white (announced), pre = amber (nudge required), go = teal (executing) */
+     one color per initiator across the whole sequence, nothing alarming:
+     openpilot-initiated = calm blue, human-initiated = white */
 
   /* lane state text: alert-sized */
   .lane-text {
@@ -119,10 +119,8 @@
   /* keep the text beside the arrow, never under it */
   .lane-text.side-right { left: 20px; right: 240px; }
   .lane-text.side-left { left: 240px; right: 56px; }  /* ball stays visible on the right */
-  .lane-text.req { color: rgba(255,255,255,0.9); }
-  .lane-text.pre { color: #ffc800; }
-  .lane-text.go { color: #00ffcc; }
-  .lane-text.go-user { color: rgba(255,255,255,0.9); }
+  .lane-text.op { color: #4da6ff; }
+  .lane-text.user { color: rgba(255,255,255,0.9); }
   .lane-text .lt-arrow { animation: blink 0.75s step-start infinite; }
 
   /* controls */
@@ -371,21 +369,21 @@ let laneSide = 'right';   // demo side toggle; real UI keys off laneChangeDirect
 const SEQUENCES = {
   // nav-initiated, car supports nudgeless: announce, then it just goes
   'seq-nav-nudgeless': s => [
-    [0,    () => setLane('req', 'lane change for I-880 N', s)],   // nav requests
-    [1500, () => setLane('go', 'changing lane', s)],              // laneChangeStarting/Finishing
+    [0,    () => setLane('op', 'lane change for I-880 N', s)],    // nav requests
+    [1500, () => setLane('op', 'changing lane', s)],              // laneChangeStarting/Finishing
     [4000, () => setLane('off')],
   ],
   // nav-initiated, nudge required: announce, then blink amber until driver nudges
   'seq-nav-nudge': s => [
-    [0,    () => setLane('req', 'lane change for I-880 N', s)],   // nav requests
-    [1500, () => setLane('pre', `steer ${s} to confirm`, s)],     // preLaneChange
-    [4000, () => setLane('go', 'changing lane', s)],              // nudge received -> starting
+    [0,    () => setLane('op', 'lane change for I-880 N', s)],    // nav requests
+    [1500, () => setLane('op', `steer ${s} to confirm`, s)],      // preLaneChange
+    [4000, () => setLane('op', 'changing lane', s)],              // nudge received -> starting
     [6500, () => setLane('off')],
   ],
   // user-initiated (blinker on): always requires nudge
   'seq-user': s => [
-    [0,    () => setLane('pre', `steer ${s} to start`, s)],       // preLaneChange
-    [2500, () => setLane('go-user', 'changing lane', s)],
+    [0,    () => setLane('user', `steer ${s} to start`, s)],      // preLaneChange
+    [2500, () => setLane('user', 'changing lane', s)],
     [5000, () => setLane('off')],
   ],
 };

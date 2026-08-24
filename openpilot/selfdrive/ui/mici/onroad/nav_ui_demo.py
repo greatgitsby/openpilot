@@ -41,11 +41,11 @@ TRIP_COLOR = rl.Color(207, 207, 214, 255)
 CARD_BG = rl.Color(16, 16, 20, 255)
 CARD_BORDER = rl.Color(34, 34, 34, 255)
 
+# one color per initiator across the whole sequence, nothing alarming:
+# openpilot-initiated = calm blue, human-initiated = override white
 LANE_COLORS = {
-  "req": rl.Color(255, 255, 255, 230),
-  "pre": rl.Color(255, 200, 0, 255),
-  "go": rl.Color(0, 255, 204, 255),       # openpilot-initiated: engaged teal
-  "go_user": rl.Color(255, 255, 255, 230),  # human-initiated: override white
+  "op": rl.Color(77, 166, 255, 255),
+  "user": rl.Color(255, 255, 255, 230),
 }
 
 ORANGE = (255, 115, 0)
@@ -56,17 +56,17 @@ RED = (255, 0, 21)
 TIMELINE = [
   ("idle", 5.0, None),
   # nav lane change, nudgeless
-  ("lane", 1.5, ("req", "lane change for I-880 N", "right")),
-  ("lane", 2.5, ("go", "changing lane", "right")),
+  ("lane", 1.5, ("op", "lane change for I-880 N", "right")),
+  ("lane", 2.5, ("op", "changing lane", "right")),
   ("idle", 3.0, None),
   # nav lane change, nudge required
-  ("lane", 1.5, ("req", "lane change for I-880 N", "left")),
-  ("lane", 2.5, ("pre", "steer left to confirm", "left")),
-  ("lane", 2.5, ("go", "changing lane", "left")),
+  ("lane", 1.5, ("op", "lane change for I-880 N", "left")),
+  ("lane", 2.5, ("op", "steer left to confirm", "left")),
+  ("lane", 2.5, ("op", "changing lane", "left")),
   ("idle", 3.0, None),
   # user lane change (blinker)
-  ("lane", 2.5, ("pre", "steer right to start", "right")),
-  ("lane", 2.5, ("go_user", "changing lane", "right")),
+  ("lane", 2.5, ("user", "steer right to start", "right")),
+  ("lane", 2.5, ("user", "changing lane", "right")),
   ("idle", 3.0, None),
   # alerts
   ("alert", 4.0, "blocked"),
@@ -283,9 +283,9 @@ class NavUIDemo(Widget):
     rl.draw_rectangle_gradient_h(fx, y, int(w), height, left, right)
 
   def _draw_lane(self, rect: rl.Rectangle, arg):
-    state, label, side = arg
+    initiator, label, side = arg
     oa = self._overlay_alpha.x
-    c = LANE_COLORS[state]
+    c = LANE_COLORS[initiator]
 
     # flashing turn signal arrow on the side of travel
     self._draw_blinker(rect, side)
