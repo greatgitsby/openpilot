@@ -161,9 +161,8 @@ class NavUIDemo(Widget):
 
     # fade targets
     mode, _, arg = self._scene()
-    # ball fades out for right lane changes (it sits on the right edge) and all alerts
-    ball_hidden = (mode == "lane" and arg[2] == "right") or mode == "alert"
-    self._ball_alpha.update(0.0 if ball_hidden else 1.0)
+    # ball fades out for all lane changes and alerts
+    self._ball_alpha.update(0.0 if mode in ("lane", "alert") else 1.0)
     if mode == "lane":
       self._nav_alpha.update(0.08)
       self._overlay_alpha.update(1.0)
@@ -292,10 +291,8 @@ class NavUIDemo(Widget):
 
     # state text centered in the space beside the arrow, never under it
     arrow_span = 16 + self._ts_left.width + 16
-    if side == "left":  # ball stays visible on the right: keep clear of it
-      region_x, region_w = rect.x + arrow_span, rect.width - arrow_span - 56
-    else:
-      region_x, region_w = rect.x + 20, rect.width - arrow_span - 20
+    region_x = rect.x + (arrow_span if side == "left" else 20)
+    region_w = rect.width - arrow_span - 20
     color = rl.Color(c.r, c.g, c.b, int(c.a * oa))
 
     fs = 52 if len(label) <= 14 else 44 if len(label) <= 22 else 36

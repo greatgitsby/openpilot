@@ -118,7 +118,7 @@
   .lane-text.on { opacity: 1; }
   /* keep the text beside the arrow, never under it */
   .lane-text.side-right { left: 20px; right: 240px; }
-  .lane-text.side-left { left: 240px; right: 56px; }  /* ball stays visible on the right */
+  .lane-text.side-left { left: 240px; right: 20px; }
   .lane-text.op { color: #4da6ff; }
   .lane-text.user { color: rgba(255,255,255,0.9); }
   .lane-text .lt-arrow { animation: blink 0.75s step-start infinite; }
@@ -136,7 +136,7 @@
     border-radius: 50%;
     transition: top 0.15s linear, background 0.5s, opacity 0.3s;
   }
-  /* ball sits on the right edge: fade it out while changing lanes to the right */
+  /* ball hides during lane changes and alerts */
   .screen.hide-ball .conf-ball { opacity: 0; }
 
   .torque-track {
@@ -349,7 +349,7 @@ function setLane(state, label, side = 'right') {
   else T.classList.remove('on');
   screen.classList.toggle('dim-mid', on);
   screen.classList.toggle('dim-card', on);
-  screen.classList.toggle('hide-ball', on && side === 'right');
+  screen.classList.toggle('hide-ball', on);   // ball hides for every lane change
   if (label) {
     // shrink like the alert renderer does for longer strings; the arrow carries direction
     T.style.fontSize = (label.length <= 14 ? 52 : label.length <= 22 ? 44 : 36) + 'px';
