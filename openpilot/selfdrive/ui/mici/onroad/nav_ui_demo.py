@@ -77,11 +77,12 @@ TIMELINE = [
   ("idle", 4.0, None),
 ]
 
-# text1, text2, color, soft dim (nav stays faintly visible), blind spot icon
+# one pattern for every alert: full-screen top gradient, centered lowercase text,
+# optional icon left of the text block. text1, text2, color, blind spot icon
 ALERTS = {
-  "blocked": ("car in blind spot", "", ORANGE, True, True),
-  "prompt": ("pay attention", "steer required", ORANGE, True, False),
-  "critical": ("take control immediately", "system unresponsive", RED, False, False),
+  "blocked": ("car in blind spot", "", ORANGE, True),
+  "prompt": ("pay attention", "steer required", ORANGE, False),
+  "critical": ("take control immediately", "system unresponsive", RED, False),
 }
 
 
@@ -100,8 +101,7 @@ class NavUIDemo(Widget):
     self._font_regular = gui_app.font(FontWeight.DISPLAY_REGULAR)
 
     self._icons = {name: gui_app.texture(f"navigation/{name}.png", ICON_SIZE, ICON_SIZE) for name, *_ in MANEUVERS}
-    self._bs_left = gui_app.texture("icons_mici/onroad/blind_spot_left.png", 134, 150)
-    self._bs_right = gui_app.texture("icons_mici/onroad/blind_spot_left.png", 134, 150, flip_x=True)
+    self._bs_icon = gui_app.texture("icons_mici/onroad/blind_spot_left_white.png", 134, 150)
 
     self._ball = ConfidenceBall(demo=True)
     self._torque_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
@@ -159,13 +159,14 @@ class NavUIDemo(Widget):
 
     # fade targets
     mode, _, arg = self._scene()
-    # ball sits on the right edge: fade it out while changing lanes to the right
-    self._ball_alpha.update(0.0 if mode == "lane" and arg[2] == "right" else 1.0)
+    # ball fades out for right lane changes (it sits on the right edge) and all alerts
+    ball_hidden = (mode == "lane" and arg[2] == "right") or mode == "alert"
+    self._ball_alpha.update(0.0 if ball_hidden else 1.0)
     if mode == "lane":
       self._nav_alpha.update(0.08)
       self._overlay_alpha.update(1.0)
     elif mode == "alert":
-      self._nav_alpha.update(0.05 if ALERTS[arg][3] else 0.0)
+      self._nav_alpha.update(0.0)
       self._overlay_alpha.update(1.0)
     else:
       self._nav_alpha.update(1.0)
@@ -312,10 +313,11 @@ class NavUIDemo(Widget):
       ty += line_h
 
   def _draw_alert(self, rect: rl.Rectangle, key: str):
-    text1, text2, (r, g, b), _, bs_icon = ALERTS[key]
+    # every alert follows one pattern: full-screen top gradient, optional icon
+    # left of a centered text block, text2 centered under text1
+    text1, text2, (r, g, b), bs_icon = ALERTS[key]
     oa = self._overlay_alpha.x
 
-    # full-screen: solid top 20%, gradient to transparent below (alert_renderer style)
     solid_h = round(rect.height * 0.2)
     color = rl.Color(r, g, b, int(255 * 0.9 * oa))
     clear = rl.Color(r, g, b, 0)
@@ -323,32 +325,31 @@ class NavUIDemo(Widget):
     rl.draw_rectangle_gradient_v(int(rect.x), int(rect.y + solid_h), int(rect.width),
                                  int(rect.height - solid_h), color, clear)
 
-    fs = 82 if len(text1) <= 12 else 70 if len(text1) <= 16 else 54
-    if bs_icon:
-      fs -= 10
-    while fs > 24 and measure_text_cached(self._font_bold, text1, fs).x > rect.width - 2 * ((self._bs_left.width + 8) if bs_icon else 18):
-      fs -= 2
     white = rl.Color(255, 255, 255, int(255 * 0.9 * oa))
+    icon = self._bs_icon if bs_icon else None
+    icon_w = (icon.width + 16) if icon else 0
 
+    fs = 82 if len(text1) <= 12 else 70 if len(text1) <= 16 else 54
+    if icon:
+      fs -= 10
+    while fs > 24 and icon_w + measure_text_cached(self._font_bold, text1, fs).x > rect.width - 36:
+      fs -= 2
     t1_w = measure_text_cached(self._font_bold, text1, fs).x
-    icon = self._bs_left if bs_icon else None
-    icon_w = (icon.width + 8) if icon else 0
-    block_w = min(rect.width - 20, icon_w + t1_w)
-    block_x = rect.x + (rect.width - block_w) / 2
 
-    block_h = fs + ((16 + 4) if text2 else 0)
-    y = rect.y + (rect.height - max(block_h, icon.height if icon else 0)) / 2
+    block_x = rect.x + (rect.width - icon_w - t1_w) / 2
+    text_h = fs + ((4 + 16) if text2 else 0)
+    text_y = rect.y + (rect.height - text_h) / 2
 
     if icon:
       rl.draw_texture_ex(icon, rl.Vector2(block_x, rect.y + (rect.height - icon.height) / 2), 0, 1.0, white)
 
     tx = block_x + icon_w
-    rl.draw_text_ex(self._font_bold, text1, rl.Vector2(tx, y + (block_h - fs) / 2 if not text2 else y), fs, -1, white)
+    rl.draw_text_ex(self._font_bold, text1, rl.Vector2(tx, text_y), fs, -1, white)
 
     if text2:
       dim = rl.Color(255, 255, 255, int(255 * 0.65 * oa))
       w2 = measure_text_cached(self._font_regular, text2, 16).x
-      rl.draw_text_ex(self._font_regular, text2, rl.Vector2(tx + (t1_w - w2) / 2, y + fs + 4), 16, 0.4, dim)
+      rl.draw_text_ex(self._font_regular, text2, rl.Vector2(tx + (t1_w - w2) / 2, text_y + fs + 4), 16, 0.4, dim)
 
 
 def main():

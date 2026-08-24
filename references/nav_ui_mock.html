@@ -87,7 +87,6 @@
   .alert.full .signal { margin-right: 12px; }
   .bs-icon {   /* 134x150 like alert_renderer.py loads it */
     width: 134px; height: 150px; margin-right: 8px;
-    filter: brightness(0) invert(1);   /* openpilot asset, recolored white */
   }
   .bs-icon.flip { transform: scaleX(-1); margin-right: 0; margin-left: 14px; order: 2; }
 
@@ -95,9 +94,8 @@
   .maneuver, .trip { transition: opacity 0.3s, filter 0.3s; }
   .screen.dim-mid .trip { opacity: 0.08; }
   .screen.dim-card .maneuver { opacity: 0.08; }
-  /* ball is not hidden by alerts: it stacks below them (z-index) and gets occluded */
   .screen.dim-full .trip, .screen.dim-full .maneuver,
-  .screen.dim-full .torque-track { opacity: 0; }
+  .screen.dim-full .conf-ball, .screen.dim-full .torque-track { opacity: 0; }
   .screen.dim-soft .trip, .screen.dim-soft .maneuver,
   .screen.dim-soft .torque-track { opacity: 0.05; }
 
@@ -197,7 +195,7 @@
   <div class="alert" id="alert">
     <div class="signal" id="asigL" style="display:none">⇦</div>
     <img class="bs-icon" id="bsicon" style="display:none"
-         src="../openpilot/selfdrive/assets/icons_mici/onroad/blind_spot_left.png">
+         src="../openpilot/selfdrive/assets/icons_mici/onroad/blind_spot_left_white.png">
     <div class="a-text">
       <div class="a1" id="atext1"></div>
       <div class="a2" id="atext2"></div>
@@ -336,8 +334,8 @@ function tickTorque(t, dt) {
 // to transparent below, 90% alpha, centered lowercase text; nav content hides entirely
 const ALERTS = {
   none:       null,
-  blocked:    { t1: 'car in blind spot', t2: '', color: '255,115,0', bsIcon: true, soft: true },
-  prompt:     { t1: 'pay attention', t2: 'steer required', color: '255,115,0', signal: null, soft: true },
+  blocked:    { t1: 'car in blind spot', t2: '', color: '255,115,0', bsIcon: true },
+  prompt:     { t1: 'pay attention', t2: 'steer required', color: '255,115,0', signal: null },
   critical:   { t1: 'take control immediately', t2: 'system unresponsive', color: '255,0,21', signal: null },
 };
 
@@ -413,7 +411,7 @@ function setAlert(key) {
   if (!a) { el.classList.remove('on'); return; }
 
   el.classList.add('on', 'full');
-  screen.classList.add(a.soft ? 'dim-soft' : 'dim-full');
+  screen.classList.add('dim-full');
 
   el.style.height = '240px';
   el.style.background = `linear-gradient(rgba(${a.color},0.9) 20%, rgba(${a.color},0) 100%)`;
