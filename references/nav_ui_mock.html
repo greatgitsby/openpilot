@@ -152,8 +152,10 @@
   .conf-ball {   /* radius 24 flush to the right edge, like confidence_ball.py */
     position: absolute; right: 0; width: 48px; height: 48px;
     border-radius: 50%;
-    transition: top 0.15s linear, background 0.5s;
+    transition: top 0.15s linear, background 0.5s, opacity 0.3s;
   }
+  /* ball sits on the right edge: fade it out while changing lanes to the right */
+  .screen.hide-ball .conf-ball { opacity: 0; }
 
   .torque-track {
     position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
@@ -361,6 +363,7 @@ function setLane(state, label, side = 'right') {
   else T.classList.remove('on');
   screen.classList.toggle('dim-mid', on);
   screen.classList.toggle('dim-card', on);
+  screen.classList.toggle('hide-ball', on && side === 'right');
   if (label) {
     // shrink like the alert renderer does for longer strings; the glow carries direction
     T.style.fontSize = (label.length <= 14 ? 52 : label.length <= 22 ? 44 : 36) + 'px';

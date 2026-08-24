@@ -120,6 +120,7 @@ class NavUIDemo(Widget):
     # fades
     self._nav_alpha = FirstOrderFilter(1.0, 0.08, 1 / gui_app.target_fps)
     self._overlay_alpha = FirstOrderFilter(0.0, 0.06, 1 / gui_app.target_fps)
+    self._ball_alpha = FirstOrderFilter(1.0, 0.1, 1 / gui_app.target_fps)
 
   # ---------- state ----------
 
@@ -157,6 +158,8 @@ class NavUIDemo(Widget):
 
     # fade targets
     mode, _, arg = self._scene()
+    # ball sits on the right edge: fade it out while changing lanes to the right
+    self._ball_alpha.update(0.0 if mode == "lane" and arg[2] == "right" else 1.0)
     if mode == "lane":
       self._nav_alpha.update(0.08)
       self._overlay_alpha.update(1.0)
@@ -176,6 +179,11 @@ class NavUIDemo(Widget):
 
     if a > 0.02:
       self._ball.render(rect)
+      # fade the ball against the black background while a right lane change runs
+      fade = 1.0 - self._ball_alpha.x
+      if fade > 0.01:
+        rl.draw_rectangle(int(rect.x + rect.width - 48), int(rect.y), 48, int(rect.height),
+                          rl.Color(0, 0, 0, int(255 * fade)))
       self._draw_torque_bar(rect, a)
 
     mode, _, arg = self._scene()
