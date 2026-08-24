@@ -68,6 +68,11 @@ TIMELINE = [
   ("lane", 2.5, ("pre", "steer right to start", "right")),
   ("lane", 2.5, ("go_user", "changing lane", "right")),
   ("idle", 3.0, None),
+  # plain turn signals: big flashing arrows
+  ("blinker", 3.5, "left"),
+  ("idle", 1.5, None),
+  ("blinker", 3.5, "right"),
+  ("idle", 3.0, None),
   # alerts
   ("alert", 4.0, "blocked"),
   ("idle", 2.0, None),
@@ -102,6 +107,8 @@ class NavUIDemo(Widget):
 
     self._icons = {name: gui_app.texture(f"navigation/{name}.png", ICON_SIZE, ICON_SIZE) for name, *_ in MANEUVERS}
     self._bs_icon = gui_app.texture("icons_mici/onroad/blind_spot_left_white.png", 134, 150)
+    self._ts_left = gui_app.texture("icons_mici/onroad/turn_signal_left.png", 208, 192)
+    self._ts_right = gui_app.texture("icons_mici/onroad/turn_signal_left.png", 208, 192, flip_x=True)
 
     self._ball = ConfidenceBall(demo=True)
     self._torque_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
@@ -159,11 +166,14 @@ class NavUIDemo(Widget):
 
     # fade targets
     mode, _, arg = self._scene()
-    # ball fades out for right lane changes (it sits on the right edge) and all alerts
-    ball_hidden = (mode == "lane" and arg[2] == "right") or mode == "alert"
+    # ball fades out for right lane changes / right blinker (it sits on the right edge) and all alerts
+    ball_hidden = (mode == "lane" and arg[2] == "right") or (mode == "blinker" and arg == "right") or mode == "alert"
     self._ball_alpha.update(0.0 if ball_hidden else 1.0)
     if mode == "lane":
       self._nav_alpha.update(0.08)
+      self._overlay_alpha.update(1.0)
+    elif mode == "blinker":
+      self._nav_alpha.update(1.0)
       self._overlay_alpha.update(1.0)
     elif mode == "alert":
       # same ghost level as lane changes so the gradient's transparent region
@@ -195,6 +205,8 @@ class NavUIDemo(Widget):
     if self._overlay_alpha.x > 0.01:
       if mode == "lane":
         self._draw_lane(rect, arg)
+      elif mode == "blinker":
+        self._draw_blinker(rect, arg)
       elif mode == "alert":
         self._draw_alert(rect, arg)
 
@@ -313,6 +325,17 @@ class NavUIDemo(Widget):
       w = measure_text_cached(self._font_bold, line, fs).x
       rl.draw_text_ex(self._font_bold, line, rl.Vector2(rect.x + (rect.width - w) / 2, ty), fs, -0.5, color)
       ty += line_h
+
+  def _draw_blinker(self, rect: rl.Rectangle, side: str):
+    # big flashing arrow on the signaling side, Mazda heartbeat cadence
+    phase = (time.monotonic() % BLINK_PERIOD) / BLINK_PERIOD
+    blink = 1.0 if phase < 0.5 else 0.2
+    a8 = int(255 * blink * self._overlay_alpha.x)
+
+    icon = self._ts_left if side == "left" else self._ts_right
+    x = rect.x + 16 if side == "left" else rect.x + rect.width - 16 - icon.width
+    y = rect.y + (rect.height - icon.height) / 2
+    rl.draw_texture_ex(icon, rl.Vector2(x, y), 0, 1.0, rl.Color(255, 255, 255, a8))
 
   def _draw_alert(self, rect: rl.Rectangle, key: str):
     # every alert follows one pattern: full-screen top gradient, optional icon
