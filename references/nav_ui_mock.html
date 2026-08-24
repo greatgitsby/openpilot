@@ -116,6 +116,9 @@
     pointer-events: none;
   }
   .lane-text.on { opacity: 1; }
+  /* keep the text beside the arrow, never under it */
+  .lane-text.side-right { left: 20px; right: 240px; }
+  .lane-text.side-left { left: 240px; right: 56px; }  /* ball stays visible on the right */
   .lane-text.req { color: rgba(255,255,255,0.9); }
   .lane-text.pre { color: #ffc800; }
   .lane-text.go { color: #00ffcc; }
@@ -202,7 +205,6 @@
   <button data-a="seq-nav-nudgeless">nav lane change (nudgeless)</button>
   <button data-a="seq-nav-nudge">nav lane change (nudge)</button>
   <button data-a="seq-user">user lane change</button>
-  <button data-a="blinker">turn signal</button>
   <button data-a="blocked">blind spot</button>
   <button data-a="prompt">prompt</button>
   <button data-a="critical">critical</button>
@@ -345,7 +347,7 @@ function setLane(state, label, side = 'right') {
   $('tsL').classList.toggle('on', on && side === 'left');
   // when turning off, keep the last state's color class so the fade-out
   // doesn't flash the default white text color
-  if (on) T.className = `lane-text on ${state}`;
+  if (on) T.className = `lane-text on ${state} side-${side}`;
   else T.classList.remove('on');
   screen.classList.toggle('dim-mid', on);
   screen.classList.toggle('dim-card', on);
@@ -395,13 +397,6 @@ function setAlert(key) {
   // keep .full while fading out so the departing alert doesn't snap to top-left
 
   seqTimers.forEach(clearTimeout);
-  $('tsL').classList.toggle('on', key === 'blinker' && laneSide === 'left');
-  $('tsR').classList.toggle('on', key === 'blinker' && laneSide === 'right');
-  if (key === 'blinker') {
-    setLane('off'); el.classList.remove('on');
-    screen.classList.toggle('hide-ball', laneSide === 'right');  // after setLane, which clears it
-    return;
-  }
   // sequences apply their first step synchronously in playSeq, so only reset
   // the lane state when leaving it -- avoids a flash frame of the idle state
   if (SEQUENCES[key]) { el.classList.remove('on'); playSeq(SEQUENCES[key](laneSide)); return; }

@@ -68,11 +68,6 @@ TIMELINE = [
   ("lane", 2.5, ("pre", "steer right to start", "right")),
   ("lane", 2.5, ("go_user", "changing lane", "right")),
   ("idle", 3.0, None),
-  # plain turn signals: big flashing arrows
-  ("blinker", 3.5, "left"),
-  ("idle", 1.5, None),
-  ("blinker", 3.5, "right"),
-  ("idle", 3.0, None),
   # alerts
   ("alert", 4.0, "blocked"),
   ("idle", 2.0, None),
@@ -166,14 +161,11 @@ class NavUIDemo(Widget):
 
     # fade targets
     mode, _, arg = self._scene()
-    # ball fades out for right lane changes / right blinker (it sits on the right edge) and all alerts
-    ball_hidden = (mode == "lane" and arg[2] == "right") or (mode == "blinker" and arg == "right") or mode == "alert"
+    # ball fades out for right lane changes (it sits on the right edge) and all alerts
+    ball_hidden = (mode == "lane" and arg[2] == "right") or mode == "alert"
     self._ball_alpha.update(0.0 if ball_hidden else 1.0)
     if mode == "lane":
       self._nav_alpha.update(0.08)
-      self._overlay_alpha.update(1.0)
-    elif mode == "blinker":
-      self._nav_alpha.update(1.0)
       self._overlay_alpha.update(1.0)
     elif mode == "alert":
       # same ghost level as lane changes so the gradient's transparent region
@@ -205,8 +197,6 @@ class NavUIDemo(Widget):
     if self._overlay_alpha.x > 0.01:
       if mode == "lane":
         self._draw_lane(rect, arg)
-      elif mode == "blinker":
-        self._draw_blinker(rect, arg)
       elif mode == "alert":
         self._draw_alert(rect, arg)
 
@@ -300,21 +290,31 @@ class NavUIDemo(Widget):
     # flashing turn signal arrow on the side of travel
     self._draw_blinker(rect, side)
 
-    # centered state text
-    fs = 52 if len(label) <= 14 else 44 if len(label) <= 22 else 36
-    color = rl.Color(c.r, c.g, c.b, int(c.a * oa))
-    max_w = rect.width - 2 * EDGE_GLOW_WIDTH
-    size = measure_text_cached(self._font_bold, label, fs)
-    if size.x > max_w:  # wrap to two lines at the middle space
-      mid = label.rfind(" ", 0, len(label) // 2 + 1)
-      lines = [label[:mid], label[mid + 1:]] if mid > 0 else [label]
+    # state text centered in the space beside the arrow, never under it
+    arrow_span = 16 + self._ts_left.width + 16
+    if side == "left":  # ball stays visible on the right: keep clear of it
+      region_x, region_w = rect.x + arrow_span, rect.width - arrow_span - 56
     else:
-      lines = [label]
+      region_x, region_w = rect.x + 20, rect.width - arrow_span - 20
+    color = rl.Color(c.r, c.g, c.b, int(c.a * oa))
+
+    fs = 52 if len(label) <= 14 else 44 if len(label) <= 22 else 36
+    while True:
+      if measure_text_cached(self._font_bold, label, fs).x > region_w:
+        spaces = [i for i, ch in enumerate(label) if ch == " "]
+        mid = min(spaces, key=lambda i: abs(i - len(label) / 2)) if spaces else -1
+        lines = [label[:mid], label[mid + 1:]] if mid > 0 else [label]
+      else:
+        lines = [label]
+      if fs <= 24 or all(measure_text_cached(self._font_bold, ln, fs).x <= region_w for ln in lines):
+        break
+      fs -= 2
+
     line_h = fs * 1.05
     ty = rect.y + (rect.height - line_h * len(lines)) / 2
     for line in lines:
       w = measure_text_cached(self._font_bold, line, fs).x
-      rl.draw_text_ex(self._font_bold, line, rl.Vector2(rect.x + (rect.width - w) / 2, ty), fs, -0.5, color)
+      rl.draw_text_ex(self._font_bold, line, rl.Vector2(region_x + (region_w - w) / 2, ty), fs, -0.5, color)
       ty += line_h
 
   def _draw_blinker(self, rect: rl.Rectangle, side: str):
