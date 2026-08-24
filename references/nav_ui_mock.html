@@ -100,30 +100,11 @@
   .screen.dim-soft .conf-ball { opacity: 0; }
 
   /* ---------- lane change treatments ---------- */
-
-  /* 1: edge glow — pulsing light bar on the side of travel */
-  .edge-glow {
-    position: absolute; top: 0; bottom: 0; width: 70px; z-index: 9;
-    opacity: 0; transition: opacity 0.25s; pointer-events: none;
-  }
-  .edge-glow.right { right: 0;
-    background: linear-gradient(270deg, rgba(0,255,204,0.55), rgba(0,255,204,0)); }
-  .edge-glow.left { left: 0;
-    background: linear-gradient(90deg, rgba(0,255,204,0.55), rgba(0,255,204,0)); }
-  /* one consistent pulse; state is communicated by color:
+  /* direction is carried by the big flashing turn signal arrow (.ts-arrow);
+     state is communicated by the lane text color:
      req = white (announced), pre = amber (nudge required), go = teal (executing) */
-  .edge-glow { --c: 255,255,255; }
-  .edge-glow.pre { --c: 255,200,0; }
-  .edge-glow.go { --c: 0,255,204; }       /* openpilot-initiated: engaged teal */
-  .edge-glow.go-user { --c: 255,255,255; }  /* human-initiated: override white */
-  .edge-glow.right {
-    background: linear-gradient(270deg, rgba(var(--c),0.55), rgba(var(--c),0)); }
-  .edge-glow.left {
-    background: linear-gradient(90deg, rgba(var(--c),0.55), rgba(var(--c),0)); }
-  .edge-glow.on { opacity: 1; animation: glowpulse 0.75s ease-in-out infinite; }
-  @keyframes glowpulse { 50% { opacity: 0.25; } }
 
-  /* lane state text: alert-sized, colored to match the glow */
+  /* lane state text: alert-sized */
   .lane-text {
     position: absolute; left: 60px; top: 0; bottom: 0; right: 60px; z-index: 9;
     display: flex; align-items: center; justify-content: center; text-align: center;
@@ -200,8 +181,6 @@
   <img class="ts-arrow left" id="tsL" src="../openpilot/selfdrive/assets/icons_mici/onroad/turn_signal_left.png">
   <img class="ts-arrow right" id="tsR" src="../openpilot/selfdrive/assets/icons_mici/onroad/turn_signal_left.png">
 
-  <div class="edge-glow right" id="glowR"></div>
-  <div class="edge-glow left" id="glowL"></div>
   <div class="lane-text" id="lanetext"></div>
 
   <div class="alert" id="alert">
@@ -361,8 +340,9 @@ function setLane(state, label, side = 'right') {
   const T = $('lanetext');
   const screen = document.querySelector('.screen');
   const on = state !== 'off';
-  $('glowR').className = 'edge-glow right' + (on && side === 'right' ? ` ${state} on` : '');
-  $('glowL').className = 'edge-glow left' + (on && side === 'left' ? ` ${state} on` : '');
+  // flashing turn signal arrow carries direction for every lane change state
+  $('tsR').classList.toggle('on', on && side === 'right');
+  $('tsL').classList.toggle('on', on && side === 'left');
   // when turning off, keep the last state's color class so the fade-out
   // doesn't flash the default white text color
   if (on) T.className = `lane-text on ${state}`;
@@ -371,7 +351,7 @@ function setLane(state, label, side = 'right') {
   screen.classList.toggle('dim-card', on);
   screen.classList.toggle('hide-ball', on && side === 'right');
   if (label) {
-    // shrink like the alert renderer does for longer strings; the glow carries direction
+    // shrink like the alert renderer does for longer strings; the arrow carries direction
     T.style.fontSize = (label.length <= 14 ? 52 : label.length <= 22 ? 44 : 36) + 'px';
     T.innerHTML = '<span>' + label + '</span>';
   }

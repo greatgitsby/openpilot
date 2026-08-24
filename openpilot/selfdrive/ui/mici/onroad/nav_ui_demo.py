@@ -297,17 +297,8 @@ class NavUIDemo(Widget):
     oa = self._overlay_alpha.x
     c = LANE_COLORS[state]
 
-    # pulsing edge glow on the side of travel
-    phase = (time.monotonic() % BLINK_PERIOD) / BLINK_PERIOD
-    pulse = 0.25 + 0.75 * (0.5 + 0.5 * math.cos(2 * math.pi * phase))
-    glow_a = int(255 * 0.55 * pulse * oa)
-    glow = rl.Color(c.r, c.g, c.b, glow_a)
-    clear = rl.Color(c.r, c.g, c.b, 0)
-    if side == "right":
-      gx = int(rect.x + rect.width - EDGE_GLOW_WIDTH)
-      rl.draw_rectangle_gradient_h(gx, int(rect.y), EDGE_GLOW_WIDTH, int(rect.height), clear, glow)
-    else:
-      rl.draw_rectangle_gradient_h(int(rect.x), int(rect.y), EDGE_GLOW_WIDTH, int(rect.height), glow, clear)
+    # flashing turn signal arrow on the side of travel
+    self._draw_blinker(rect, side)
 
     # centered state text
     fs = 52 if len(label) <= 14 else 44 if len(label) <= 22 else 36
