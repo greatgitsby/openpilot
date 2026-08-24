@@ -11,7 +11,6 @@ import time
 import pyray as rl
 
 from openpilot.selfdrive.ui.mici.onroad.confidence_ball import ConfidenceBall
-from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
@@ -104,7 +103,7 @@ class NavUIDemo(Widget):
     self._bs_right = gui_app.texture("icons_mici/onroad/blind_spot_left.png", 134, 150, flip_x=True)
 
     self._ball = ConfidenceBall(demo=True)
-    self._torque = TorqueBar(demo=True)
+    self._torque_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
 
     # simulated drive
     self._m_idx = 0
@@ -154,7 +153,7 @@ class NavUIDemo(Widget):
     # demo signals for the shared widgets
     t = now
     self._ball.update_filter(0.65 + 0.35 * math.sin(t * 0.35) * math.sin(t * 0.13))
-    self._torque.update_filter(0.95 * math.sin(t * 0.9) * math.sin(t * 0.31))
+    self._torque_filter.update(0.95 * math.sin(t * 0.9) * math.sin(t * 0.31))
 
     # fade targets
     mode, _, arg = self._scene()
@@ -177,7 +176,7 @@ class NavUIDemo(Widget):
 
     if a > 0.02:
       self._ball.render(rect)
-      self._torque.render(rect)
+      self._draw_torque_bar(rect, a)
 
     mode, _, arg = self._scene()
     if self._overlay_alpha.x > 0.01:
@@ -257,6 +256,34 @@ class NavUIDemo(Widget):
       text = f"then {nxt[1]}"
       rl.draw_text_ex(self._font_bold, text, rl.Vector2(x, y), 24, 0,
                       rl.Color(ADVICE_COLOR.r, ADVICE_COLOR.g, ADVICE_COLOR.b, a8))
+
+  def _draw_torque_bar(self, rect: rl.Rectangle, alpha: float):
+    # thin bottom strip, center-out fill: grows 8->27px as |torque| goes 0.5->1,
+    # blends white->orange near max (mock's flat variant, not the on-device arc)
+    def lerp(a, b, f):
+      return a + (b - a) * min(1.0, max(0.0, f))
+
+    def blend(c1, c2, f):
+      f = min(1.0, max(0.0, f))
+      return tuple(round(v + (w - v) * f) for v, w in zip(c1, c2, strict=True))
+
+    t = self._torque_filter.x
+    abs_t = abs(t)
+    height = round(lerp(8, 27, (abs_t - 0.5) * 2))
+    gray = round(255 * lerp(0.12, 0.3, (abs_t - 0.5) * 2))
+    y = int(rect.y + rect.height - height)
+    rl.draw_rectangle(int(rect.x), y, int(rect.width), height, rl.Color(gray, gray, gray, int(255 * alpha)))
+
+    cx = rect.x + rect.width / 2
+    w = abs_t * rect.width / 2
+    heat = max(0.0, abs_t - 0.75) * 4
+    c_start = blend((255, 255, 255), (255, 200, 0), heat)
+    c_end = blend((255, 255, 255), (255, 115, 0), heat)
+    start = rl.Color(*c_start, int(255 * 0.9 * alpha))
+    end = rl.Color(*c_end, int(255 * alpha))
+    fx = int(cx) if t >= 0 else int(cx - w)
+    left, right = (start, end) if t >= 0 else (end, start)
+    rl.draw_rectangle_gradient_h(fx, y, int(w), height, left, right)
 
   def _draw_lane(self, rect: rl.Rectangle, arg):
     state, label, side = arg
