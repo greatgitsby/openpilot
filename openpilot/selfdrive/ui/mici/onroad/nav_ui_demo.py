@@ -44,7 +44,8 @@ CARD_BORDER = rl.Color(34, 34, 34, 255)
 LANE_COLORS = {
   "req": rl.Color(255, 255, 255, 230),
   "pre": rl.Color(255, 200, 0, 255),
-  "go": rl.Color(0, 255, 204, 255),
+  "go": rl.Color(0, 255, 204, 255),       # openpilot-initiated: engaged teal
+  "go_user": rl.Color(255, 255, 255, 230),  # human-initiated: override white
 }
 
 ORANGE = (255, 115, 0)
@@ -65,7 +66,7 @@ TIMELINE = [
   ("idle", 3.0, None),
   # user lane change (blinker)
   ("lane", 2.5, ("pre", "steer right to start", "right")),
-  ("lane", 2.5, ("go", "changing lane", "right")),
+  ("lane", 2.5, ("go_user", "changing lane", "right")),
   ("idle", 3.0, None),
   # alerts
   ("alert", 4.0, "blocked"),
@@ -342,6 +343,8 @@ class NavUIDemo(Widget):
     fs = 82 if len(text1) <= 12 else 70 if len(text1) <= 16 else 54
     if bs_icon:
       fs -= 10
+    while fs > 24 and measure_text_cached(self._font_bold, text1, fs).x > rect.width - 2 * ((self._bs_left.width + 8) if bs_icon else 18):
+      fs -= 2
     white = rl.Color(255, 255, 255, int(255 * 0.9 * oa))
 
     t1_w = measure_text_cached(self._font_bold, text1, fs).x

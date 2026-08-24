@@ -116,7 +116,8 @@
      req = white (announced), pre = amber (nudge required), go = teal (executing) */
   .edge-glow { --c: 255,255,255; }
   .edge-glow.pre { --c: 255,200,0; }
-  .edge-glow.go { --c: 0,255,204; }
+  .edge-glow.go { --c: 0,255,204; }       /* openpilot-initiated: engaged teal */
+  .edge-glow.go-user { --c: 255,255,255; }  /* human-initiated: override white */
   .edge-glow.right {
     background: linear-gradient(270deg, rgba(var(--c),0.55), rgba(var(--c),0)); }
   .edge-glow.left {
@@ -139,6 +140,7 @@
   .lane-text.req { color: rgba(255,255,255,0.9); }
   .lane-text.pre { color: #ffc800; }
   .lane-text.go { color: #00ffcc; }
+  .lane-text.go-user { color: rgba(255,255,255,0.9); }
   .lane-text .lt-arrow { animation: blink 0.75s step-start infinite; }
 
   /* controls */
@@ -397,7 +399,7 @@ const SEQUENCES = {
   // user-initiated (blinker on): always requires nudge
   'seq-user': s => [
     [0,    () => setLane('pre', `steer ${s} to start`, s)],       // preLaneChange
-    [2500, () => setLane('go', 'changing lane', s)],
+    [2500, () => setLane('go-user', 'changing lane', s)],
     [5000, () => setLane('off')],
   ],
 };
