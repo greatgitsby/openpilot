@@ -94,10 +94,10 @@
   .maneuver, .trip { transition: opacity 0.3s, filter 0.3s; }
   .screen.dim-mid .trip { opacity: 0.08; }
   .screen.dim-card .maneuver { opacity: 0.08; }
-  .screen.dim-full .trip, .screen.dim-full .maneuver,
-  .screen.dim-full .conf-ball, .screen.dim-full .torque-track { opacity: 0; }
+  /* one dim treatment for every alert: content ghosts to 8%, ball hides */
   .screen.dim-soft .trip, .screen.dim-soft .maneuver,
-  .screen.dim-soft .torque-track { opacity: 0.05; }
+  .screen.dim-soft .torque-track { opacity: 0.08; }
+  .screen.dim-soft .conf-ball { opacity: 0; }
 
   /* ---------- lane change treatments ---------- */
 
@@ -398,7 +398,7 @@ const SEQUENCES = {
 function setAlert(key) {
   const el = $('alert');
   const screen = document.querySelector('.screen');
-  screen.classList.remove('dim-mid', 'dim-full', 'dim-card', 'dim-soft');
+  screen.classList.remove('dim-mid', 'dim-card', 'dim-soft');
   // keep .full while fading out so the departing alert doesn't snap to top-left
 
   seqTimers.forEach(clearTimeout);
@@ -411,10 +411,10 @@ function setAlert(key) {
   if (!a) { el.classList.remove('on'); return; }
 
   el.classList.add('on', 'full');
-  screen.classList.add('dim-full');
+  screen.classList.add('dim-soft');
 
   el.style.height = '240px';
-  el.style.background = `rgb(${a.color})`;   // solid full-bleed, fades in as a whole
+  el.style.background = `linear-gradient(rgba(${a.color},0.9) 20%, rgba(${a.color},0) 100%)`;
 
   $('atext1').textContent = a.t1;
   // same tiers as alert_renderer.py: 82 / 70 / 54, minus 10 when an icon shows

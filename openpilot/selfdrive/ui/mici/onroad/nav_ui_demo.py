@@ -77,7 +77,7 @@ TIMELINE = [
   ("idle", 4.0, None),
 ]
 
-# one pattern for every alert: solid full-screen color, centered lowercase text,
+# one pattern for every alert: full-screen top gradient, centered lowercase text,
 # optional icon left of the text block. text1, text2, color, blind spot icon
 ALERTS = {
   "blocked": ("car in blind spot", "", ORANGE, True),
@@ -166,7 +166,9 @@ class NavUIDemo(Widget):
       self._nav_alpha.update(0.08)
       self._overlay_alpha.update(1.0)
     elif mode == "alert":
-      self._nav_alpha.update(0.0)
+      # same ghost level as lane changes so the gradient's transparent region
+      # reads as transparent on every alert
+      self._nav_alpha.update(0.08)
       self._overlay_alpha.update(1.0)
     else:
       self._nav_alpha.update(1.0)
@@ -313,14 +315,18 @@ class NavUIDemo(Widget):
       ty += line_h
 
   def _draw_alert(self, rect: rl.Rectangle, key: str):
-    # every alert follows one pattern: solid full-screen color, optional icon
+    # every alert follows one pattern: full-screen top gradient, optional icon
     # left of a centered text block, text2 centered under text1
     text1, text2, (r, g, b), bs_icon = ALERTS[key]
     oa = self._overlay_alpha.x
 
-    # solid full-bleed color that fades in as a whole
-    rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height),
-                      rl.Color(r, g, b, int(255 * oa)))
+    # solid top 20%, gradient to fully transparent below; whole surface fades with oa
+    solid_h = round(rect.height * 0.2)
+    color = rl.Color(r, g, b, int(255 * 0.9 * oa))
+    clear = rl.Color(r, g, b, 0)
+    rl.draw_rectangle(int(rect.x), int(rect.y), int(rect.width), solid_h, color)
+    rl.draw_rectangle_gradient_v(int(rect.x), int(rect.y + solid_h), int(rect.width),
+                                 int(rect.height - solid_h), color, clear)
 
     white = rl.Color(255, 255, 255, int(255 * 0.9 * oa))
     icon = self._bs_icon if bs_icon else None
