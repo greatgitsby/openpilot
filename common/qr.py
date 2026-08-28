@@ -363,14 +363,21 @@ def _find_patterns(binary: np.ndarray, ratios: tuple[int, ...]) -> list[tuple[fl
   cxs = starts[first + half] % (w + 2) - 1 + L[:, half] / 2
   mods = L.sum(axis=1) / sum(ratios)
 
-  # cheap vertical probe of the center run and the first light run before the full cross check
-  probes = [(ratios[half] * 0.25, True), (ratios[half] / 2 + ratios[half + 1] / 2, False)]
-  keep = np.ones(len(rows), dtype=bool)
+  # cheap vertical probe before the full cross check: dark just above and below, and a light run
+  # somewhere within a few modules (perspective can make vertical modules much smaller or larger)
   xi = cxs.astype(int)
-  for off, dark in probes:
-    for sign in (1, -1):
-      y = np.rint(rows + sign * off * mods).astype(int)
-      keep &= (y >= 0) & (y < h) & (binary[np.clip(y, 0, h - 1), xi] == dark)
+
+  def probe(off: float) -> np.ndarray:
+    y = np.rint(rows + off * mods).astype(int)
+    return (y >= 0) & (y < h) & binary[np.clip(y, 0, h - 1), xi]
+
+  keep = np.ones(len(rows), dtype=bool)
+  for sign in (1, -1):
+    keep &= probe(sign * ratios[half] * 0.25)
+    light = np.zeros(len(rows), dtype=bool)
+    for k in (0.4, 0.6, 0.8, 1.0, 1.3, 1.6):
+      light |= ~probe(sign * (ratios[half] / 2 + ratios[half + 1] / 2) * k)
+    keep &= light
   rows, cxs, mods = rows[keep], cxs[keep], mods[keep]
 
   found: list[list[float]] = []  # [x, y, module, count]
@@ -462,25 +469,34 @@ _ALIGN_TEMPLATE[1:4, 1:4] = False
 _ALIGN_TEMPLATE[2, 2] = True
 
 
-def _locate_alignment(binary: np.ndarray, est: np.ndarray, module: float) -> np.ndarray | None:
-  """Template matches the 5x5 alignment pattern around the estimated center."""
+def _locate_alignment(binary: np.ndarray, H: np.ndarray, center: float, module: float) -> np.ndarray | None:
+  """Template matches the 5x5 alignment pattern around its position estimated from H."""
+  grid = np.mgrid[-2:3, -2:3].reshape(2, -1).T[:, ::-1] + center  # (25, 2) module coords (x, y)
+  pts = _transform(H, grid)
+  # the affine estimate can be off in both position and local scale under perspective
+  for radius in (4, 8, 16):
+    for scale in (1.0, 0.8, 1.25, 0.65, 1.5):
+      found = _match_alignment(binary, pts[12], (pts - pts[12]) * scale, int(module * radius), module)
+      if found is not None:
+        return found
+  return None
+
+
+def _match_alignment(binary: np.ndarray, est: np.ndarray, offs: np.ndarray, r: int, module: float) -> np.ndarray | None:
   h, w = binary.shape
-  r = int(module * 5)
-  ys = np.arange(max(0, int(est[1]) - r), min(h, int(est[1]) + r))
-  xs = np.arange(max(0, int(est[0]) - r), min(w, int(est[0]) + r))
-  offs = (np.arange(5) - 2) * module
-  sy = np.rint(ys[:, None] + offs[None, :]).astype(int)
-  sx = np.rint(xs[:, None] + offs[None, :]).astype(int)
-  in_y, in_x = (sy[:, 0] >= 0) & (sy[:, -1] < h), (sx[:, 0] >= 0) & (sx[:, -1] < w)
-  ys, sy, xs, sx = ys[in_y], sy[in_y], xs[in_x], sx[in_x]
-  if len(ys) == 0 or len(xs) == 0:
+  dy = np.arange(max(0, int(est[1]) - r), min(h, int(est[1]) + r)) - est[1]
+  dx = np.arange(max(0, int(est[0]) - r), min(w, int(est[0]) + r)) - est[0]
+  if len(dy) == 0 or len(dx) == 0:
     return None
-  samples = binary[sy[:, None, :, None], sx[None, :, None, :]]
-  score = (samples == _ALIGN_TEMPLATE).sum(axis=(2, 3))
+  y = np.rint(est[1] + dy[:, None, None] + offs[None, None, :, 1]).astype(int)  # (ny, 1, 25)
+  x = np.rint(est[0] + dx[None, :, None] + offs[None, None, :, 0]).astype(int)  # (1, nx, 25)
+  valid = ((y >= 0) & (y < h) & (x >= 0) & (x < w)).all(axis=2)
+  samples = binary[np.clip(y, 0, h - 1), np.clip(x, 0, w - 1)]
+  score = np.where(valid, (samples == _ALIGN_TEMPLATE.ravel()).sum(axis=2), 0)
   if score.max() < 23:
     return None
   hits = np.argwhere(score == score.max())
-  centers = np.column_stack((xs[hits[:, 1]], ys[hits[:, 0]])).astype(float)
+  centers = np.column_stack((est[0] + dx[hits[:, 1]], est[1] + dy[hits[:, 0]]))
   closest = centers[np.argmin(np.linalg.norm(centers - est, axis=1))]
   return centers[np.linalg.norm(centers - closest, axis=1) <= module / 2].mean(axis=0)
 
@@ -490,8 +506,7 @@ def _sample(binary: np.ndarray, tl: np.ndarray, tr: np.ndarray, bl: np.ndarray, 
   dst = [tuple(tl), tuple(tr), tuple(bl)]
   H = _perspective(src + [(dim - 3.5, dim - 3.5)], dst + [tuple(tr + bl - tl)])
   if use_alignment and dim > 21:
-    est = _transform(H, np.array([[dim - 6.5, dim - 6.5]]))[0]
-    align = _locate_alignment(binary, est, module)
+    align = _locate_alignment(binary, H, dim - 6.5, module)
     if align is not None:
       H = _perspective(src + [(dim - 6.5, dim - 6.5)], dst + [tuple(align)])
 
