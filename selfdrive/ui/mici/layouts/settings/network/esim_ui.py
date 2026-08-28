@@ -132,7 +132,7 @@ class QRScannerDialog(NavWidget):
     self._last_scan_time = now
 
     frame = self._camera_view.frame
-    gray = np.array(frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width])
+    gray = qr.downsample(frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width])
     self._scan_thread = threading.Thread(target=self._scan, args=(gray,), daemon=True)
     self._scan_thread.start()
 

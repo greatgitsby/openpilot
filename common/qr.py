@@ -518,6 +518,13 @@ def _sample(binary: np.ndarray, tl: np.ndarray, tr: np.ndarray, bl: np.ndarray, 
   return binary[xy[:, 1], xy[:, 0]].reshape(dim, dim)
 
 
+def downsample(gray: np.ndarray) -> np.ndarray:
+  """2x2 box downsample. Roughly 4x faster to decode, but modules need to be at least ~4 px in the source."""
+  h, w = gray.shape[0] // 2 * 2, gray.shape[1] // 2 * 2
+  acc = gray[:h:2, :w:2].astype(np.uint16) + gray[1:h:2, :w:2] + gray[:h:2, 1:w:2] + gray[1:h:2, 1:w:2]
+  return (acc >> 2).astype(np.uint8)
+
+
 def decode(gray: np.ndarray) -> str | None:
   """Decodes the QR code in a 2D uint8 grayscale image. Returns None if nothing could be decoded."""
   try:

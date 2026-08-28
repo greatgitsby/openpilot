@@ -72,6 +72,13 @@ def test_perspective_and_noise():
   assert qr.decode(np.clip(arr, 0, 255).astype(np.uint8)) == LPA
 
 
+def test_downsample():
+  _, img = make(LPA, box=8)
+  small = qr.downsample(img)
+  assert small.shape == (img.shape[0] // 2, img.shape[1] // 2)
+  assert qr.decode(small) == LPA
+
+
 def test_no_code():
   rng = np.random.default_rng(2)
   assert qr.decode(rng.integers(0, 256, size=(240, 320), dtype=np.uint8)) is None
