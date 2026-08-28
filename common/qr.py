@@ -319,101 +319,100 @@ def _binarize(gray: np.ndarray) -> np.ndarray:
   H, W = h // B, w // B
   if H < 1 or W < 1:
     raise QRError("image too small")
-  blocks = gray[:H * B, :W * B].reshape(H, B, W, B).mean(axis=(1, 3))
+  tiles = gray[:H * B, :W * B].reshape(H, B, W, B)
+  sub = tiles[:, ::2, :, ::2]  # block statistics from a subsample are plenty
+  blocks = sub.sum(axis=(1, 3), dtype=np.uint32) / (sub.shape[1] * sub.shape[3])
   padded = np.pad(blocks, 2, mode="edge")
   cs = np.pad(np.cumsum(np.cumsum(padded, 0), 1), ((1, 0), (1, 0)))
   local = (cs[5:, 5:] - cs[:-5, 5:] - cs[5:, :-5] + cs[:-5, :-5]) / 25
-  thr = np.repeat(np.repeat(local, B, 0), B, 1)
+  # flat blocks are all light unless clearly darker than their surroundings, so sensor noise doesn't become speckle
+  flat = sub.max(axis=(1, 3)) - sub.min(axis=(1, 3)) < 24
+  thr = np.where(flat, np.where(blocks < local - 12, 255, 0), local).astype(np.uint8)
   out = np.zeros((h, w), dtype=bool)
-  out[:H * B, :W * B] = gray[:H * B, :W * B] < thr
+  out[:H * B, :W * B] = (tiles < thr[:, None, :, None]).reshape(H * B, W * B)
   return out
 
 
-def _runs(line: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-  change = np.flatnonzero(line[1:] != line[:-1]) + 1
-  starts = np.concatenate(([0], change))
-  lengths = np.diff(np.concatenate((starts, [line.size])))
-  return starts, lengths
+class _Runs:
+  """Run-length table of a padded, flattened binary image with a per-pixel run index."""
 
+  def __init__(self, padded: np.ndarray):
+    self.flat = padded.ravel()
+    self.stride = padded.shape[1]
+    change = self.flat[1:] != self.flat[:-1]
+    self.starts = np.concatenate(([0], np.flatnonzero(change) + 1))
+    self.lengths = np.diff(np.append(self.starts, self.flat.size)).astype(np.int32)
 
-def _ratio_ok(lengths: np.ndarray, ratios: tuple[int, ...]) -> np.ndarray:
-  module = lengths.sum(axis=-1) / sum(ratios)
-  ok = module >= 2
-  for k, r in enumerate(ratios):
-    ok &= np.abs(lengths[..., k] - r * module) <= r * module / 2
-  return ok
+  def run_at(self, line: np.ndarray, pos: np.ndarray) -> np.ndarray:
+    """Index of the run containing the pixel at `pos` along `line`."""
+    return np.searchsorted(self.starts, line * self.stride + pos + 1, side="right") - 1
+
+  def scan(self, ratios: tuple[int, ...]) -> np.ndarray:
+    """Returns the indices of all dark runs starting a window of runs matching the ratios."""
+    n = len(ratios)
+    N = len(self.lengths) - n + 1
+    if N <= 0:
+      return np.zeros(0, dtype=int)
+    L = [self.lengths[k:N + k] for k in range(n)]
+    total = sum(L)
+    # integer form of |L - r * total / sum(ratios)| <= r * total / (2 * sum(ratios))
+    ok = self.flat[self.starts[:N]] & (total >= 2 * sum(ratios))
+    for k, r in enumerate(ratios):
+      ok &= np.abs(2 * sum(ratios) * L[k] - 2 * r * total) <= r * total
+    first = np.flatnonzero(ok)
+    return first[self.starts[first] // self.stride == self.starts[first + n - 1] // self.stride]
+
+  def check(self, first: np.ndarray, ratios: tuple[int, ...]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Checks the run windows starting at run index `first`. Returns (ok, center position along the line, module size)."""
+    n, half = len(ratios), len(ratios) // 2
+    idx = first[:, None] + np.arange(n)
+    ok = (first >= 0) & (first + n <= len(self.starts))
+    idx = np.clip(idx, 0, len(self.starts) - 1)
+    L = self.lengths[idx].astype(float)
+    ok &= self.flat[self.starts[idx[:, 0]]]
+    ok &= self.starts[idx[:, 0]] // self.stride == self.starts[idx[:, -1]] // self.stride
+    module = L.sum(axis=1) / sum(ratios)
+    ok &= module >= 2
+    for k, r in enumerate(ratios):
+      ok &= np.abs(L[:, k] - r * module) <= r * module / 2
+    center = self.starts[idx[:, half]] % self.stride - 1 + L[:, half] / 2
+    return ok, center, module
 
 
 def _find_patterns(binary: np.ndarray, ratios: tuple[int, ...]) -> list[tuple[float, float, float]]:
   """Finds dark/light run patterns with the given module ratios. Returns (x, y, module size)."""
   h, w = binary.shape
+  half = len(ratios) // 2
   padded = np.zeros((h, w + 2), dtype=bool)
   padded[:, 1:-1] = binary
-  starts, lengths = _runs(padded.ravel())
-  n, half = len(ratios), len(ratios) // 2
-  if len(starts) < n:
+  rows_t = _Runs(padded)
+
+  first = rows_t.scan(ratios)
+  if len(first) == 0:
     return []
+  _, cx, hmod = rows_t.check(first, ratios)
+  row = rows_t.starts[first] // rows_t.stride
 
-  first = np.arange(len(starts) - n + 1)
-  first = first[padded.ravel()[starts[first]]]
-  L = np.stack([lengths[first + k] for k in range(n)], axis=1).astype(float)
-  ok = _ratio_ok(L, ratios) & (starts[first] // (w + 2) == starts[first + n - 1] // (w + 2))
-  first, L = first[ok], L[ok]
-  rows = starts[first] // (w + 2)
-  cxs = starts[first + half] % (w + 2) - 1 + L[:, half] / 2
-  mods = L.sum(axis=1) / sum(ratios)
-
-  # cheap vertical probe before the full cross check: dark just above and below, and a light run
-  # somewhere within a few modules (perspective can make vertical modules much smaller or larger)
-  xi = cxs.astype(int)
-
-  def probe(off: float) -> np.ndarray:
-    y = np.rint(rows + off * mods).astype(int)
-    return (y >= 0) & (y < h) & binary[np.clip(y, 0, h - 1), xi]
-
-  keep = np.ones(len(rows), dtype=bool)
-  for sign in (1, -1):
-    keep &= probe(sign * ratios[half] * 0.25)
-    light = np.zeros(len(rows), dtype=bool)
-    for k in (0.4, 0.6, 0.8, 1.0, 1.3, 1.6):
-      light |= ~probe(sign * (ratios[half] / 2 + ratios[half + 1] / 2) * k)
-    keep &= light
-  rows, cxs, mods = rows[keep], cxs[keep], mods[keep]
+  padded_t = np.zeros((w, h + 2), dtype=bool)
+  padded_t[:, 1:-1] = binary.T
+  cols_t = _Runs(padded_t)
+  xi = cx.astype(int)
+  ok, cy, vmod = cols_t.check(cols_t.run_at(xi, row) - half, ratios)
+  ok &= (0.5 <= vmod / hmod) & (vmod / hmod <= 2)
+  ok2, cx2, hmod2 = rows_t.check(rows_t.run_at(np.clip(cy, 0, h - 1).astype(int), xi) - half, ratios)
+  ok &= ok2 & (0.5 <= hmod2 / vmod) & (hmod2 / vmod <= 2)
 
   found: list[list[float]] = []  # [x, y, module, count]
-  for row, cx, hmod in zip(rows, cxs, mods, strict=True):
+  for x, y, module in zip(cx2[ok], cy[ok], (hmod2[ok] + vmod[ok]) / 2, strict=True):
     for f in found:
-      if abs(f[0] - cx) <= f[2] and abs(f[1] - row) <= f[2] * 2:
-        f[3] += 1
+      if abs(f[0] - x) <= f[2] and abs(f[1] - y) <= f[2] and 0.5 <= f[2] / module <= 2:
+        c = f[3]
+        f[0], f[1], f[2], f[3] = (f[0] * c + x) / (c + 1), (f[1] * c + y) / (c + 1), (f[2] * c + module) / (c + 1), c + 1
         break
     else:
-      v = _cross_check(binary[:, int(cx)], row, ratios, hmod)
-      if v is None:
-        continue
-      cy, vmod = v
-      hz = _cross_check(binary[int(cy), :], int(cx), ratios, vmod)
-      if hz is None:
-        continue
-      found.append([hz[0], cy, (hmod + vmod) / 2, 1])
+      found.append([x, y, module, 1])
   found.sort(key=lambda f: -f[3])
   return [(f[0], f[1], f[2]) for f in found if f[3] >= 2]
-
-
-def _cross_check(line: np.ndarray, pos: int, ratios: tuple[int, ...], expected: float) -> tuple[float, float] | None:
-  span = int(expected * sum(ratios))
-  lo = max(0, pos - span)
-  line = line[lo:pos + span]
-  pos -= lo
-  starts, lengths = _runs(line)
-  i = int(np.searchsorted(starts, pos, side="right")) - 1
-  half = len(ratios) // 2
-  if not line[starts[i]] or i - half < 0 or i + half >= len(starts):
-    return None
-  L = lengths[i - half:i + half + 1].astype(float)
-  module = L.sum() / sum(ratios)
-  if not _ratio_ok(L, ratios) or not 0.5 <= module / expected <= 2:
-    return None
-  return float(lo + starts[i] + L[half] / 2), float(module)
 
 
 def _perspective(src: list[tuple[float, float]], dst: list[tuple[float, float]]) -> np.ndarray:
