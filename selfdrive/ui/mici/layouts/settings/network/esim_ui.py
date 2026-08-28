@@ -1,11 +1,12 @@
 import threading
 import urllib.request
 
-import zxingcpp
+import numpy as np
 import pyray as rl
 from collections.abc import Callable
 from msgq.visionipc import VisionStreamType
 
+from openpilot.common import qr
 from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, LABEL_COLOR
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigDialog, BigInputDialog
@@ -93,6 +94,8 @@ class QRScannerDialog(NavWidget):
     self._camera_view = CameraView("camerad", VisionStreamType.VISION_STREAM_DRIVER)
     self._detected = False
     self._last_scan_time = 0.0
+    self._scan_thread: threading.Thread | None = None
+    self._scan_result: str | None = None
     self.set_rect(rl.Rectangle(0, 0, gui_app.width, gui_app.height))
 
   def show_event(self):
@@ -113,19 +116,28 @@ class QRScannerDialog(NavWidget):
     if self._detected or not self._camera_view.frame:
       return
 
+    if self._scan_thread is not None:
+      if self._scan_thread.is_alive():
+        return
+      self._scan_thread = None
+      data = self._scan_result
+      if data is not None and _is_valid_lpa_code(data):
+        self._detected = True
+        self.dismiss(lambda: self._on_qr_detected(data))
+        return
+
     now = rl.get_time()
     if now - self._last_scan_time < QR_SCAN_INTERVAL_S:
       return
     self._last_scan_time = now
 
     frame = self._camera_view.frame
-    gray = frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width]
-    results = zxingcpp.read_barcodes(gray)
-    if results:
-      data = results[0].text
-      if _is_valid_lpa_code(data):
-        self._detected = True
-        self.dismiss(lambda: self._on_qr_detected(data))
+    gray = np.array(frame.data[:frame.height * frame.stride].reshape(frame.height, frame.stride)[:, :frame.width])
+    self._scan_thread = threading.Thread(target=self._scan, args=(gray,), daemon=True)
+    self._scan_thread.start()
+
+  def _scan(self, gray: np.ndarray):
+    self._scan_result = qr.decode(gray)
 
   def _render(self, rect):
     rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
