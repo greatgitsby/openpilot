@@ -24,7 +24,6 @@ constexpr float SIGNAL_ROW_EXTRA = 5.0f;  // the tool button in the row makes it
 constexpr float SIGNAL_ROW_SCALE = 1.25f;
 constexpr float FILTER_WIDTH = 160.0f;
 constexpr float SPARKLINE_SLIDER_WIDTH = 120.0f;
-constexpr float COLLAPSE_ICON_SIZE = 12.0f;
 // WARNING: increasing the maximum range can result in severe performance degradation.
 // 30s is a reasonable value at present.
 constexpr int SPARKLINE_RANGE_MAX = 30;
@@ -673,8 +672,7 @@ void SignalView::updateState(const std::set<MessageId> *msgs) {
 // the sparkline label, the range slider and the collapse button
 float SignalView::toolBarRightWidth(const std::string &range_label) {
   const ImGuiStyle &style = ImGui::GetStyle();
-  return ImGui::CalcTextSize(range_label.c_str()).x + style.ItemSpacing.x + SPARKLINE_SLIDER_WIDTH + style.ItemSpacing.x +
-         ImGui::GetFont()->CalcTextSizeA(COLLAPSE_ICON_SIZE, FLT_MAX, 0.0f, icon::ARROWS_COLLAPSE).x + style.FramePadding.x * 2;
+  return ImGui::CalcTextSize(range_label.c_str()).x + style.ItemSpacing.x + SPARKLINE_SLIDER_WIDTH + style.ItemSpacing.x + iconButtonWidth();
 }
 
 // the width at which the tool bar stops squishing: the signal count and the filter box on the left, the
@@ -715,11 +713,7 @@ void SignalView::draw() {
   }
   ImGui::SetItemTooltip("Sparkline time range");
   ImGui::SameLine();
-  // auto-raise tool button with a 12x12 icon
-  ImGui::PushFont(ImGui::GetFont(), COLLAPSE_ICON_SIZE);
-  const bool collapse = toolButton("collapse_all", icon::ARROWS_COLLAPSE, "Collapse All");
-  ImGui::PopFont();
-  if (collapse) collapseAll();
+  if (iconButton("collapse_all", icon::ARROWS_COLLAPSE, "Collapse All")) collapseAll();
 
   drawTree();
   drawValueDescriptionDlg();

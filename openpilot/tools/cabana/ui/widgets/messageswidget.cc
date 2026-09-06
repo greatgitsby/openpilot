@@ -250,7 +250,7 @@ void MessagesWidget::drawToolBar() {
   disabledItemTooltip("Clear suppressed");
 
   const ImGuiStyle &style = ImGui::GetStyle();
-  const float checkbox_width = ImGui::CalcTextSize("Suppress Signals").x + ImGui::GetFrameHeight() + style.ItemInnerSpacing.x;
+  const float checkbox_width = ImGui::CalcTextSize("Suppress Signals").x + CHECKBOX_SIZE + style.ItemInnerSpacing.x;
   const float view_button_width = iconButtonWidth();
   alignRight(checkbox_width + style.ItemSpacing.x + view_button_width);
 

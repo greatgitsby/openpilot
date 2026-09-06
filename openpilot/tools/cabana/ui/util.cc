@@ -302,7 +302,7 @@ bool viewSelectable(const char *label, bool selected, ImGuiSelectableFlags flags
 }
 
 bool checkBox(const char *label, bool *v) {
-  const float box = 16.0f;
+  const float box = CHECKBOX_SIZE;
   ImGuiWindow *window = ImGui::GetCurrentWindow();
   if (window->SkipItems) return false;
   const ImGuiStyle &style = ImGui::GetStyle();

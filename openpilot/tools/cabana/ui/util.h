@@ -116,6 +116,7 @@ bool viewSelectable(const char *label, bool selected, ImGuiSelectableFlags flags
 // a 16px box vertically centered in the frame height so rows keep their layout; ImGui::Checkbox draws a
 // frame height (22 px) square.
 bool checkBox(const char *label, bool *v);
+constexpr float CHECKBOX_SIZE = 16.0f;
 
 // the next items on the line are right aligned as a block `width` wide
 void alignRight(float width);
