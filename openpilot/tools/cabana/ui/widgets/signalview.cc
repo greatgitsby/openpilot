@@ -313,13 +313,12 @@ void SignalView::paintCell(ImDrawList *painter, const ImRect &option_rect, const
       }
       // signal value
       rect.Min.x += value_adjust;
-      rect.Max.x -= button_size_.x;
-      if (rect.GetWidth() > 0) drawElidedText(painter, rect, text, text_color, true);
-    } else {
-      // no sparkline yet: the value still belongs against the buttons, where it sits once there is one
-      rect.Max.x -= button_size_.x;
-      if (rect.GetWidth() > 0) drawElidedText(painter, rect, text, text_color, true);
     }
+    // the value sits against the buttons in the mono font, so it keeps its width as the digits tick
+    rect.Max.x -= button_size_.x;
+    pushMonoFont(ImGui::GetFontSize());
+    if (rect.GetWidth() > 0) drawElidedText(painter, rect, text, text_color, true);
+    popMonoFont();
   }
 }
 
@@ -617,12 +616,14 @@ float SignalView::widestValueWidth(const cabana::Signal *sig) {
   const double raw_max = sig->is_signed ? std::ldexp(1.0, sig->size - 1) - 1 : std::ldexp(1.0, sig->size) - 1;
   const double raw_min = sig->is_signed ? -std::ldexp(1.0, sig->size - 1) : 0.0;
   float width = 0;
+  pushMonoFont(ImGui::GetFontSize());
   for (double raw : {raw_min, raw_max}) {
     width = std::max(width, textWidth(sig->formatValue(raw * sig->factor + sig->offset)));
   }
   for (const auto &[_, desc] : sig->val_desc) {
     width = std::max(width, textWidth(desc));
   }
+  popMonoFont();
   return width;
 }
 
