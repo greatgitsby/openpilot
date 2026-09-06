@@ -209,11 +209,11 @@ void AnalysisWorkspace::browser() {
       for (size_t pos = name.find('/', 1); pos != std::string::npos; pos = name.find('/', pos + 1)) nodes.emplace(name.substr(0, pos), nullptr);
     }
     for (auto &[name, data] : nodes) {
-      bool visible = true;
+      bool ancestors_expanded = true;
       for (size_t pos = name.find('/', 1); pos != std::string::npos; pos = name.find('/', pos + 1)) {
-        if (!expanded_paths_.count(name.substr(0, pos))) { visible = false; break; }
+        if (!expanded_paths_.count(name.substr(0, pos))) { ancestors_expanded = false; break; }
       }
-      if (visible) rows.emplace_back(name, data);
+      if (ancestors_expanded) rows.emplace_back(name, data);
     }
   } else rows.assign(entries.begin(), entries.end());
   ImGuiListClipper clip; clip.Begin(rows.size());
