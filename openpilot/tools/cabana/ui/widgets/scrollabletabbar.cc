@@ -9,7 +9,8 @@
 namespace {
 float scrollButtonsWidth() {
   const ImGuiStyle &style = ImGui::GetStyle();
-  return ImGui::GetFrameHeight() * 2.0f + style.ItemInnerSpacing.x + style.ItemSpacing.x * 2.0f;
+  // the spacing before the pair and the two buttons, flush with the right edge
+  return style.ItemSpacing.x + ImGui::GetFrameHeight() * 2.0f + style.ItemInnerSpacing.x;
 }
 
 void drawScrollButtons(ImGuiTabBar *tab_bar) {

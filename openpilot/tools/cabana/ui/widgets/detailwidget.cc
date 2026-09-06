@@ -75,10 +75,11 @@ DetailWidget::DetailWidget(ChartsWidget *charts) : charts_(charts) {
 void DetailWidget::drawToolBar() {
   const ImGuiStyle &style = ImGui::GetStyle();
   auto radio_width = [&](const char *label) { return ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x; };
-  auto button_width = [&](const char *label) { return ImGui::CalcTextSize(label).x + style.FramePadding.x * 2; };
+  // "Heatmap:" [Live] [All] | [edit][remove]: item spacing around each item and the 1 px separator, the two
+  // buttons are one group
   const float right_width = ImGui::CalcTextSize("Heatmap:").x + style.ItemSpacing.x + radio_width("Live") + style.ItemSpacing.x +
-                            radio_width(heatmap_all_text_.c_str()) + style.ItemSpacing.x * 3 + 1.0f +
-                            button_width(icon::PENCIL) + style.ItemSpacing.x + button_width(icon::X_LG);
+                            radio_width(heatmap_all_text_.c_str()) + style.ItemSpacing.x + 1.0f + style.ItemSpacing.x +
+                            iconButtonWidth() * 2 + style.ItemInnerSpacing.x;
   const float avail = ImGui::GetContentRegionAvail().x;
 
   ImGui::AlignTextToFramePadding();
