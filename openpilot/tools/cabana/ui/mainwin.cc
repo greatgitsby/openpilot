@@ -904,8 +904,8 @@ void MainWindow::drawMessageViews(MessagePane &pane, ImGuiID dockspace_id, float
     ImGuiID top = 0, bottom = dockspace_id;
     ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Up, ratio, &top, &bottom);
     ImGui::DockBuilderDockWindow(bits.c_str(), top);
-    ImGui::DockBuilderDockWindow(logs.c_str(), bottom);
     ImGui::DockBuilderDockWindow(signals.c_str(), bottom);
+    ImGui::DockBuilderDockWindow(logs.c_str(), bottom);
     ImGui::DockBuilderFinish(dockspace_id);
     pane.select_signals = 3;  // the new tabs auto select as they appear: the signals stay focused until that settled
   }
@@ -920,10 +920,10 @@ void MainWindow::drawMessageViews(MessagePane &pane, ImGuiID dockspace_id, float
     ImGui::End();
     return open;
   };
-  // a new tab is auto selected and the last one submitted wins: the signals go after the logs
+  // submitted in tab order: new tabs line up as they are submitted
   view(bits, detail->bitsWhatsThis(), [&]() { detail->drawBits(); });
-  detail->setLogsVisible(view(logs, {}, [&]() { detail->drawLogs(); }));
   view(signals, detail->signalsWhatsThis(), [&]() { detail->drawSignals(); });
+  detail->setLogsVisible(view(logs, {}, [&]() { detail->drawLogs(); }));
   if (pane.select_signals > 0) --pane.select_signals;
 }
 
