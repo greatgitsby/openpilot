@@ -10,6 +10,7 @@
 #include "tools/cabana/ui/chart/chartswidget.h"
 #include "tools/cabana/ui/widgets/historylog.h"
 #include "tools/cabana/ui/widgets/signalview.h"
+#include "tools/cabana/ui/widgets/tabbar.h"
 
 // a label that elides its text to the available width
 class ElidedLabel {
@@ -85,6 +86,7 @@ private:
   std::string warning_label_;
   ElidedLabel name_label_;
   bool warning_widget_visible_ = false;
+  TabBar view_tabs_;
   View view_ = View::BitsAndSignals;
   bool visible_ = true;
   bool action_remove_msg_enabled_ = false;

@@ -248,7 +248,6 @@ void StreamSelector::open(Callback on_done) {
   on_done_ = std::move(on_done);
   open_ = true;
   popup_.reset();
-  first_frame_ = true;
   dbc_file_.clear();
   widgets_.clear();
   widgets_.push_back(std::make_unique<OpenReplayWidget>());
@@ -259,32 +258,22 @@ void StreamSelector::open(Callback on_done) {
   }
 #endif
   widgets_.push_back(std::make_unique<OpenDeviceWidget>());
+  // a fresh tab bar every time, so the first tab is always the current one
+  tabbar_.clear();
+  for (const auto &w : widgets_) tabbar_.addTab(w->title());
 }
 
 void StreamSelector::draw() {
   if (!open_) return;
   if (!beginDialog("Open stream", &popup_, ImVec2(768.0f, 0.0f))) return;
 
-  AbstractOpenStreamWidget *current = nullptr;
-  const ImVec4 pane = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, pane);
-  ImGui::PushStyleColor(ImGuiCol_TabSelected, pane);
-  if (ImGui::BeginTabBar("streams")) {
-    for (auto &w : widgets_) {
-      // a fresh dialog every time, so the first tab is always the current one
-      ImGuiTabItemFlags tab_flags = (first_frame_ && w == widgets_.front()) ? ImGuiTabItemFlags_SetSelected : 0;
-      if (ImGui::BeginTabItem(w->title(), nullptr, tab_flags)) {
-        current = w.get();
-        ImGui::BeginChild("tab", ImVec2(0, 130.0f), ImGuiChildFlags_Borders);
-        w->draw();
-        ImGui::EndChild();
-        ImGui::EndTabItem();
-      }
-    }
-    ImGui::EndTabBar();
-  }
-  ImGui::PopStyleColor(2);
-  first_frame_ = false;
+  tabbar_.draw();
+  AbstractOpenStreamWidget *current = tabbar_.currentIndex() >= 0 ? widgets_[tabbar_.currentIndex()].get() : nullptr;
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+  ImGui::BeginChild("tab", ImVec2(0, 130.0f), ImGuiChildFlags_Borders);
+  if (current) current->draw();
+  ImGui::EndChild();
+  ImGui::PopStyleColor();
 
   ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted("dbc File");

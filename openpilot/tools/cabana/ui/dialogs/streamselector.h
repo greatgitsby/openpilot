@@ -12,6 +12,7 @@
 #endif
 #include "tools/cabana/ui/dialogs/routesdialog.h"
 #include "tools/cabana/ui/util.h"
+#include "tools/cabana/ui/widgets/tabbar.h"
 
 class AbstractOpenStreamWidget {
 public:
@@ -99,7 +100,7 @@ public:
 private:
   bool open_ = false;
   PopupOwner popup_;
-  bool first_frame_ = false;
+  TabBar tabbar_;
   std::string dbc_file_;
   std::vector<std::unique_ptr<AbstractOpenStreamWidget>> widgets_;
   Callback on_done_;

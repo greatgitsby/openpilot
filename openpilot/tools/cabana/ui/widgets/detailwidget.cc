@@ -11,7 +11,6 @@
 #include "tools/cabana/commands.h"
 #include "tools/cabana/ui/icons.h"
 #include "tools/cabana/ui/util.h"
-#include "tools/cabana/ui/widgets/scrollabletabbar.h"
 #include "tools/cabana/utils/strings.h"
 #include "tools/cabana/utils/util.h"
 
@@ -62,6 +61,17 @@ DetailWidget::DetailWidget(ChartsWidget *charts, const MessageId &message_id) : 
     heatmap_all_text_ = range ? text : "All";
     const bool live = !range;
     if (std::exchange(heatmap_live_, live) != live) binary_view_->setHeatmapLiveMode(live);
+  }));
+
+  const std::string labels[View::kViewCount] = {
+    std::string(icon::FILE_EARMARK_RULED) + " Bits + Signals", "Bits", "Signals", std::string(icon::STOPWATCH) + " Logs"};
+  for (const auto &label : labels) view_tabs_.addTab(label);
+  connections_.push_back(view_tabs_.currentChanged.connect([this](int index) {
+    if (index < 0 || view_ == (View)index) return;
+    const bool was_shown = logsShown();
+    view_ = (View)index;
+    if (!was_shown && logsShown()) history_log_->onShown();
+    updateState();
   }));
 
   signal_view_->setMessage(msg_id_);
@@ -181,22 +191,7 @@ void DetailWidget::drawSignalView() {
 }
 
 void DetailWidget::drawViewTabs() {
-  static const std::string labels[View::kViewCount] = {
-    std::string(icon::FILE_EARMARK_RULED) + " Bits + Signals", "Bits", "Signals", std::string(icon::STOPWATCH) + " Logs"};
-  if (beginScrollableTabBar("view_tabs")) {
-    for (int i = 0; i < View::kViewCount; ++i) {
-      if (ImGui::BeginTabItem(labels[i].c_str())) {
-        if (view_ != (View)i) {
-          const bool was_shown = logsShown();
-          view_ = (View)i;
-          if (!was_shown && logsShown()) history_log_->onShown();
-          updateState();
-        }
-        ImGui::EndTabItem();
-      }
-    }
-    endScrollableTabBar();
-  }
+  view_tabs_.draw();
 
   ImGui::BeginChild("view", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   binary_view_rect_ = signal_view_rect_ = ImRect();

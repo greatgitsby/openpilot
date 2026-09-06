@@ -23,7 +23,6 @@
 #include "tools/cabana/ui/tools/findsignal.h"
 #include "tools/cabana/ui/tools/findsimilarbits.h"
 #include "tools/cabana/ui/util.h"
-#include "tools/cabana/ui/widgets/scrollabletabbar.h"
 #include "tools/cabana/utils/export.h"
 #include "tools/cabana/utils/util.h"
 #include "tools/replay/py_downloader.h"
@@ -920,7 +919,7 @@ void MainWindow::draw() {
   if (video_widget_ && !pane_visible_[Pane::PaneVideo]) video_widget_->setVisible(false);
   if (video_widget_ && pane_visible_[Pane::PaneVideo]) drawVideoPane();
   if (charts_widget_ && pane_visible_[Pane::PaneCharts]) drawChartsPane();
-  overrideDockNodeScrollButtons();
+  TabBar::styleDockTabBars();
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
     it = (*it)->draw() ? it + 1 : tool_dialogs_.erase(it);
   }

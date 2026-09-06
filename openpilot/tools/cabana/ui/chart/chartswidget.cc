@@ -28,7 +28,6 @@ ChartsWidget::ChartsWidget() {
   range_slider_.setRange(1, settings.max_cached_minutes * 60);
 
   tabbar_.setAutoHide(true);
-  tabbar_.setUsesScrollButtons(true);
   tabbar_.setTabsClosable(true);
 
   column_count_ = std::clamp(settings.chart_column_count, 1, MAX_COLUMN_COUNT);
