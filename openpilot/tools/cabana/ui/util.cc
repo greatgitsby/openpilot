@@ -176,7 +176,11 @@ bool squareIconButton(const char *id, const char *icon) {
     const float snap = std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x);
     auto snapped = [snap](float v) { return std::round(v * snap) / snap; };
     const ImVec2 pos(snapped(r.GetCenter().x - (ink.x0 + ink.x1) * 0.5f), snapped(r.GetCenter().y - (ink.y0 + ink.y1) * 0.5f));
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), size, pos, ImGui::GetColorU32(ImGuiCol_Text), icon);
+    // the glyph quad is drawn directly: AddText truncates its position to whole logical pixels, which pulls
+    // every icon up and left by up to a pixel
+    ImGui::GetWindowDrawList()->AddImage(ImGui::GetIO().Fonts->TexRef, ImVec2(pos.x + g->X0, pos.y + g->Y0),
+                                         ImVec2(pos.x + g->X1, pos.y + g->Y1), ImVec2(g->U0, g->V0), ImVec2(g->U1, g->V1),
+                                         ImGui::GetColorU32(ImGuiCol_Text));
   }
   return clicked;
 }
