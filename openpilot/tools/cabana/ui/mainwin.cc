@@ -879,7 +879,8 @@ void MainWindow::drawMessagePanes() {
       // the views dock inside the pane: bits over signals, logs tabbed behind the signals
       views_dock_id = ImGui::GetID("views");
       build = ImGui::DockBuilderGetNode(views_dock_id) == nullptr;
-      ImGui::DockSpace(views_dock_id, ImVec2(0, 0));
+      // the views resize and rearrange inside the pane, they never leave it
+      ImGui::DockSpace(views_dock_id, ImVec2(0, 0), ImGuiDockNodeFlags_NoUndocking | ImGuiDockNodeFlags_NoWindowMenuButton);
     } else {
       pane.detail->setLogsVisible(false);
     }
