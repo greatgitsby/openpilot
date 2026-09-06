@@ -138,6 +138,21 @@ bool beginTopMenu(const char *label, bool enabled = true) {
   ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::GetColorU32(ImGuiCol_Header));
   const bool open = ImGui::BeginMenu(label, enabled);
   ImGui::PopStyleColor();
+  if (open) {
+    // the dropdown hangs off the menu bar: its top corners are squared so it sits flush with the bar
+    const ImGuiStyle &style = ImGui::GetStyle();
+    const ImGuiWindow *w = ImGui::GetCurrentWindow();
+    const float r = style.PopupRounding, b = style.PopupBorderSize;
+    const ImVec2 min = w->Pos, max(w->Pos.x + w->Size.x, w->Pos.y + w->Size.y);
+    const ImU32 bg = ImGui::GetColorU32(ImGuiCol_PopupBg), border = ImGui::GetColorU32(ImGuiCol_Border);
+    ImDrawList *dl = w->DrawList;
+    for (const float x0 : {min.x, max.x - r}) {
+      dl->AddRectFilled(ImVec2(x0, min.y), ImVec2(x0 + r, min.y + r), bg);
+      dl->AddRectFilled(ImVec2(x0, min.y), ImVec2(x0 + r, min.y + b), border);  // the top edge
+    }
+    dl->AddRectFilled(ImVec2(min.x, min.y), ImVec2(min.x + b, min.y + r), border);  // the left edge
+    dl->AddRectFilled(ImVec2(max.x - b, min.y), ImVec2(max.x, min.y + r), border);  // the right edge
+  }
   return open;
 }
 }  // namespace
@@ -896,13 +911,11 @@ void MainWindow::drawVideoPanel() {
         const float top = ImGui::GetWindowPos().y + ImGui::GetCursorStartPos().y;
         video_splitter_ratio_ = std::clamp((ImGui::GetMousePos().y - top) / avail.y, 0.0f, 1.0f);
       }
-      // a double click snaps the video back to its natural size
-      if (splitter_hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) video_splitter_ratio_ = -1.0f;
       if (splitter_hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-      // the same 1 px line the dock splitters between the columns draw, crisp at the center of the gap
+      // the same 2 px line the dock splitters between the columns draw, crisp at the center of the gap
       const ImRect splitter(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-      const float line_y = std::floor(splitter.GetCenter().y);
-      ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(splitter.Min.x, line_y), ImVec2(splitter.Max.x, line_y + 1.0f),
+      const float line_y = std::floor(splitter.GetCenter().y) - 1.0f;
+      ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(splitter.Min.x, line_y), ImVec2(splitter.Max.x, line_y + 2.0f),
                                                 ImGui::GetColorU32(splitter_active ? ImGuiCol_SeparatorActive : splitter_hovered ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator));
       // the chart list scrolls in its own child, the container itself never scrolls
       ImGui::BeginChild("charts", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
