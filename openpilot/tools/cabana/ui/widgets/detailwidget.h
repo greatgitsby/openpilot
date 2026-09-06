@@ -76,7 +76,7 @@ private:
   void drawHeatmapToolBar();
   void drawViewTabs();
   void drawBinaryView(float height);  // height 0: the rest of the pane
-  void drawSignalView();
+  void drawSignalView(float height);  // height 0: the rest of the pane
   void editMsg();
   void updateState(const std::set<MessageId> *msgs = nullptr);
   bool logsShown() const { return visible_ && view_ == View::Logs; }

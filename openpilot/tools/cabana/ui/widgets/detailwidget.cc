@@ -16,6 +16,8 @@
 
 namespace {
 
+constexpr float MIN_SIGNAL_VIEW_HEIGHT = 300.0f;  // in the split view, the rest scrolls
+
 bool iequals(const std::string &a, const std::string &b) {
   return a.size() == b.size() &&
          std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) { return std::tolower((unsigned char)x) == std::tolower((unsigned char)y); });
@@ -182,8 +184,8 @@ void DetailWidget::drawBinaryView(float height) {
   ImGui::EndChild();
 }
 
-void DetailWidget::drawSignalView() {
-  ImGui::BeginChild("signal_view", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+void DetailWidget::drawSignalView(float height) {
+  ImGui::BeginChild("signal_view", ImVec2(0, height), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   signal_view_rect_ = ImGui::GetCurrentWindow()->Rect();
   signal_view_->draw();
   ImGui::EndChild();
@@ -192,25 +194,25 @@ void DetailWidget::drawSignalView() {
 void DetailWidget::drawViewTabs() {
   view_tabs_.draw();
 
-  ImGui::BeginChild("view", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  // the split view scrolls as a whole when the pane is too short for both, the single views fill the pane
+  const bool split = view_ == View::BitsAndSignals;
+  ImGui::BeginChild("view", ImVec2(0, 0), ImGuiChildFlags_None, split ? 0 : ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   binary_view_rect_ = signal_view_rect_ = ImRect();
   switch (view_) {
     case View::BitsAndSignals: {
-      // binary_view_ keeps its size hint, signal_view_ takes the rest
-      const float avail = ImGui::GetContentRegionAvail().y;
-      const float max_height = std::max(avail - 6.0f - ImGui::GetStyle().ItemSpacing.y * 2 - 1.0f, 1.0f);
-      drawBinaryView(std::clamp(binary_view_->minimumSizeHint().y, 1.0f, max_height));
+      // binary_view_ keeps its size hint, signal_view_ takes the rest but never less than a few rows
+      drawBinaryView(std::max(binary_view_->minimumSizeHint().y, 1.0f));
       ImGui::Dummy(ImVec2(0.0f, 6.0f));
       const float spacing = ImGui::GetStyle().ItemSpacing.y;
       const ImRect child_rect = ImGui::GetCurrentWindow()->Rect();
       ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(child_rect.Min.x, ImGui::GetItemRectMin().y - spacing),
                                                 ImVec2(child_rect.Max.x, ImGui::GetItemRectMax().y + spacing),
                                                 ImGui::GetColorU32(ImGuiCol_WindowBg));
-      drawSignalView();
+      drawSignalView(std::max(ImGui::GetContentRegionAvail().y, MIN_SIGNAL_VIEW_HEIGHT));
       break;
     }
     case View::Bits: drawBinaryView(0.0f); break;
-    case View::Signals: drawSignalView(); break;
+    case View::Signals: drawSignalView(0.0f); break;
     case View::Logs: history_log_->draw(); break;
     default: break;
   }
