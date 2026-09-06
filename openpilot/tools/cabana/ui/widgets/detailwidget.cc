@@ -63,8 +63,7 @@ DetailWidget::DetailWidget(ChartsWidget *charts, const MessageId &message_id) : 
     if (std::exchange(heatmap_live_, live) != live) binary_view_->setHeatmapLiveMode(live);
   }));
 
-  const std::string labels[View::kViewCount] = {
-    std::string(icon::FILE_EARMARK_RULED) + " Bits + Signals", "Bits", "Signals", std::string(icon::STOPWATCH) + " Logs"};
+  const char *labels[View::kViewCount] = {"Bits + Signals", "Bits", "Signals", "Logs"};
   for (const auto &label : labels) view_tabs_.addTab(label);
   connections_.push_back(view_tabs_.currentChanged.connect([this](int index) {
     if (index < 0 || view_ == (View)index) return;
