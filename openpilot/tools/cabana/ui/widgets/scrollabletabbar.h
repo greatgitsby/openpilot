@@ -6,3 +6,7 @@
 // imgui's small arrows. Use like BeginTabBar/EndTabBar, the fitting policy is always scroll
 bool beginScrollableTabBar(const char *str_id, ImGuiTabBarFlags flags = 0);
 void endScrollableTabBar();
+
+// replaces imgui's small arrows on every overflowing dock node tab bar with the chevron buttons above. Call once
+// per frame after all the docked windows are drawn
+void overrideDockNodeScrollButtons();

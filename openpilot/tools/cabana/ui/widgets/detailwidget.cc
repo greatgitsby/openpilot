@@ -11,6 +11,7 @@
 #include "tools/cabana/commands.h"
 #include "tools/cabana/ui/icons.h"
 #include "tools/cabana/ui/util.h"
+#include "tools/cabana/ui/widgets/scrollabletabbar.h"
 #include "tools/cabana/utils/strings.h"
 #include "tools/cabana/utils/util.h"
 
@@ -182,7 +183,7 @@ void DetailWidget::drawSignalView() {
 void DetailWidget::drawViewTabs() {
   static const std::string labels[View::kViewCount] = {
     std::string(icon::FILE_EARMARK_RULED) + " Bits + Signals", "Bits", "Signals", std::string(icon::STOPWATCH) + " Logs"};
-  if (ImGui::BeginTabBar("view_tabs")) {
+  if (beginScrollableTabBar("view_tabs")) {
     for (int i = 0; i < View::kViewCount; ++i) {
       if (ImGui::BeginTabItem(labels[i].c_str())) {
         if (view_ != (View)i) {
@@ -194,7 +195,7 @@ void DetailWidget::drawViewTabs() {
         ImGui::EndTabItem();
       }
     }
-    ImGui::EndTabBar();
+    endScrollableTabBar();
   }
 
   ImGui::BeginChild("view", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
