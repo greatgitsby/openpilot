@@ -183,7 +183,7 @@ void DetailWidget::drawBinaryView(float height) {
 }
 
 void DetailWidget::drawSignalView() {
-  ImGui::BeginChild("signal_view", ImVec2(0, 0));
+  ImGui::BeginChild("signal_view", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   signal_view_rect_ = ImGui::GetCurrentWindow()->Rect();
   signal_view_->draw();
   ImGui::EndChild();
@@ -197,7 +197,7 @@ void DetailWidget::drawViewTabs() {
   switch (view_) {
     case View::BitsAndSignals: {
       // binary_view_ keeps its size hint, signal_view_ takes the rest
-      const float avail = ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing();
+      const float avail = ImGui::GetContentRegionAvail().y;
       const float max_height = std::max(avail - 6.0f - ImGui::GetStyle().ItemSpacing.y * 2 - 1.0f, 1.0f);
       drawBinaryView(std::clamp(binary_view_->minimumSizeHint().y, 1.0f, max_height));
       ImGui::Dummy(ImVec2(0.0f, 6.0f));
