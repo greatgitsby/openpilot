@@ -120,6 +120,8 @@ private:
   std::string car_fingerprint_;
   std::string video_dock_title_;
   bool pane_visible_[inistate::kPaneCount];
+  bool pane_was_visible_[inistate::kPaneCount] = {};
+  ImGuiID pane_dock_id_[inistate::kPaneCount] = {};  // where the pane was last docked
   bool reset_layout_ = false;
   bool full_screen_ = false;
 #ifndef __APPLE__

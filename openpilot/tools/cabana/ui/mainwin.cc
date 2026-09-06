@@ -817,14 +817,19 @@ constexpr ImGuiWindowFlags PANE_NO_SCROLL = ImGuiWindowFlags_NoScrollbar | ImGui
 }  // namespace
 
 bool MainWindow::beginPane(Pane pane, const std::string &name, ImGuiWindowFlags flags) {
+  // a pane shown again goes back to where it was docked, if that node still exists
+  if (!std::exchange(pane_was_visible_[pane], true) && pane_dock_id_[pane] && ImGui::DockBuilderGetNode(pane_dock_id_[pane])) {
+    ImGui::SetNextWindowDockID(pane_dock_id_[pane], ImGuiCond_Always);
+  }
   setNextPaneClass();
-  return ImGui::Begin(name.c_str(), &pane_visible_[pane], flags | ImGuiWindowFlags_NoCollapse);
+  const bool open = ImGui::Begin(name.c_str(), &pane_visible_[pane], flags | ImGuiWindowFlags_NoCollapse);
+  if (const ImGuiWindow *w = ImGui::GetCurrentWindow(); w->DockIsActive) pane_dock_id_[pane] = w->DockId;
+  return open;
 }
 
 void MainWindow::endPane(Pane pane) {
-  const bool floating = ImGui::GetWindowViewport() != ImGui::GetMainViewport();
   ImGui::End();
-  if (!pane_visible_[pane] && floating) pane_visible_[pane] = reset_layout_ = true;
+  if (!pane_visible_[pane]) pane_was_visible_[pane] = false;  // the close button hides the pane, docked or not
 }
 
 void MainWindow::drawMessagesPane() {
