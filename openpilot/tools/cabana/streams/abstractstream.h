@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "openpilot/cereal/messaging/messaging.h"
+#include "tools/cabana/analysis/data.h"
 #include "tools/cabana/core/can_data.h"
 #include "tools/cabana/core/observable.h"
 #include "tools/cabana/dbc/dbcmanager.h"
@@ -42,7 +43,7 @@ public:
 
   inline double currentSec() const { return current_sec_; }
   inline uint64_t toMonoTime(double sec) const { return beginMonoTime() + std::max(sec, 0.0) * 1e9; }
-  inline double toSeconds(uint64_t mono_time) const { return std::max(0.0, (mono_time - beginMonoTime()) / 1e9); }
+  inline double toSeconds(uint64_t mono_time) const { return std::max(0.0, (double(mono_time) - double(beginMonoTime())) / 1e9); }
 
   inline const std::unordered_map<MessageId, CanData> &lastMessages() const { return last_msgs; }
   bool isMessageActive(const MessageId &id) const;
@@ -66,6 +67,8 @@ public:
   Observable<const std::set<MessageId> *, bool> msgsReceived;
   Observable<const std::string &> error;
 
+  cabana::analysis::Data analysis_data;  // accessed only on the main thread
+  double analysis_buffer_seconds = 30.0;
   SourceSet sources;
 
 protected:

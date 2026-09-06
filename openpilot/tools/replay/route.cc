@@ -28,7 +28,7 @@ RouteIdentifier Route::parseRoute(const std::string &str) {
     if (!range_str.empty()) {
       if (separator == "/") {
         int pos = range_str.find(':');
-        int begin_seg = std::stoi(range_str.substr(0, pos));
+        int begin_seg = pos == 0 ? 0 : std::stoi(range_str.substr(0, pos));
         identifier.begin_segment = identifier.end_segment = begin_seg;
         if (pos != std::string::npos) {
           auto end_seg_str = range_str.substr(pos + 1);
@@ -67,6 +67,10 @@ bool Route::loadSegments() {
   if (!auto_source_) {
     bool ret = data_dir_.empty() ? loadFromServer() : loadFromLocal();
     if (ret) {
+      // Negative indices count backwards from the last available segment.
+      int segment_count = segments_.empty() ? 0 : segments_.rbegin()->first + 1;
+      if (route_.begin_segment < 0) route_.begin_segment = std::max(0, segment_count + route_.begin_segment);
+      if (route_.end_segment < -1) route_.end_segment = std::max(0, segment_count + route_.end_segment);
       // Trim segments
       if (route_.begin_segment > 0) {
         segments_.erase(segments_.begin(), segments_.lower_bound(route_.begin_segment));
@@ -200,8 +204,12 @@ Segment::Segment(int n, const SegmentFile &files, uint32_t flags, const std::vec
       (flags & REPLAY_FLAG_QCAMERA) || files.narrow_road_cam.empty() ? files.qcamera : files.narrow_road_cam,
       flags & REPLAY_FLAG_CABIN_CAMERA ? files.cabin_cam : "",
       flags & REPLAY_FLAG_WIDE_ROAD ? files.wide_road_cam : "",
-      files.rlog.empty() ? files.qlog : files.rlog,
+      (flags & REPLAY_FLAG_QLOG) ? files.qlog : (flags & REPLAY_FLAG_RLOG) ? files.rlog : files.rlog.empty() ? files.qlog : files.rlog,
   };
+  if (file_list.back().empty()) {
+    load_state_ = LoadState::Failed;
+    return;
+  }
   for (int i = 0; i < file_list.size(); ++i) {
     if (!file_list[i].empty() && (!(flags & REPLAY_FLAG_NO_VIPC) || i >= MAX_CAMERAS)) {
       ++loading_;

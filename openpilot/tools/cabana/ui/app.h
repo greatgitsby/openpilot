@@ -21,3 +21,11 @@ struct KeyEvent {
   int mods;  // GLFW_MOD_*
 };
 std::vector<KeyEvent> takeKeyEvents();
+
+struct AnalysisLaunch {
+  bool enabled = false, show = false;
+  int width = 1600, height = 900;
+  double buffer_seconds = 30;
+  std::string layout, output, test_state;
+};
+extern AnalysisLaunch analysis_launch;

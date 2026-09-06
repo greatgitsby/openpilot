@@ -16,6 +16,7 @@ public:
   void stop();
   inline std::chrono::system_clock::time_point beginDateTime() const override { return begin_date_time; }
   inline uint64_t beginMonoTime() const override { return begin_event_ts; }
+  double minSeconds() const override { return std::max(0.0, analysis_data.first - begin_event_ts * 1e-9); }
   double maxSeconds() const override { return std::max(1.0, (lastest_event_ts - begin_event_ts) / 1e9); }
   void setSpeed(float speed) override { speed_ = speed; }
   double getSpeed() override { return speed_; }
@@ -25,7 +26,7 @@ public:
 
 protected:
   virtual void streamThread() = 0;
-  void handleEvent(kj::ArrayPtr<capnp::word> event);
+  void handleEvent(kj::ArrayPtr<const capnp::word> event);
 
   std::atomic<bool> exit_ = false;
 
@@ -38,6 +39,7 @@ private:
   std::thread stream_thread, update_thread;
   std::atomic<bool> update_pending_ = false;
   std::vector<const CanEvent *> received_events_;
+  cabana::analysis::Data pending_analysis_;
 
   std::chrono::system_clock::time_point begin_date_time;
   uint64_t begin_event_ts = 0;

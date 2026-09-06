@@ -10,6 +10,7 @@
 #include "tools/cabana/dbc/dbcmanager.h"
 #include "tools/cabana/streams/abstractstream.h"
 #include "tools/cabana/ui/app.h"
+#include "tools/cabana/ui/analysis.h"
 #include "tools/cabana/ui/dialogs/settingsdialog.h"
 #include "tools/cabana/ui/dialogs/streamselector.h"
 #include "tools/cabana/ui/helpoverlay.h"
@@ -28,6 +29,7 @@ public:
   void draw();
   void toggleChartsDocking();
   void close();  // remind unsaved changes, save state, exit
+  AnalysisWorkspace *analysis() { return analysis_.get(); }
   bool exited() const { return exited_; }
   void showStatusMessage(const std::string &msg, int timeout_ms = 0);
   void loadFile(const std::string &fn, SourceSet s = SOURCE_ALL, std::function<void()> then = {});
@@ -86,6 +88,7 @@ private:
   void drawStatusBar();
   void drawWaitDialog();
 
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   GLFWwindow *window_;
   std::unique_ptr<AbstractStream> startup_stream_;  // opened on the first frame
   StreamLoader startup_loader_;  // run on a worker after the first frame
@@ -95,6 +98,9 @@ private:
   CenterWidget center_widget_;
   std::unique_ptr<VideoWidget> video_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
+  std::unique_ptr<AnalysisWorkspace> analysis_;
+  std::string analysis_session_;
+  bool analysis_visible_ = false;
   StreamSelector stream_selector_;
   SettingsDialog settings_dialog_;
   HelpOverlay help_overlay_;

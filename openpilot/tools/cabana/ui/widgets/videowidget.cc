@@ -59,12 +59,13 @@ static std::pair<double, double> displayedTimeRange() {
 }
 
 // decode with libavcodec, already linked for the replay video decoder
-static bool decodeJpeg(const uint8_t *data, size_t size, RgbImage *out) {
+bool decodeJpeg(const uint8_t *data, size_t size, RgbImage *out) {
   const AVCodec *codec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
   AVCodecContext *context = codec ? avcodec_alloc_context3(codec) : nullptr;
   AVFrame *frame = av_frame_alloc();
   AVPacket *packet = av_packet_alloc();
   bool ok = false;
+  if (context) context->max_pixels = 16 * 1024 * 1024;
   if (context && frame && packet && size > 0 && size <= (size_t)INT32_MAX && av_new_packet(packet, (int)size) >= 0) {
     std::copy(data, data + size, packet->data);
     ok = avcodec_open2(context, codec, nullptr) >= 0 && avcodec_send_packet(context, packet) >= 0 &&
@@ -282,7 +283,9 @@ void VideoWidget::createCameraWidget() {
   connections_.push_back(camera_tab_->currentChanged.connect([this](int index) {
     if (index != -1) cam_widget_->setStreamType((VisionStreamType)camera_tab_->tabData(index));
   }));
-  connections_.push_back(static_cast<ReplayStream *>(can)->qLogLoaded.connect([this](std::shared_ptr<LogReader> qlog) { cam_widget_->parseQLog(qlog); }));
+  if (auto replay = dynamic_cast<ReplayStream *>(can)) {
+    connections_.push_back(replay->qLogLoaded.connect([this](std::shared_ptr<LogReader> qlog) { cam_widget_->parseQLog(qlog); }));
+  }
 }
 
 void VideoWidget::drawCameraWidget() {
@@ -314,7 +317,7 @@ void VideoWidget::vipcAvailableStreamsUpdated(std::set<VisionStreamType> streams
 }
 
 void VideoWidget::loopPlaybackClicked() {
-  getReplay()->setLoop(!getReplay()->loop());
+  if (auto replay = getReplay()) replay->setLoop(!replay->loop());
 }
 
 void VideoWidget::cropVideoClicked() {
@@ -348,6 +351,7 @@ void VideoWidget::showThumbnail(double seconds) {
 }
 
 void VideoWidget::showRouteInfo() {
+  if (!getReplay()) return;
   // dropped from route_info_dlgs_ once draw() returns false
   route_info_dlgs_.push_back(std::make_unique<RouteInfoDlg>());
 }
@@ -533,7 +537,7 @@ void StreamCameraView::draw(const ImVec2 &size, double thumbnail_time) {
     scrubbing = can->isPaused();
     scrubbing ? drawScrubThumbnail(p, thumbnail_time) : drawThumbnail(p, thumbnail_time);
   }
-  if (auto alert = getReplay()->findAlertAtTime(scrubbing ? thumbnail_time : can->currentSec())) {
+  if (auto alert = getReplay() ? getReplay()->findAlertAtTime(scrubbing ? thumbnail_time : can->currentSec()) : std::nullopt) {
     drawAlert(p, rect(), *alert, ImGui::GetFontSize());
   }
 
@@ -581,7 +585,7 @@ void StreamCameraView::drawThumbnail(ImDrawList *p, double sec) {
     p->AddImage(big_thumbnail_texture_.ref(), thumb_rect.Min, thumb_rect.Max);
     p->AddRect(thumb_rect.Min, thumb_rect.Max, paletteBrightText(), 0.0f, 0, 2.0f);
     // look up the alert at the hovered time, the thumbnail frame itself can be seconds away
-    if (auto alert = getReplay()->findAlertAtTime(sec)) {
+    if (auto alert = getReplay() ? getReplay()->findAlertAtTime(sec) : std::nullopt) {
       drawAlert(p, thumb_rect, *alert, POINT_10_FONT_SIZE);
     }
     drawTime(p, thumb_rect, sec);

@@ -49,7 +49,8 @@ void DeviceStream::start() {
   if (!zmq_address.empty()) {
     stopBridge();
     const std::string path = (executableDir() / "../../cereal/messaging/bridge").lexically_normal().string();
-    const char *can_filter = "/\"can/\"";
+    std::string service_filter;
+    for (const auto &[name, _] : services) service_filter += name + ",";
 
     // Self-pipe: write end is CLOEXEC so it closes on successful exec. If exec
     // fails, the child writes errno and the parent aborts stream start.
@@ -63,7 +64,7 @@ void DeviceStream::start() {
     if (pid == 0) {
       ::close(err_pipe[0]);
       ::fcntl(err_pipe[1], F_SETFD, FD_CLOEXEC);
-      execl(path.c_str(), path.c_str(), zmq_address.c_str(), can_filter, static_cast<char *>(nullptr));
+      execl(path.c_str(), path.c_str(), zmq_address.c_str(), service_filter.c_str(), static_cast<char *>(nullptr));
       const int err = errno;
       (void)!::write(err_pipe[1], &err, sizeof(err));
       _exit(127);
@@ -97,15 +98,22 @@ void DeviceStream::streamThread() {
   zmq_address.empty() ? unsetenv("ZMQ") : setenv("ZMQ", "1", 1);
 
   std::unique_ptr<Context> context(Context::create());
-  std::unique_ptr<SubSocket> sock(SubSocket::create(context.get(), "can", "127.0.0.1", false, true, services.at("can").queue_size));
-  assert(sock != NULL);
-  // run as fast as messages come in
+  std::unique_ptr<Poller> poller(Poller::create());
+  std::vector<std::unique_ptr<SubSocket>> sockets;
+  for (const auto &[name, service] : services) {
+    auto socket = std::unique_ptr<SubSocket>(SubSocket::create(context.get(), name, "127.0.0.1", false, true, service.queue_size));
+    if (socket) { poller->registerSocket(socket.get()); sockets.push_back(std::move(socket)); }
+  }
+  AlignedBuffer buffer;
   while (!exit_) {
-    std::unique_ptr<Message> msg(sock->receive(true));
-    if (!msg) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      continue;
+    for (auto socket : poller->poll(50)) {
+      // Bound draining so a busy service cannot starve the others or shutdown.
+      for (int i = 0; i < 256 && !exit_; ++i) {
+        std::unique_ptr<Message> message(socket->receive(true));
+        if (!message) break;
+        try { handleEvent(buffer.align(message.get())); }
+        catch (const kj::Exception &e) { fprintf(stderr, "Invalid cereal event: %s\n", e.getDescription().cStr()); }
+      }
     }
-    handleEvent(kj::ArrayPtr<capnp::word>((capnp::word*)msg->getData(), msg->getSize() / sizeof(capnp::word)));
   }
 }

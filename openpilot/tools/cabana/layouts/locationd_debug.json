@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "tab1",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#ff7f0e",
+                "name": "/deviceMotion/inputsOK"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 2280.128382,
+              "left": 0.0,
+              "top": 1.025,
+              "bottom": -0.025
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#f14cc1",
+                "name": "/accelerometer/acceleration/v/0"
+              },
+              {
+                "color": "#9467bd",
+                "name": "/accelerometer/acceleration/v/1"
+              },
+              {
+                "color": "#17becf",
+                "name": "/accelerometer/acceleration/v/2"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 2280.128382,
+              "left": 0.0,
+              "top": 14.542814,
+              "bottom": -5.586039
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#d62728",
+                "name": "/gyroscope/gyroUncalibrated/v/0"
+              },
+              {
+                "color": "#1ac938",
+                "name": "/gyroscope/gyroUncalibrated/v/1"
+              },
+              {
+                "color": "#ff7f0e",
+                "name": "/gyroscope/gyroUncalibrated/v/2"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 2280.128382,
+              "left": 0.0,
+              "top": 0.988911,
+              "bottom": -0.745939
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#17becf",
+                "name": "/accelerometer/__valid"
+              },
+              {
+                "color": "#bcbd22",
+                "name": "/gyroscope/__valid"
+              },
+              {
+                "color": "#f14cc1",
+                "name": "/carState/__valid"
+              },
+              {
+                "color": "#1ac938",
+                "name": "/extrinsicsCalibration/__valid"
+              },
+              {
+                "color": "#9467bd",
+                "name": "/cameraOdometry/__valid"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 2280.128382,
+              "left": 0.0,
+              "top": 1.025,
+              "bottom": -0.025
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1f77b4",
+                "name": "/gyroscope/__logMonoTime",
+                "label": "/gyroscope/__logMonoTime[Derivative]",
+                "derivative": true
+              },
+              {
+                "color": "#d62728",
+                "name": "/accelerometer/__logMonoTime",
+                "label": "/accelerometer/__logMonoTime[Derivative]",
+                "derivative": true
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 2280.128382,
+              "left": 0.0,
+              "top": 1000000000.292252,
+              "bottom": 999999999.735447
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#bcbd22",
+                "name": "/accelerometer/timestamp",
+                "label": "/accelerometer/timestamp[Derivative]",
+                "derivative": true
+              },
+              {
+                "color": "#1f77b4",
+                "name": "/gyroscope/timestamp",
+                "label": "/gyroscope/timestamp[Derivative]",
+                "derivative": true
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 2280.128382,
+              "left": 0.0,
+              "top": 20790107743.93223,
+              "bottom": -529653831.495853
+            }
+          }
+        ],
+        "sizes": [
+          0.166588,
+          0.167062,
+          0.166113,
+          0.166588,
+          0.167062,
+          0.166588
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": []
+}

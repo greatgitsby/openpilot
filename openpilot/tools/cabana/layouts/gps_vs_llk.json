@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "tab1",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "haversine distance [m]",
+                "color": "#1f77b4"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "bottom": 0.368228,
+              "right": 196.811937,
+              "left": 76.646983,
+              "top": 32.070386
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/carState/vEgo",
+                "color": "#17becf"
+              },
+              {
+                "name": "/gpsLocationExternal/speed",
+                "color": "#bcbd22"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "bottom": -0.259115,
+              "right": 196.811937,
+              "left": 76.646983,
+              "top": 12.637299
+            }
+          },
+          {
+            "split": "horizontal",
+            "children": [
+              {
+                "kind": "plot",
+                "title": "...",
+                "curves": [
+                  {
+                    "name": "/liveLocationKalmanDEPRECATED/positionGeodetic/std/0",
+                    "color": "#d62728"
+                  },
+                  {
+                    "name": "/liveLocationKalmanDEPRECATED/positionGeodetic/std/1",
+                    "color": "#1ac938"
+                  }
+                ],
+                "limitY": {},
+                "style": 0,
+                "range": {
+                  "bottom": -0.1,
+                  "right": 196.811937,
+                  "left": 76.646983,
+                  "top": 0.1
+                }
+              },
+              {
+                "kind": "plot",
+                "title": "...",
+                "curves": [
+                  {
+                    "name": "/gpsLocationExternal/horizontalAccuracy",
+                    "color": "#ff7f0e"
+                  },
+                  {
+                    "name": "/gpsLocationExternal/verticalAccuracy",
+                    "color": "#f14cc1"
+                  },
+                  {
+                    "name": "/gpsLocationExternal/speedAccuracy",
+                    "color": "#9467bd"
+                  }
+                ],
+                "limitY": {},
+                "style": 0,
+                "range": {
+                  "bottom": -0.449385,
+                  "right": 196.811937,
+                  "left": 76.646983,
+                  "top": 7.160833
+                }
+              }
+            ],
+            "sizes": [
+              0.500516,
+              0.499484
+            ]
+          }
+        ],
+        "sizes": [
+          0.333805,
+          0.33239,
+          0.333805
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": [
+    {
+      "name": "haversine distance [m]",
+      "linked_source": "/gpsLocationExternal/latitude",
+      "additional_sources": [
+        "/gpsLocationExternal/longitude",
+        "/liveLocationKalmanDEPRECATED/positionGeodetic/value/0",
+        "/liveLocationKalmanDEPRECATED/positionGeodetic/value/1"
+      ],
+      "globals_code": "R = 6378.137",
+      "function_code": "def sample(time, value, v1, v2, v3):\n  global R\n  lat1, lon1 = value, v1\n  lat2, lon2 = v2, v3\n  dLat = (lat2 - lat1) * math.pi / 180\n  dLon = (lon2 - lon1) * math.pi / 180\n  a = math.sin(dLat/2) * math.sin(dLat/2) + math.cos(lat1 * math.pi / 180) * math.cos(lat2 * math.pi / 180) * math.sin(dLon/2) * math.sin(dLon/2)\n  c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))\n  d = R * c\n  distance = d * 1000\n  return distance\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2, v3)])"
+    }
+  ]
+}

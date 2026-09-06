@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "tab1",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1ac938",
+                "name": "Actual lateral accel (roll compensated)"
+              },
+              {
+                "color": "#ff7f0e",
+                "name": "Desired lateral accel (roll compensated)"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.00045,
+              "top": 6.050533,
+              "right": 2483.624998,
+              "bottom": -7.599037
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1ac938",
+                "name": "roll compensated lateral acceleration"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.00045,
+              "top": 5.384416,
+              "right": 2483.624998,
+              "bottom": -7.503945
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#0097ff",
+                "name": "/carState/steeringPressed"
+              },
+              {
+                "color": "#d62728",
+                "name": "/carOutput/actuatorsOutput/torque"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.00045,
+              "top": 1.05,
+              "right": 2483.624998,
+              "bottom": -1.05
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#f14cc1",
+                "name": "/carState/vEgo",
+                "label": "/carState/vEgo[Scale/Offset]",
+                "value_scale": 2.23694,
+                "value_offset": 0.0
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.00045,
+              "top": 80.762969,
+              "right": 2483.624998,
+              "bottom": -2.181837
+            }
+          }
+        ],
+        "sizes": [
+          0.249724,
+          0.250829,
+          0.249724,
+          0.249724
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": [
+    {
+      "name": "roll compensated lateral acceleration",
+      "linked_source": "/controlsState/curvature",
+      "additional_sources": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll",
+        "/carState/steeringPressed",
+        "/carControl/latActive"
+      ],
+      "globals_code": "",
+      "function_code": "def sample(time, value, v1, v2, v3, v4):\n  if (v3 == 0 and v4 == 1):\n    return  (value * v1 ** 2) - (v2 * 9.81)\n  return 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2, v3, v4)])"
+    },
+    {
+      "name": "Desired lateral accel (roll compensated)",
+      "linked_source": "/controlsState/desiredCurvature",
+      "additional_sources": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "globals_code": "",
+      "function_code": "def sample(time, value, v1, v2):\n  return (value * v1 ** 2) - (v2 * 9.81)\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2)])"
+    },
+    {
+      "name": "Actual lateral accel (roll compensated)",
+      "linked_source": "/controlsState/curvature",
+      "additional_sources": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "globals_code": "",
+      "function_code": "def sample(time, value, v1, v2):\n  return (value * v1 ** 2) - (v2 * 9.81)\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2)])"
+    }
+  ]
+}

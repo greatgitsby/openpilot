@@ -1,0 +1,443 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "Lateral",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "Velocity [m/s]",
+            "curves": [
+              {
+                "color": "#0072b2",
+                "name": "/carState/vEgo"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.253354,
+              "top": 29.954036,
+              "bottom": -0.841715,
+              "right": 631.055584
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Curvature [1/m] True [blue] Vehicle Model [purple] Plan [green]",
+            "curves": [
+              {
+                "color": "#009e73",
+                "name": "engaged curvature plan"
+              },
+              {
+                "color": "#785ef0",
+                "name": "engaged curvature vehicle model"
+              },
+              {
+                "color": "#0072b2",
+                "name": "engaged curvature yaw"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "top": 0.006648,
+              "bottom": -0.00315,
+              "right": 631.055209
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Roll [rad]",
+            "curves": [
+              {
+                "color": "#ffb000",
+                "name": "/carControl/orientationNED/0"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "top": 0.166067,
+              "bottom": -1.598381,
+              "right": 631.038276
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Engaged [green] Steering Pressed [blue]",
+            "curves": [
+              {
+                "color": "#009e73",
+                "name": "/selfdriveState/enabled"
+              },
+              {
+                "color": "#0072b2",
+                "name": "/carState/steeringPressed"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.252984,
+              "top": 1.025,
+              "bottom": -0.025,
+              "right": 631.055584
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Steering Limited: Rate [orange] Saturated [magenta]",
+            "curves": [
+              {
+                "name": "steering rate limited",
+                "color": "#ffb000"
+              },
+              {
+                "name": "/controlsState/lateralControlState/pidState/saturated",
+                "color": "#dc267f"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.253354,
+              "top": 1.025,
+              "bottom": -0.025,
+              "right": 631.055584
+            }
+          }
+        ],
+        "sizes": [
+          0.200458,
+          0.199313,
+          0.200458,
+          0.199313,
+          0.200458
+        ]
+      }
+    },
+    {
+      "name": "Longitudinal",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "Velocity [m/s] True [blue] Plan [green] Cruise [magenta]",
+            "curves": [
+              {
+                "color": "#dc267f",
+                "name": "/carState/cruiseState/speed"
+              },
+              {
+                "color": "#009e73",
+                "name": "/longitudinalPlan/speeds/0"
+              },
+              {
+                "color": "#0072b2",
+                "name": "/carState/vEgo"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "top": 42.713492,
+              "bottom": -1.041792,
+              "right": 631.055584
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Acceleration [m/s^2] True [blue] Actuator [purple] Plan [green]",
+            "curves": [
+              {
+                "color": "#009e73",
+                "name": "engaged_accel_plan"
+              },
+              {
+                "color": "#785ef0",
+                "name": "engaged_accel_actuator"
+              },
+              {
+                "color": "#0072b2",
+                "name": "engaged_accel_actual"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.253354,
+              "top": 0.808303,
+              "bottom": -1.213305,
+              "right": 631.055759
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Pitch [rad]",
+            "curves": [
+              {
+                "color": "#ffb000",
+                "name": "/carControl/orientationNED/1"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "top": 0.158854,
+              "bottom": -0.594843,
+              "right": 631.038276
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Engaged [green] Gas [orange] Brake [magenta]",
+            "curves": [
+              {
+                "color": "#009e73",
+                "name": "/carControl/enabled"
+              },
+              {
+                "color": "#ffb000",
+                "name": "/carState/gasPressed"
+              },
+              {
+                "color": "#dc267f",
+                "name": "/carState/brakePressed"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.253354,
+              "top": 1.025,
+              "bottom": -0.025,
+              "right": 631.055759
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "State [blue: off,pid,stop,start] Source [green: cruise,lead0,lead1,lead2,e2e]",
+            "curves": [
+              {
+                "color": "#0072b2",
+                "name": "/carControl/actuators/longControlState"
+              },
+              {
+                "color": "#009e73",
+                "name": "/longitudinalPlan/longitudinalPlanSource"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.25362,
+              "top": 5.125,
+              "bottom": -0.125,
+              "right": 631.055759
+            }
+          }
+        ],
+        "sizes": [
+          0.1875,
+          0.1875,
+          0.1875,
+          0.1875,
+          0.25
+        ]
+      }
+    },
+    {
+      "name": "Lateral Debug",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "Controller F [magenta] P [purple] I [blue]",
+            "curves": [
+              {
+                "name": "/controlsState/lateralControlState/pidState/f",
+                "color": "#f14cc1"
+              },
+              {
+                "name": "/controlsState/lateralControlState/pidState/p",
+                "color": "#9467bd"
+              },
+              {
+                "name": "/controlsState/lateralControlState/pidState/i",
+                "color": "#17becf"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "top": 1.0,
+              "bottom": 0.0,
+              "right": 1.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Driver Torque [blue] EPS Torque [green]",
+            "curves": [
+              {
+                "color": "#009e73",
+                "name": "/carState/steeringTorqueEps"
+              },
+              {
+                "color": "#0072b2",
+                "name": "/carState/steeringTorque"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.253354,
+              "top": 2690.99903,
+              "bottom": -3450.198981,
+              "right": 631.055584
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Engaged [green] Steering Pressed [blue]",
+            "curves": [
+              {
+                "color": "#009e73",
+                "name": "/carControl/enabled"
+              },
+              {
+                "color": "#0072b2",
+                "name": "/carState/steeringPressed"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.253354,
+              "top": 1.025,
+              "bottom": -0.025,
+              "right": 631.055759
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "Steering Limited: Rate [orange] Saturated [magenta]",
+            "curves": [
+              {
+                "name": "steering rate limited",
+                "color": "#ffb000"
+              },
+              {
+                "name": "/controlsState/lateralControlState/pidState/saturated",
+                "color": "#dc267f"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 1.253354,
+              "top": 1.025,
+              "bottom": -0.025,
+              "right": 631.055584
+            }
+          }
+        ],
+        "sizes": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": [
+    {
+      "name": "engaged curvature yaw",
+      "linked_source": "/carControl/angularVelocity/2",
+      "additional_sources": [
+        "/carState/steeringPressed",
+        "/carControl/enabled",
+        "/carState/vEgo"
+      ],
+      "globals_code": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function_code": "def sample(time, value, v1, v2, v3):\n  global engage_delay, last_bad_time\n  curvature = value / v3\n  pressed = v1\n  enabled = v2\n  if (pressed == 1 or enabled == 0):\n    last_bad_time = time\n  if (time > last_bad_time + engage_delay):\n    return curvature\n  else:\n    return 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2, v3)])"
+    },
+    {
+      "name": "engaged curvature vehicle model",
+      "linked_source": "/controlsState/curvature",
+      "additional_sources": [
+        "/carState/steeringPressed",
+        "/carControl/enabled"
+      ],
+      "globals_code": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function_code": "def sample(time, value, v1, v2):\n  global engage_delay, last_bad_time\n  curvature = value\n  pressed = v1\n  enabled = v2\n  if (pressed == 1 or enabled == 0):\n    last_bad_time = time\n  if (time > last_bad_time + engage_delay):\n    return value\n  else:\n    return 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2)])"
+    },
+    {
+      "name": "engaged curvature plan",
+      "linked_source": "/modelV2/action/desiredCurvature",
+      "additional_sources": [
+        "/carState/steeringPressed",
+        "/carControl/enabled"
+      ],
+      "globals_code": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function_code": "def sample(time, value, v1, v2):\n  global engage_delay, last_bad_time\n  curvature = value\n  pressed = v1\n  enabled = v2\n  if (pressed == 1 or enabled == 0):\n    last_bad_time = time\n  if (time > last_bad_time + engage_delay):\n    return value\n  else:\n    return 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2)])"
+    },
+    {
+      "name": "engaged_accel_actual",
+      "linked_source": "/carState/aEgo",
+      "additional_sources": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "globals_code": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function_code": "def sample(time, value, v1, v2, v3):\n  global engage_delay, last_bad_time\n  accel = value\n  brake = v1\n  gas = v2\n  enabled = v3\n  if (brake != 0 or gas != 0 or enabled == 0):\n    last_bad_time = time\n  if (time > last_bad_time + engage_delay):\n    return value\n  else:\n    return 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2, v3)])"
+    },
+    {
+      "name": "engaged_accel_plan",
+      "linked_source": "/longitudinalPlan/accels/0",
+      "additional_sources": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "globals_code": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function_code": "def sample(time, value, v1, v2, v3):\n  global engage_delay, last_bad_time\n  accel = value\n  brake = v1\n  gas = v2\n  enabled = v3\n  if (brake != 0 or gas != 0 or enabled == 0):\n    last_bad_time = time\n  if (time > last_bad_time + engage_delay):\n    return value\n  else:\n    return 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2, v3)])"
+    },
+    {
+      "name": "engaged_accel_actuator",
+      "linked_source": "/carControl/actuators/accel",
+      "additional_sources": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "globals_code": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function_code": "def sample(time, value, v1, v2, v3):\n  global engage_delay, last_bad_time\n  accel = value\n  brake = v1\n  gas = v2\n  enabled = v3\n  if (brake != 0 or gas != 0 or enabled == 0):\n    last_bad_time = time\n  if (time > last_bad_time + engage_delay):\n    return value\n  else:\n    return 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2, v3)])"
+    },
+    {
+      "name": "steering rate limited",
+      "linked_source": "/carControl/actuators/torque",
+      "additional_sources": [
+        "/carOutput/actuatorsOutput/torque",
+        "/carControl/actuators/steeringAngleDeg",
+        "/carOutput/actuatorsOutput/steeringAngleDeg"
+      ],
+      "globals_code": "",
+      "function_code": "def sample(time, value, v1, v2, v3):\n  return (abs(value - v1) > 0.001 or abs(v2 - v3) > 0.05) and 1 or 0\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2, v3)])"
+    }
+  ]
+}

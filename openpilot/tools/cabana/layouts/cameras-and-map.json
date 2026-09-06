@@ -1,0 +1,41 @@
+{
+  "tabs": [
+    {
+      "name": "Cameras and map",
+      "root": {
+        "split": "horizontal",
+        "children": [
+          {
+            "split": "vertical",
+            "children": [
+              {
+                "title": "Map",
+                "kind": "map"
+              },
+              {
+                "title": "Road",
+                "kind": "camera",
+                "camera_view": "road"
+              }
+            ]
+          },
+          {
+            "split": "vertical",
+            "children": [
+              {
+                "title": "Wide road",
+                "kind": "camera",
+                "camera_view": "wide_road"
+              },
+              {
+                "title": "Cabin",
+                "kind": "camera",
+                "camera_view": "driver"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

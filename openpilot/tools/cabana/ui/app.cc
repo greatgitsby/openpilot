@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -15,10 +16,13 @@
 #include <GLFW/glfw3.h>
 
 #include "tools/cabana/settings.h"
+#include "tools/cabana/ui/capture.h"
 #include "tools/cabana/ui/inistate.h"
 #include "tools/cabana/ui/util.h"
 #include "tools/cabana/ui/mainwin.h"
 #include "tools/cabana/utils/util.h"
+
+AnalysisLaunch analysis_launch;
 
 namespace {
 
@@ -114,6 +118,22 @@ void renderFrame(GLFWwindow *window, MainWindow *win) {
     ImGui::RenderPlatformWindowsDefault();
     glfwMakeContextCurrent(backup_context);
   }
+  if (auto analysis = win->analysis()) {
+    static double loaded_at = 0;
+    static bool captured = false;
+    if (can->analysis_data.revision && loaded_at == 0) loaded_at = ImGui::GetTime();
+    if (!analysis_launch.test_state.empty()) {
+      std::ofstream state(analysis_launch.test_state + ".tmp"); state << analysis->state(); state.close();
+      std::rename((analysis_launch.test_state + ".tmp").c_str(), analysis_launch.test_state.c_str());
+    }
+    if (!captured && !analysis_launch.output.empty() && loaded_at > 0 && ImGui::GetTime() - loaded_at > 2) {
+      std::vector<uint8_t> pixels(size_t(fb_w) * fb_h * 4);
+      glReadPixels(0, 0, fb_w, fb_h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+      saveCapture(analysis_launch.output, fb_w, fb_h, pixels); captured = true;
+      if (!analysis_launch.show) win->close();
+    }
+    if (!captured && !analysis_launch.output.empty() && ImGui::GetTime() > 120) throw std::runtime_error("Timed out waiting for capture data");
+  }
   glfwSwapBuffers(window);
   paceFrame();
 }
@@ -132,7 +152,7 @@ public:
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 #endif
-    window_ = glfwCreateWindow(1600, 900, "Cabana", nullptr, nullptr);
+    window_ = glfwCreateWindow(analysis_launch.width, analysis_launch.height, "Cabana", nullptr, nullptr);
     if (window_ == nullptr) {
       glfwTerminate();
       throw std::runtime_error("glfwCreateWindow failed");
@@ -209,7 +229,7 @@ int run(std::unique_ptr<AbstractStream> stream, StreamLoader stream_loader, cons
     applyTheme(settings.theme);
     inistate::addSettingsHandler();
     inistate::load();
-    inistate::applyWindowGeometry(glfw.window());
+    if (!analysis_launch.enabled) inistate::applyWindowGeometry(glfw.window());
 
     MainWindow win(glfw.window(), std::move(stream), std::move(stream_loader), dbc_file);
     while (!win.exited()) {

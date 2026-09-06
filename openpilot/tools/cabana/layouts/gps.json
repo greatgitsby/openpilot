@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "tab1",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/gpsLocationExternal/hasFix",
+                "color": "#1f77b4"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "right": 1678.753571,
+              "bottom": -0.025,
+              "top": 1.025
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/gpsLocationExternal/satelliteCount",
+                "color": "#d62728"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "right": 1678.753571,
+              "bottom": -0.425,
+              "top": 17.425
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/gpsLocationExternal/horizontalAccuracy",
+                "color": "#1ac938"
+              }
+            ],
+            "limitY": {
+              "max": 3.0,
+              "min": 0.0
+            },
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "right": 1678.753571,
+              "bottom": 0.0,
+              "top": 3.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/gpsLocationExternal/horizontalAccuracy",
+                "color": "#1ac938"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "left": 0.0,
+              "right": 1678.753571,
+              "bottom": -17.262,
+              "top": 766.374004
+            }
+          }
+        ],
+        "sizes": [
+          0.24977,
+          0.250689,
+          0.24977,
+          0.24977
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": []
+}

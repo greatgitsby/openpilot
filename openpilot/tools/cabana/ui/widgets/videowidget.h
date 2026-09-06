@@ -120,3 +120,5 @@ private:
   std::vector<std::unique_ptr<RouteInfoDlg>> route_info_dlgs_;
   Connections connections_;  // last: disconnected before the widgets its handlers dereference are destroyed
 };
+
+bool decodeJpeg(const uint8_t *data, size_t size, RgbImage *out);

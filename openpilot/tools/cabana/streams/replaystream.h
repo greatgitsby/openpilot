@@ -26,7 +26,7 @@ public:
   }
   inline uint64_t beginMonoTime() const override { return replay->routeStartNanos(); }
   inline void setSpeed(float speed) override { replay->setSpeed(speed); }
-  inline float getSpeed() const { return replay->getSpeed(); }
+  inline double getSpeed() override { return replay->getSpeed(); }
   inline Replay *getReplay() const { return replay.get(); }
   inline bool isPaused() const override { return replay->isPaused(); }
   void pause(bool pause) override;

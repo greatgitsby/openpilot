@@ -1,6 +1,6 @@
 # Cabana
 
-Cabana is a tool developed to view raw CAN data. One use for this is creating and editing [CAN Dictionaries](http://socialledge.com/sjsu/index.php/DBC_Format) (DBC files), and the tool provides direct integration with [commaai/opendbc](https://github.com/commaai/opendbc) (a collection of DBC files), allowing you to load the DBC files direct from source, and save to your fork. In addition, you can load routes from [comma connect](https://connect.comma.ai).
+Cabana is a tool for investigating routes, plotting cereal and CAN signals, and editing CAN dictionaries. One use for this is creating and editing [CAN Dictionaries](http://socialledge.com/sjsu/index.php/DBC_Format) (DBC files), and the tool provides direct integration with [commaai/opendbc](https://github.com/commaai/opendbc) (a collection of DBC files), allowing you to load the DBC files direct from source, and save to your fork. In addition, you can load routes from [comma connect](https://connect.comma.ai).
 
 ## Usage Instructions
 
@@ -96,3 +96,46 @@ cabana
 ## Additional Information
 
 For more information, see the [openpilot wiki](https://github.com/commaai/openpilot/wiki/Cabana)
+
+## Analysis workspace
+
+Open **Analysis → Analysis workspace**, or launch with `--analysis`. CAN inspection and DBC editing remain available through the same window. Both workspaces use the same route, playback clock, and DBCs.
+
+```sh
+./cabana --analysis --demo
+./cabana /path/to/rlog.zst --layout longitudinal
+./cabana 'dongle_id/route_id/0:2/q' --analysis
+./cabana --stream --buffer-seconds 60
+./cabana --stream --address 192.168.43.1
+./cabana /path/to/rlog --layout /path/to/layout.json --output /tmp/analysis.png
+```
+
+`--data-dir` and `--data_dir` select a directory of local route segments. Route suffixes `/q`, `/r`, and `/a` choose qlogs, rlogs, or automatic fallback. Direct log files can also be selected in the stream dialog. Remote streaming uses the cereal bridge on the device, as described above.
+
+Search the signal sidebar, then double-click a signal to plot it. Ctrl-click selects multiple signals; drag them into a plot, or choose **Pane → Add selected signals**. The sidebar displays numeric or enum values at the playback cursor. Missing channels remain in layouts so they can resolve when additional data arrives. Deprecated fields are hidden by default.
+
+Use the timeline, Play/Pause, speed and step controls to navigate. Ctrl-click a plot or drag its cursor to seek. Plots share their time range; wheel zoom and pan affect the shared viewport. **Time range** edits exact bounds, **Reset view** fits loaded data, and **Loop** repeats the selected interval. **Follow** tracks the current time during playback or streaming.
+
+The **Pane** menu splits panes, adds plots/maps/logs/thumbnails/cameras, edits axis limits and curve styles, and removes panes. Curve settings include labels, color, visibility, scale/offset and first derivative with actual or fixed sample spacing. Use `+` to add a tab; a tab's context menu renames, reorders, duplicates or closes it.
+
+**Custom series** evaluates Python with NumPy. `time` and `value` are the input arrays; additional channels become `v1`, `v2`, etc., aligned using their last sample at or before each input timestamp. `t(path)` and `v(path)` access named arrays. Return values, a scalar, or `(times, values)`. Preview shows the result before applying. Evaluation runs in a separate process with a 15-second timeout; errors appear in the workspace. Saved custom series recompute when data changes.
+
+Log panes support text/source search, severity selection, route/boot/wall timestamps, context tooltips and click-to-seek. GPS panes support pan, zoom, follow and click-to-seek; **Streets** adds an optional cached OpenStreetMap road layer. Thumbnail and independently decoded road, wide-road, cabin and qcamera panes follow the same cursor.
+
+Layouts save to JSON and autosave to `cabana-analysis.json` in Cabana's settings directory. **Analysis → Edit layout JSON** edits the source with validation before applying. Existing Jotpluggler JSON layouts and PlotJuggler XML layouts can be imported. Bundled presets are generated from the PlotJuggler layout data. Ctrl+F searches signals; Ctrl+S saves layouts; Ctrl+O opens layouts; Ctrl+N starts a layout; Ctrl+Z/Ctrl+Shift+Z undo/redo workspace changes when a text field is not focused.
+
+`--output image.png` captures the loaded workspace and exits; add `--show` to keep it open. `--width` and `--height` set the window dimensions. For automated testing, `--test-state path.json` writes read-only UI geometry and analysis diagnostics.
+
+## Testing analysis
+
+```sh
+scons openpilot/tools/cabana/cabana openpilot/tools/cabana/tests/test_analysis openpilot/tools/cabana/tests/test_cabana
+openpilot/tools/cabana/tests/test_analysis
+openpilot/tools/cabana/tests/test_cabana
+python -m pytest -q openpilot/tools/cabana/tests/test_analysis_python.py
+CABANA_E2E=1 python -m pytest -q openpilot/tools/cabana/tests/test_analysis_ui.py
+```
+
+The UI suite uses Xvfb, xdotool, Pillow, pytest, and FFmpeg with H.264/HEVC encoders. It generates its own logs and videos, isolates settings and messaging, drives real mouse/keyboard input, and checks screenshots, samples and playback state. It includes large logs, repeated seeks/tabs, malformed live packets, buffer rollover, Python timeout recovery, and simultaneous camera seeking.
+
+See [validation evidence and limits](analysis/TESTING.md) for stress coverage and reference provenance.

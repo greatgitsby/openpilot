@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "tab1",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/carState/aEgo",
+                "color": "#f14cc1"
+              },
+              {
+                "name": "/longitudinalPlan/accels/0",
+                "color": "#9467bd"
+              },
+              {
+                "name": "/carControl/actuators/accel",
+                "color": "#17becf"
+              },
+              {
+                "name": "/carOutput/actuatorsOutput/accel",
+                "color": "#d62728"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 126.285782,
+              "top": 1.391623,
+              "left": 104.907277,
+              "bottom": -2.563614
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/controlsState/upAccelCmd",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/controlsState/uiAccelCmd",
+                "color": "#d62728"
+              },
+              {
+                "name": "/controlsState/ufAccelCmd",
+                "color": "#1ac938"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 126.285782,
+              "top": 1.18496,
+              "left": 104.907277,
+              "bottom": -1.811222
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/carState/vEgo",
+                "color": "#1ac938"
+              },
+              {
+                "name": "/longitudinalPlan/speeds/0",
+                "color": "#ff7f0e"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 126.285782,
+              "top": 15.862889,
+              "left": 104.907277,
+              "bottom": -0.568809
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "name": "/carControl/longActive",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/carState/gasPressed",
+                "color": "#d62728"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "right": 126.285782,
+              "top": 1.025,
+              "left": 104.907277,
+              "bottom": -0.025
+            }
+          }
+        ],
+        "sizes": [
+          0.250401,
+          0.249599,
+          0.250401,
+          0.249599
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": []
+}

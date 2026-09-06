@@ -1,4 +1,5 @@
 #include "tools/cabana/ui/dialogs/streamselector.h"
+#include "tools/cabana/streams/logfilestream.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -35,6 +36,8 @@ void OpenReplayWidget::draw() {
       }
     }));
   }
+  ImGui::SameLine();
+  if (ImGui::Button("Log file...")) FileDialog::getOpenFileName("Open log", settings.last_route_dir, "", utils::guarded(alive_, [this](const std::string &path) { if (!path.empty()) route_ = path; }));
   checkBox("Road camera", &cameras_[0]);
   ImGui::SameLine();
   checkBox("Driver camera", &cameras_[1]);
@@ -48,13 +51,21 @@ void OpenReplayWidget::drawPopups() {
 
 std::unique_ptr<AbstractStream> OpenReplayWidget::open() {
   std::string route = route_;
+  if (std::filesystem::is_regular_file(route)) {
+    auto log = std::make_unique<LogFileStream>();
+    if (log->load(route)) return log;
+    MessageBox::warning("Open log", "Unable to read log: " + route); return nullptr;
+  }
   std::string data_dir;
   if (auto idx = route.rfind('/'); idx != std::string::npos && util::file_exists(route)) {
     data_dir = route.substr(0, idx + 1);
     route = route.substr(idx + 1);
   }
 
-  bool is_valid_format = Route::parseRoute(route).str.size() > 0;
+  std::string check_route = route;
+  if (check_route.size() > 2 && check_route[check_route.size() - 2] == '/' && std::string("qra").find(check_route.back()) != std::string::npos) check_route.resize(check_route.size() - 2);
+  bool is_valid_format = false;
+  try { is_valid_format = !Route::parseRoute(check_route).str.empty(); } catch (const std::exception &) {}
   if (!is_valid_format) {
     MessageBox::warning("Warning", "Invalid route format: '" + route + "'");
   } else {

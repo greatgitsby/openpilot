@@ -1,4 +1,5 @@
 #include "tools/cabana/ui/mainwin.h"
+#include "tools/cabana/streams/logfilestream.h"
 
 #include <algorithm>
 #include <cassert>
@@ -168,6 +169,11 @@ void MainWindow::drawMenuBar() {
     ImGui::EndMenu();
   }
 
+  if (ImGui::BeginMenu("Analysis")) {
+    if (analysis_) analysis_->menu();
+    ImGui::EndMenu();
+  }
+
   if (ImGui::BeginMenu("Help")) {
     if (ImGui::MenuItem("Help", "F1")) toggleHelp();
     ImGui::EndMenu();
@@ -180,6 +186,11 @@ void MainWindow::createDockWidgets() {
   messages_widget_ = std::make_unique<MessagesWidget>();
   widget_connections_.push_back(messages_widget_->msgSelectionChanged.connect([this](const MessageId &id) { center_widget_.setMessage(id); }));
 
+  analysis_ = std::make_unique<AnalysisWorkspace>();
+  analysis_->visible = analysis_launch.enabled;
+  can->analysis_buffer_seconds = analysis_launch.buffer_seconds;
+  if (!analysis_session_.empty()) { analysis_->restore(analysis_session_); analysis_->visible = analysis_visible_; }
+  else if (!analysis_launch.layout.empty()) analysis_->load(analysis_launch.layout);
   charts_widget_ = std::make_unique<ChartsWidget>();
   center_widget_.setChartsWidget(charts_widget_.get());
   video_widget_ = std::make_unique<VideoWidget>();
@@ -226,7 +237,7 @@ void MainWindow::loadStartupStream(const std::string &dbc_file) {
   wait_dlg_.value = 0;
   wait_dlg_.open = true;
   wait_dlg_.show_at = ImGui::GetTime() + 4.0;  // minimum duration before the dialog shows
-  ThreadPool::instance().run([this, dbc_file, loader = std::move(startup_loader_)]() {
+  ThreadPool::instance().run([this, alive = std::weak_ptr<bool>(alive_), dbc_file, loader = std::move(startup_loader_)]() {
     AbstractStream *loaded = nullptr;
     std::string error;
     try {
@@ -235,9 +246,10 @@ void MainWindow::loadStartupStream(const std::string &dbc_file) {
       // the pool swallows exceptions, so the wait dialog would spin forever
       error = e.what();
     }
-    utils::runOnMainThread([this, dbc_file, loaded, error]() {
-      wait_dlg_.open = false;
+    utils::runOnMainThread([this, alive, dbc_file, loaded, error]() {
       std::unique_ptr<AbstractStream> stream(loaded);
+      if (alive.expired()) return;
+      wait_dlg_.open = false;
       if (!error.empty()) {
         fprintf(stderr, "%s\n", error.c_str());
         MessageBox::warning("Failed to load route", error);
@@ -322,6 +334,7 @@ void MainWindow::loadFromClipboard(SourceSet s, bool close_all) {
 }
 
 MainWindow::~MainWindow() {
+  alive_.reset();
   installDownloadProgressHandler(nullptr);
   installMessageHandler(nullptr);
   releaseStream();
@@ -336,6 +349,8 @@ void MainWindow::releaseStream() {
   wait_dlg_.connection.disconnect();
   wait_dlg_.open = false;
   widget_connections_.clear();
+  if (analysis_) { analysis_session_ = analysis_->state(); analysis_visible_ = analysis_->visible; }
+  analysis_.reset();
   charts_widget_.reset();
   video_widget_.reset();
   center_widget_.clear();
@@ -692,6 +707,9 @@ void MainWindow::handleShortcuts() {
       toggleFullScreen();
     }
     if (!ctrl) continue;
+    if (analysis_ && analysis_->visible && !io.WantTextInput && (e.key == GLFW_KEY_F || e.key == GLFW_KEY_Z || e.key == GLFW_KEY_S || e.key == GLFW_KEY_N || e.key == GLFW_KEY_O)) {
+      analysis_->shortcut(e.key, shift); continue;
+    }
     if (e.key == GLFW_KEY_N) newFile();
     if (e.key == GLFW_KEY_O) openFile();
     if (e.key == GLFW_KEY_S) {
@@ -889,9 +907,15 @@ void MainWindow::draw() {
   } else {
     takeKeyEvents();  // modal dialogs swallow the shortcuts
   }
+  if (auto log = dynamic_cast<LogFileStream *>(can)) log->tick();
+  if (can->analysis_data.revision) wait_dlg_.open = false;
   if (!full_screen_) drawMenuBar();
-  drawDockspace();
+  if (!analysis_ || !analysis_->visible) drawDockspace();
+  if (analysis_) analysis_->draw();
 
+  const bool analysis_mode = analysis_ && analysis_->visible;
+  if (analysis_mode && video_widget_) video_widget_->setVisible(false);
+  if (!analysis_mode) {
   // the central widget has no scrollbars of its own (the views inside scroll)
   if (ImGui::Begin(CENTER_PANEL, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     center_widget_.draw();
@@ -910,6 +934,7 @@ void MainWindow::draw() {
     if (ImGui::Begin(CHARTS_WINDOW, &open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) charts_widget_->draw();
     ImGui::End();
     if (!open) toggleChartsDocking();
+  }
   }
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
     it = (*it)->draw() ? it + 1 : tool_dialogs_.erase(it);

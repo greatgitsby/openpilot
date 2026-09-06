@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -6,6 +7,7 @@
 #include <string>
 
 #include "tools/cabana/streams/devicestream.h"
+#include "tools/cabana/streams/logfilestream.h"
 #include "tools/cabana/streams/pandastream.h"
 #include "tools/cabana/streams/replaystream.h"
 #ifdef __linux__
@@ -46,6 +48,15 @@ void printUsage(const char *argv0) {
           "  route                     the drive to replay. find your drives at connect.comma.ai\n"
           "\n"
           "Options:\n"
+          "  --analysis                open the analysis workspace\n"
+          "  --layout <file>           load an analysis JSON or PlotJuggler XML layout\n"
+          "  --stream                  stream all cereal services\n"
+          "  --address <host>          remote cereal host\n"
+          "  --buffer-seconds <n>      live analysis history (default 30)\n"
+          "  --output <png>            capture the loaded workspace and exit\n"
+          "  --show                    keep window open after capture\n"
+          "  --width/--height <px>     window size (320..8192)\n"
+          "  --sync-load               wait for data before capture\n"
           "  --help                    show this help\n"
           "  --demo                    use a demo route instead of providing your own\n"
           "  --auto                    Auto load the route from the best available source (no video):\n"
@@ -83,6 +94,35 @@ std::optional<int> parseArgs(int argc, char *argv[], CabanaArgs &args) {
     if (std::strcmp(a, "--help") == 0 || std::strcmp(a, "-h") == 0) {
       printUsage(argv[0]);
       return 0;
+    } else if (std::strcmp(a, "--analysis") == 0) {
+      analysis_launch.enabled = true;
+    } else if (std::strcmp(a, "--layout") == 0) {
+      if (!takeValue(argc, argv, i, analysis_launch.layout)) return 1;
+      analysis_launch.enabled = true;
+    } else if (std::strcmp(a, "--output") == 0) {
+      if (!takeValue(argc, argv, i, analysis_launch.output)) return 1;
+      analysis_launch.enabled = true;
+    } else if (std::strcmp(a, "--test-state") == 0) {
+      if (!takeValue(argc, argv, i, analysis_launch.test_state)) return 1;
+    } else if (std::strcmp(a, "--show") == 0) {
+      analysis_launch.show = true;
+    } else if (std::strcmp(a, "--sync-load") == 0) {
+      // Capture always waits for loading; interactive loading stays asynchronous.
+    } else if (std::strcmp(a, "--width") == 0 || std::strcmp(a, "--height") == 0 || std::strcmp(a, "--buffer-seconds") == 0) {
+      std::string text;
+      if (!takeValue(argc, argv, i, text)) return 1;
+      char *end = nullptr; double value = std::strtod(text.c_str(), &end);
+      if (end == text.c_str() || *end || !std::isfinite(value) || value <= 0 || value > 86400) { fprintf(stderr, "Invalid value for %s\n", a); return 1; }
+      if (std::strcmp(a, "--buffer-seconds") == 0) analysis_launch.buffer_seconds = value;
+      else {
+        if (value < 320 || value > 8192 || value != std::floor(value)) { fprintf(stderr, "Window dimensions must be integers from 320 to 8192\n"); return 1; }
+        (std::strcmp(a, "--width") == 0 ? analysis_launch.width : analysis_launch.height) = value;
+      }
+    } else if (std::strcmp(a, "--stream") == 0) {
+      args.msgq = true; analysis_launch.enabled = true;
+    } else if (std::strcmp(a, "--address") == 0) {
+      if (!takeValue(argc, argv, i, args.zmq)) return 1;
+      analysis_launch.enabled = true;
     } else if (std::strcmp(a, "--demo") == 0) {
       args.demo = true;
     } else if (std::strcmp(a, "--auto") == 0) {
@@ -108,7 +148,7 @@ std::optional<int> parseArgs(int argc, char *argv[], CabanaArgs &args) {
 #endif
     } else if (std::strcmp(a, "--zmq") == 0) {
       if (!takeValue(argc, argv, i, args.zmq)) return 1;
-    } else if (std::strcmp(a, "--data_dir") == 0) {
+    } else if (std::strcmp(a, "--data_dir") == 0 || std::strcmp(a, "--data-dir") == 0) {
       if (!takeValue(argc, argv, i, args.data_dir)) return 1;
     } else if (std::strcmp(a, "--no-vipc") == 0) {
       args.no_vipc = true;
@@ -141,15 +181,23 @@ int main(int argc, char *argv[]) {
 #endif
   // ensure the current dir matches the executable's directory
   std::error_code ec;
-  std::filesystem::current_path(executableDir(), ec);
+
 
   CabanaArgs args;
   if (auto code = parseArgs(argc, argv, args)) return *code;
 
+  for (std::string *path : {&args.dbc, &args.data_dir, &analysis_launch.output, &analysis_launch.test_state})
+    if (!path->empty()) *path = std::filesystem::absolute(*path).string();
+  if (std::filesystem::is_regular_file(args.route)) args.route = std::filesystem::absolute(args.route).string();
+  if (std::filesystem::is_regular_file(analysis_launch.layout)) analysis_launch.layout = std::filesystem::absolute(analysis_launch.layout).string();
+  std::filesystem::current_path(executableDir(), ec);
   std::unique_ptr<AbstractStream> stream;
   StreamLoader stream_loader;
 
-  if (args.msgq) {
+  if ((!args.route.empty() || args.demo) && (args.msgq || !args.zmq.empty())) {
+    fprintf(stderr, "A route and live streaming cannot be used together\n"); return 1;
+  }
+  if (args.msgq && args.zmq.empty()) {
     stream = std::make_unique<DeviceStream>();
   } else if (!args.zmq.empty()) {
     stream = std::make_unique<DeviceStream>(args.zmq);
@@ -185,6 +233,11 @@ int main(int argc, char *argv[]) {
     if (!route.empty()) {
       // the route file listing hits the comma API; load behind the window instead of before it
       stream_loader = [route, data_dir = args.data_dir, replay_flags, auto_source = args.auto_source]() -> std::unique_ptr<AbstractStream> {
+        if (std::filesystem::is_regular_file(route)) {
+          auto log = std::make_unique<LogFileStream>();
+          if (!log->load(route)) throw std::runtime_error("Unable to read log: " + route);
+          return log;
+        }
         auto replay_stream = std::make_unique<ReplayStream>();
         Connection err = replay_stream->error.connect([](const std::string &msg) {
           fprintf(stderr, "%s\n", msg.c_str());

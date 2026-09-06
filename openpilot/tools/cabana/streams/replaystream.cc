@@ -32,7 +32,11 @@ void ReplayStream::mergeSegments() {
       std::vector<const CanEvent *> new_events;
       new_events.reserve(seg->log->events.size());
       MessageEventsMap msg_events;
+      cabana::analysis::Data analysis_batch;
       for (const Event &e : seg->log->events) {
+        if (e.eidx_segnum >= 0) continue;
+        capnp::FlatArrayMessageReader analysis_reader(e.data);
+        analysis_batch.append(analysis_reader.getRoot<cereal::Event>());
         if (e.which == cereal::Event::Which::CAN) {
           capnp::FlatArrayMessageReader reader(e.data);
           auto event = reader.getRoot<cereal::Event>();
@@ -43,13 +47,20 @@ void ReplayStream::mergeSegments() {
           }
         }
       }
-      postToMainThreadAndWait([&]() { insertEvents(new_events, msg_events); });
+      postToMainThreadAndWait([&]() { analysis_data.merge(std::move(analysis_batch)); insertEvents(new_events, msg_events); });
     }
   }
 }
 
 bool ReplayStream::loadRoute(const std::string &route, const std::string &data_dir, uint32_t replay_flags, bool auto_source) {
-  replay.reset(new Replay(route, {"can", "narrowRoadEncodeIdx", "cabinEncodeIdx", "wideRoadEncodeIdx", "carParams"},
+  std::string route_spec = route;
+  if (route_spec.size() > 2 && route_spec[route_spec.size() - 2] == '/') {
+    char selector = route_spec.back();
+    if (selector == 'q') replay_flags |= REPLAY_FLAG_QLOG;
+    if (selector == 'r') replay_flags |= REPLAY_FLAG_RLOG;
+    if (selector == 'q' || selector == 'r' || selector == 'a') route_spec.resize(route_spec.size() - 2);
+  }
+  replay.reset(new Replay(route_spec, {},
                           {}, nullptr, replay_flags, data_dir, auto_source));
   replay->setSegmentCacheLimit(settings.max_cached_minutes);
   replay->installEventFilter([this](const Event *event) { return eventFilter(event); });
@@ -103,6 +114,8 @@ bool ReplayStream::eventFilter(const Event *event) {
 
   double ts = millis_since_boot();
   if ((ts - prev_update_ts) > (1000.0 / STREAM_UPDATE_FPS)) {
+    double current = toSeconds(event->mono_time);
+    postToMainThread([this, current]() { current_sec_ = current; });
     requestUpdateLastMessages();
     prev_update_ts = ts;
   }

@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "SOF / EOF (encodeIdx)",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1f77b4",
+                "name": "/cabinEncodeIdx/timestampSof",
+                "label": "/cabinEncodeIdx/timestampSof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#d62728",
+                "name": "/narrowRoadEncodeIdx/timestampSof",
+                "label": "/narrowRoadEncodeIdx/timestampSof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#1ac938",
+                "name": "/wideRoadEncodeIdx/timestampSof",
+                "label": "/wideRoadEncodeIdx/timestampSof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              }
+            ],
+            "limitY": {
+              "max": 65000000.0,
+              "min": 35000000.0
+            },
+            "style": 0,
+            "range": {
+              "bottom": 35000000.0,
+              "left": 0.0,
+              "top": 65000000.0,
+              "right": 630.006367
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#f14cc1",
+                "name": "/cabinEncodeIdx/timestampEof",
+                "label": "/cabinEncodeIdx/timestampEof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#9467bd",
+                "name": "/narrowRoadEncodeIdx/timestampEof",
+                "label": "/narrowRoadEncodeIdx/timestampEof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#17becf",
+                "name": "/wideRoadEncodeIdx/timestampEof",
+                "label": "/wideRoadEncodeIdx/timestampEof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              }
+            ],
+            "limitY": {
+              "max": 65000000.0,
+              "min": 35000000.0
+            },
+            "style": 0,
+            "range": {
+              "bottom": 35000000.0,
+              "left": 0.0,
+              "top": 65000000.0,
+              "right": 630.006367
+            }
+          }
+        ],
+        "sizes": [
+          0.500885,
+          0.499115
+        ]
+      }
+    },
+    {
+      "name": "model timings",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#ff7f0e",
+                "name": "/modelV2/modelExecutionTime"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "bottom": 0.015143,
+              "left": 0.0,
+              "top": 0.016865,
+              "right": 630.006367
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#f14cc1",
+                "name": "/modelV2/frameDropPerc"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "bottom": -0.1,
+              "left": 0.0,
+              "top": 0.1,
+              "right": 630.006367
+            }
+          }
+        ],
+        "sizes": [
+          0.5,
+          0.5
+        ]
+      }
+    },
+    {
+      "name": "sensor info",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#bcbd22",
+                "name": "/cabinCameraState/sensor"
+              },
+              {
+                "color": "#1f77b4",
+                "name": "/narrowRoadCameraState/sensor"
+              },
+              {
+                "color": "#d62728",
+                "name": "/wideRoadCameraState/sensor"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "bottom": -0.1,
+              "left": 0.0,
+              "top": 0.1,
+              "right": 630.006367
+            }
+          }
+        ],
+        "sizes": [
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "SOF / EOF (cameraState)",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1f77b4",
+                "name": "/cabinCameraState/timestampSof",
+                "label": "/cabinCameraState/timestampSof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#d62728",
+                "name": "/narrowRoadCameraState/timestampSof",
+                "label": "/narrowRoadCameraState/timestampSof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#1ac938",
+                "name": "/wideRoadCameraState/timestampSof",
+                "label": "/wideRoadCameraState/timestampSof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              }
+            ],
+            "limitY": {
+              "max": 65000000.0,
+              "min": 35000000.0
+            },
+            "style": 0,
+            "range": {
+              "bottom": 35000000.0,
+              "left": 0.0,
+              "top": 65000000.0,
+              "right": 630.006367
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#ff7f0e",
+                "name": "/cabinCameraState/timestampEof",
+                "label": "/cabinCameraState/timestampEof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#f14cc1",
+                "name": "/narrowRoadCameraState/timestampEof",
+                "label": "/narrowRoadCameraState/timestampEof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              },
+              {
+                "color": "#9467bd",
+                "name": "/wideRoadCameraState/timestampEof",
+                "label": "/wideRoadCameraState/timestampEof[Derivative]",
+                "derivative": true,
+                "derivative_dt": 1.0
+              }
+            ],
+            "limitY": {
+              "max": 65000000.0,
+              "min": 35000000.0
+            },
+            "style": 0,
+            "range": {
+              "bottom": 35000000.0,
+              "left": 0.0,
+              "top": 65000000.0,
+              "right": 630.006367
+            }
+          }
+        ],
+        "sizes": [
+          0.500885,
+          0.499115
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": []
+}

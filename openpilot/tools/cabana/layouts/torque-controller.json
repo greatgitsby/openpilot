@@ -1,0 +1,523 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "Lateral Plan Conformance",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "desired vs actual lateral acceleration (closer means better conformance to plan)",
+            "curves": [
+              {
+                "name": "/controlsState/lateralControlState/torqueState/actualLateralAccel",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/controlsState/lateralControlState/torqueState/desiredLateralAccel",
+                "color": "#d62728"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.858161,
+              "bottom": -1.823407,
+              "right": 1138.891674,
+              "left": 0.000194
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "desired vs actual lateral acceleration, road-roll factored out (closer means better conformance to plan)",
+            "curves": [
+              {
+                "name": "Actual lateral accel (roll compensated)",
+                "color": "#1ac938"
+              },
+              {
+                "name": "Desired lateral accel (roll compensated)",
+                "color": "#ff7f0e"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 2.749816,
+              "bottom": -3.723091,
+              "right": 1138.891674,
+              "left": 0.000194
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "controller feed-forward vs actuator output (closer means controller prediction is more accurate)",
+            "curves": [
+              {
+                "name": "/carOutput/actuatorsOutput/torque",
+                "color": "#9467bd",
+                "label": "/carOutput/actuatorsOutput/torque[Scale/Offset]",
+                "value_scale": -1.0,
+                "value_offset": 0.0
+              },
+              {
+                "name": "/controlsState/lateralControlState/torqueState/f",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/carState/steeringPressed",
+                "color": "#ff000f"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.978032,
+              "bottom": -1.570956,
+              "right": 1138.891674,
+              "left": 0.000194
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "vehicle speed",
+            "curves": [
+              {
+                "name": "carState.vEgo mph",
+                "color": "#d62728"
+              },
+              {
+                "name": "carState.vEgo kmh",
+                "color": "#1ac938"
+              },
+              {
+                "name": "/carState/vEgo",
+                "color": "#ff7f0e"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 105.981304,
+              "bottom": -2.709314,
+              "right": 1138.891674,
+              "left": 0.000194
+            }
+          }
+        ],
+        "sizes": [
+          0.250949,
+          0.249051,
+          0.250949,
+          0.249051
+        ]
+      }
+    },
+    {
+      "name": "Vehicle Dynamics",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "configured-initial vs online-learned steerRatio, set configured value to match learned",
+            "curves": [
+              {
+                "name": "/carParams/steerRatio",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/vehicleParameters/steerRatio",
+                "color": "#1ac938"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 19.665784,
+              "bottom": 19.359553,
+              "right": 1138.816328,
+              "left": 0.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "configured-initial vs online-learned tireStiffnessRatio, set configured value to match learned",
+            "curves": [
+              {
+                "name": "/carParams/tireStiffnessFactor",
+                "color": "#d62728"
+              },
+              {
+                "name": "/vehicleParameters/stiffnessFactor",
+                "color": "#ff7f0e"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.11221,
+              "bottom": 0.995631,
+              "right": 1138.816328,
+              "left": 0.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "online-learned steering angle offsets for straight-ahead driving, large values here may indicate alignment problems",
+            "curves": [
+              {
+                "name": "/vehicleParameters/angleOffsetAverageDeg",
+                "color": "#f14cc1"
+              },
+              {
+                "name": "/vehicleParameters/angleOffsetDeg",
+                "color": "#9467bd"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": -1.081041,
+              "bottom": -4.494133,
+              "right": 1138.816328,
+              "left": 0.0
+            }
+          }
+        ],
+        "sizes": [
+          0.334282,
+          0.331437,
+          0.334282
+        ]
+      }
+    },
+    {
+      "name": "Actuator Performance",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "offline-calculated vs online-learned lateral accel scaling factor, accel obtained from 100% actuator output",
+            "curves": [
+              {
+                "name": "/lateralTorqueParameters/latAccelFactorFiltered",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/lateralTorqueParameters/latAccelFactorRaw",
+                "color": "#d62728"
+              },
+              {
+                "name": "/carParams/lateralTuning/torque/latAccelFactor",
+                "color": "#1c9222"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.21611,
+              "bottom": 0.539474,
+              "right": 1138.920072,
+              "left": 0.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "learned lateral accel offset, vehicle-specific compensation to obtain true zero lateral accel",
+            "curves": [
+              {
+                "name": "/lateralTorqueParameters/latAccelOffsetFiltered",
+                "color": "#1ac938"
+              },
+              {
+                "name": "/lateralTorqueParameters/latAccelOffsetRaw",
+                "color": "#ff7f0e"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": -0.304367,
+              "bottom": -0.418688,
+              "right": 1138.920072,
+              "left": 0.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "offline-calculated vs online-learned EPS friction factor, necessary to start moving the steering wheel",
+            "curves": [
+              {
+                "name": "/lateralTorqueParameters/frictionCoefficientFiltered",
+                "color": "#f14cc1"
+              },
+              {
+                "name": "/lateralTorqueParameters/frictionCoefficientRaw",
+                "color": "#9467bd"
+              },
+              {
+                "name": "/carParams/lateralTuning/torque/friction",
+                "color": "#1c9222"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 0.226389,
+              "bottom": 0.15805,
+              "right": 1138.920072,
+              "left": 0.0
+            }
+          }
+        ],
+        "sizes": [
+          0.333333,
+          0.333333,
+          0.333333
+        ]
+      }
+    },
+    {
+      "name": "Actuator Delay",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "actuator lag learning state, 0 = learning, 1 = learned/applying, 2 = invalid",
+            "curves": [
+              {
+                "name": "/lateralDelay/status",
+                "color": "#ff7f0e"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.025,
+              "bottom": -0.025,
+              "right": 1138.749979,
+              "left": 0.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "offline default vs online estimated steering actuator lag",
+            "curves": [
+              {
+                "name": "/lateralDelay/lateralDelay",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/lateralDelay/lateralDelayEstimate",
+                "color": "#d62728"
+              },
+              {
+                "name": "opendbc default steering lag",
+                "color": "#1ac938"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 0.419648,
+              "bottom": 0.318362,
+              "right": 1138.749979,
+              "left": 0.0
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "online estimated steering actuator lag, standard deviation",
+            "curves": [
+              {
+                "name": "/lateralDelay/lateralDelayEstimateStd",
+                "color": "#f14cc1"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 0.06732,
+              "bottom": -0.001642,
+              "right": 1138.749979,
+              "left": 0.0
+            }
+          }
+        ],
+        "sizes": [
+          0.30441,
+          0.358464,
+          0.337127
+        ]
+      }
+    },
+    {
+      "name": "Controls Performance",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "rate-of-change limits on steering actuator (blue = original, green = rate-limited before CAN output)",
+            "curves": [
+              {
+                "name": "/carControl/actuators/torque",
+                "color": "#0c00f2"
+              },
+              {
+                "name": "/carOutput/actuatorsOutput/torque",
+                "color": "#2cd63a"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.05,
+              "bottom": -1.05,
+              "right": 1138.891921,
+              "left": 0.000194
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "controller feed-forward vs actuator output (closer means controller prediction is more accurate)",
+            "curves": [
+              {
+                "name": "/carOutput/actuatorsOutput/torque",
+                "color": "#9467bd",
+                "label": "/carOutput/actuatorsOutput/torque[Scale/Offset]",
+                "value_scale": -1.0,
+                "value_offset": 0.0
+              },
+              {
+                "name": "/controlsState/lateralControlState/torqueState/f",
+                "color": "#1f77b4"
+              },
+              {
+                "name": "/carState/steeringPressed",
+                "color": "#ff000f"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.978032,
+              "bottom": -1.570956,
+              "right": 1138.891921,
+              "left": 0.000194
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "proportional, integral, and feed-forward terms (actuator output = sum of PIF terms)",
+            "curves": [
+              {
+                "name": "/controlsState/lateralControlState/torqueState/f",
+                "color": "#0ab027"
+              },
+              {
+                "name": "/controlsState/lateralControlState/torqueState/p",
+                "color": "#d62728"
+              },
+              {
+                "name": "/controlsState/lateralControlState/torqueState/i",
+                "color": "#ffaf00"
+              },
+              {
+                "name": "Zero",
+                "color": "#756a6a"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 2.099784,
+              "bottom": -4.027542,
+              "right": 1138.891921,
+              "left": 0.000194
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "road roll angle, from openpilot localizer",
+            "curves": [
+              {
+                "name": "/vehicleParameters/roll",
+                "color": "#f14cc1"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 0.109446,
+              "bottom": -0.045525,
+              "right": 1138.891921,
+              "left": 0.000194
+            }
+          }
+        ],
+        "sizes": [
+          0.265655,
+          0.251898,
+          0.245731,
+          0.236717
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": [
+    {
+      "name": "carState.vEgo kmh",
+      "linked_source": "/carState/vEgo",
+      "additional_sources": [],
+      "globals_code": "",
+      "function_code": "def sample(time, value):\n  return value * 3.6\nreturn np.asarray([sample(*row) for row in zip(time, value)])"
+    },
+    {
+      "name": "carState.vEgo mph",
+      "linked_source": "/carState/vEgo",
+      "additional_sources": [],
+      "globals_code": "",
+      "function_code": "def sample(time, value):\n  return value * 2.23694\nreturn np.asarray([sample(*row) for row in zip(time, value)])"
+    },
+    {
+      "name": "Desired lateral accel (roll compensated)",
+      "linked_source": "/controlsState/desiredCurvature",
+      "additional_sources": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "globals_code": "",
+      "function_code": "def sample(time, value, v1, v2):\n  return (value * v1 ** 2) - (v2 * 9.81)\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2)])"
+    },
+    {
+      "name": "Actual lateral accel (roll compensated)",
+      "linked_source": "/controlsState/curvature",
+      "additional_sources": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "globals_code": "",
+      "function_code": "def sample(time, value, v1, v2):\n  return (value * v1 ** 2) - (v2 * 9.81)\nreturn np.asarray([sample(*row) for row in zip(time, value, v1, v2)])"
+    },
+    {
+      "name": "opendbc default steering lag",
+      "linked_source": "/carParams/steerActuatorDelay",
+      "additional_sources": [],
+      "globals_code": "",
+      "function_code": "def sample(time, value):\n  return value + 0.2\nreturn np.asarray([sample(*row) for row in zip(time, value)])"
+    },
+    {
+      "name": "Zero",
+      "linked_source": "/carState/canValid",
+      "additional_sources": [],
+      "globals_code": "",
+      "function_code": "def sample(time, value):\n  return (0)\nreturn np.asarray([sample(*row) for row in zip(time, value)])"
+    }
+  ]
+}

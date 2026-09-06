@@ -64,7 +64,7 @@ DecoderManager decoder_manager;
 
 }  // namespace
 
-FrameReader::FrameReader() {
+FrameReader::FrameReader(bool independent_decoder) : independent_decoder_(independent_decoder) {
   av_log_set_level(AV_LOG_QUIET);
 }
 
@@ -97,7 +97,13 @@ bool FrameReader::loadFromFile(CameraType type, const std::string &file, bool no
     return false;
   }
 
-  decoder_ = decoder_manager.acquire(type, input_ctx->streams[video_stream_idx_]->codecpar, !no_hw_decoder);
+  if (independent_decoder_) {
+    private_decoder_ = std::make_unique<FFmpegVideoDecoder>();
+    if (!private_decoder_->open(input_ctx->streams[video_stream_idx_]->codecpar, false)) private_decoder_.reset();
+    decoder_ = private_decoder_.get();
+  } else {
+    decoder_ = decoder_manager.acquire(type, input_ctx->streams[video_stream_idx_]->codecpar, !no_hw_decoder);
+  }
   if (!decoder_) {
     return false;
   }
@@ -187,6 +193,7 @@ bool FFmpegVideoDecoder::initHardwareDecoder(AVHWDeviceType hw_device_type) {
 }
 
 bool FFmpegVideoDecoder::decode(FrameReader *reader, int idx, VisionBuf *buf) {
+  if (reader->independent_decoder_) return decodeIndependent(reader, idx, buf);
   int current_idx = idx;
   if (idx != reader->prev_idx + 1) {
     // seeking to the nearest key frame
@@ -228,6 +235,41 @@ bool FFmpegVideoDecoder::decode(FrameReader *reader, int idx, VisionBuf *buf) {
   }
   rError("Failed to find frame at index %d", idx);
   return false;
+}
+
+// Analysis cameras may contain reordered/B-frames. Read until a frame is available,
+// and count decoded presentation frames rather than assuming one output per packet.
+bool FFmpegVideoDecoder::decodeIndependent(FrameReader *reader, int idx, VisionBuf *buf) {
+  int current = reader->prev_idx + 1;
+  if (reader->prev_idx < 0 || idx != current) {
+    if (av_seek_frame(reader->input_ctx, -1, 0, AVSEEK_FLAG_BYTE) < 0) return false;
+    avcodec_flush_buffers(decoder_ctx);
+    current = 0;
+  }
+  bool draining = false;
+  for (;;) {
+    int received = avcodec_receive_frame(decoder_ctx, av_frame_);
+    if (received == 0) {
+      if (current++ == idx) { reader->prev_idx = idx; return copyBuffer(av_frame_, buf); }
+      continue;
+    }
+    if (received != AVERROR(EAGAIN) || draining) return false;
+    AVPacket packet{};
+    int read;
+    do {
+      read = av_read_frame(reader->input_ctx, &packet);
+      if (read < 0 || packet.stream_index == reader->video_stream_idx_) break;
+      av_packet_unref(&packet);
+    } while (true);
+    if (read < 0) {
+      draining = true;
+      if (avcodec_send_packet(decoder_ctx, nullptr) < 0) return false;
+    } else {
+      int sent = avcodec_send_packet(decoder_ctx, &packet);
+      av_packet_unref(&packet);
+      if (sent < 0) return false;
+    }
+  }
 }
 
 AVFrame *FFmpegVideoDecoder::decodeFrame(AVPacket *pkt) {

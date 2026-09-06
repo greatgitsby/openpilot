@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "tab1",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "split": "horizontal",
+            "children": [
+              {
+                "kind": "plot",
+                "title": "...",
+                "curves": [
+                  {
+                    "color": "#1f77b4",
+                    "name": "/pandaStates/0/canState0/totalRxCnt"
+                  },
+                  {
+                    "color": "#d62728",
+                    "name": "/pandaStates/0/canState1/totalRxCnt"
+                  },
+                  {
+                    "color": "#1ac938",
+                    "name": "/pandaStates/0/canState2/totalRxCnt"
+                  }
+                ],
+                "limitY": {},
+                "style": 0,
+                "range": {
+                  "right": 632.799721,
+                  "bottom": -17755.925,
+                  "top": 771630.925,
+                  "left": 0.0
+                }
+              },
+              {
+                "kind": "plot",
+                "title": "...",
+                "curves": [
+                  {
+                    "color": "#ff7f0e",
+                    "name": "/pandaStates/0/canState0/totalTxCnt"
+                  },
+                  {
+                    "color": "#f14cc1",
+                    "name": "/pandaStates/0/canState1/totalTxCnt"
+                  },
+                  {
+                    "color": "#9467bd",
+                    "name": "/pandaStates/0/canState2/totalTxCnt"
+                  }
+                ],
+                "limitY": {},
+                "style": 0,
+                "range": {
+                  "right": 632.799721,
+                  "bottom": -18545.5,
+                  "top": 760365.5,
+                  "left": 0.0
+                }
+              }
+            ],
+            "sizes": [
+              0.5,
+              0.5
+            ]
+          },
+          {
+            "split": "horizontal",
+            "children": [
+              {
+                "kind": "plot",
+                "title": "...",
+                "curves": [
+                  {
+                    "color": "#ff7f0e",
+                    "name": "/pandaStates/0/canState0/totalRxLostCnt"
+                  },
+                  {
+                    "color": "#f14cc1",
+                    "name": "/pandaStates/0/canState1/totalRxLostCnt"
+                  },
+                  {
+                    "color": "#9467bd",
+                    "name": "/pandaStates/0/canState2/totalRxLostCnt"
+                  }
+                ],
+                "limitY": {},
+                "style": 0,
+                "range": {
+                  "right": 632.799721,
+                  "bottom": -1.35,
+                  "top": 55.35,
+                  "left": 0.0
+                }
+              },
+              {
+                "kind": "plot",
+                "title": "...",
+                "curves": [
+                  {
+                    "color": "#17becf",
+                    "name": "/pandaStates/0/canState0/totalTxLostCnt"
+                  },
+                  {
+                    "color": "#bcbd22",
+                    "name": "/pandaStates/0/canState1/totalTxLostCnt"
+                  },
+                  {
+                    "color": "#1f77b4",
+                    "name": "/pandaStates/0/canState2/totalTxLostCnt"
+                  }
+                ],
+                "limitY": {},
+                "style": 0,
+                "range": {
+                  "right": 632.799721,
+                  "bottom": -0.05,
+                  "top": 2.05,
+                  "left": 0.0
+                }
+              },
+              {
+                "kind": "plot",
+                "title": "...",
+                "curves": [
+                  {
+                    "color": "#17becf",
+                    "name": "/pandaStates/0/canState0/busOffCnt"
+                  },
+                  {
+                    "color": "#1ac938",
+                    "name": "/pandaStates/0/canState1/busOffCnt"
+                  },
+                  {
+                    "color": "#bcbd22",
+                    "name": "/pandaStates/0/canState2/busOffCnt"
+                  }
+                ],
+                "limitY": {},
+                "style": 0,
+                "range": {
+                  "right": 632.799721,
+                  "bottom": -0.1,
+                  "top": 0.1,
+                  "left": 0.0
+                }
+              }
+            ],
+            "sizes": [
+              0.333333,
+              0.333333,
+              0.333333
+            ]
+          }
+        ],
+        "sizes": [
+          0.500381,
+          0.499619
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": []
+}

@@ -1,0 +1,28 @@
+{
+  "tabs": [
+    {
+      "name": "Driver monitoring",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "title": "Driver",
+            "kind": "camera",
+            "camera_view": "driver"
+          },
+          {
+            "title": "Driver monitoring",
+            "curves": [
+              {
+                "name": "/driverMonitoringState/awarenessStatus"
+              },
+              {
+                "name": "/driverMonitoringState/isDistracted"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

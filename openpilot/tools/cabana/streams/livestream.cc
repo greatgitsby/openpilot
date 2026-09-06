@@ -14,7 +14,7 @@
 struct LiveStream::Logger {
   Logger() : start_ts(seconds_since_epoch()), segment_num(-1) {}
 
-  void write(kj::ArrayPtr<capnp::word> data) {
+  void write(kj::ArrayPtr<const capnp::word> data) {
     int n = (seconds_since_epoch() - start_ts) / 60.0;
     if (std::exchange(segment_num, n) != segment_num) {
       const time_t start_time = start_ts;
@@ -70,16 +70,17 @@ void LiveStream::updateThread() {
 }
 
 // called in streamThread
-void LiveStream::handleEvent(kj::ArrayPtr<capnp::word> data) {
+void LiveStream::handleEvent(kj::ArrayPtr<const capnp::word> data) {
   if (logger) {
     logger->write(data);
   }
 
   capnp::FlatArrayMessageReader reader(data);
   auto event = reader.getRoot<cereal::Event>();
+  std::lock_guard lk(lock);
+  pending_analysis_.append(event);
   if (event.which() == cereal::Event::Which::CAN) {
     const uint64_t mono_time = event.getLogMonoTime();
-    std::lock_guard lk(lock);
     for (const auto &c : event.getCan()) {
       received_events_.push_back(newEvent(mono_time, c));
     }
@@ -92,13 +93,21 @@ void LiveStream::updateLastMessages() {
   {
     // merge events received from live stream thread.
     std::lock_guard lk(lock);
+    analysis_data.merge(std::move(pending_analysis_));
+    pending_analysis_ = {};
+    if (analysis_data.revision) {
+      if (!begin_event_ts) begin_event_ts = analysis_data.first * 1e9;
+      lastest_event_ts = std::max(lastest_event_ts, uint64_t(analysis_data.last * 1e9));
+      analysis_data.trim(analysis_data.last - analysis_buffer_seconds);
+      if (!paused_ && post_last_event) current_sec_ = (lastest_event_ts - begin_event_ts) * 1e-9;
+    }
     mergeEvents(received_events_);
     uint64_t last_received_ts = !received_events_.empty() ? received_events_.back()->mono_time : 0;
     lastest_event_ts = std::max(lastest_event_ts, last_received_ts);
     received_events_.clear();
   }
   if (!all_events_.empty()) {
-    begin_event_ts = all_events_.front()->mono_time;
+    if (!begin_event_ts) begin_event_ts = all_events_.front()->mono_time;
     updateEvents();
   }
 }

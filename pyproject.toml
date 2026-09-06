@@ -55,6 +55,7 @@ dependencies = [
 
 [project.optional-dependencies]
 testing = [
+  "pytest",     # Cabana analysis and Xvfb integration tests
   "coverage",   # line coverage
   "ty",         # type checking
   "ruff",       # linting

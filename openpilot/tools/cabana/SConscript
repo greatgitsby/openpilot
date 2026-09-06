@@ -26,7 +26,7 @@ def build_bootstrap_icons_src(target, source, env):
 bootstrap_icons_src = env.Command('assets/bootstrap_icons.cc', str(bootstrap_icons.SVG_PATH), build_bootstrap_icons_src)
 
 # sources shared by the imgui frontend and the core test
-core_srcs = ['streams/pandastream.cc', 'streams/devicestream.cc', 'streams/livestream.cc', 'streams/abstractstream.cc', 'streams/replaystream.cc',
+core_srcs = ['analysis/data.cc', 'analysis/layout.cc', 'analysis/python.cc', 'streams/logfilestream.cc', 'streams/pandastream.cc', 'streams/devicestream.cc', 'streams/livestream.cc', 'streams/abstractstream.cc', 'streams/replaystream.cc',
              'dbc/dbc.cc', 'dbc/dbcfile.cc', 'dbc/dbcmanager.cc', 'utils/export.cc', 'utils/util.cc', 'utils/strings.cc',
              'commands.cc', 'settings.cc', 'routes.cc', 'panda.cc']
 if arch != "Darwin":
@@ -67,6 +67,10 @@ if GetOption('extras'):
     cabana_core_test_env.Object('tests/cabana_core_routes', 'routes.cc'),
     cabana_core_test_env.Object('tests/cabana_core_qtstate', 'ui/qtstate.cc'),
   ]
+  analysis_test_objects = [cabana_core_test_env.Object('tests/analysis_test', 'tests/test_analysis.cc')]
+  for source in ['analysis/data.cc', 'analysis/layout.cc']:
+    analysis_test_objects.append(cabana_core_test_env.Object('tests/' + source.replace('/', '_')[:-3], source))
+  cabana_core_test_env.Program('tests/test_analysis', analysis_test_objects, LIBS=[cereal, common, 'capnp', 'kj', 'json11'])
   cabana_core_test_env.Program('tests/test_cabana', cabana_core_test_objects, LIBS=[replay_lib, common])
 
 output_json_file = 'openpilot/tools/cabana/dbc/car_fingerprint_to_dbc.json'

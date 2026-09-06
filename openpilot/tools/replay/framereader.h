@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <memory>
 #include <vector>
 
 #include "msgq/visionipc/visionbuf.h"
@@ -19,7 +20,7 @@ class VideoDecoder;
 
 class FrameReader {
 public:
-  FrameReader();
+  explicit FrameReader(bool independent_decoder = false);
   ~FrameReader();
   bool load(CameraType type, const std::string &url, bool no_hw_decoder = false, std::atomic<bool> *abort = nullptr, bool local_cache = false);
   bool loadFromFile(CameraType type, const std::string &file, bool no_hw_decoder = false, std::atomic<bool> *abort = nullptr);
@@ -29,6 +30,8 @@ public:
   int width = 0, height = 0;
 
   VideoDecoder *decoder_ = nullptr;
+  bool independent_decoder_ = false;
+  std::unique_ptr<VideoDecoder> private_decoder_;
   AVFormatContext *input_ctx = nullptr;
   int video_stream_idx_ = -1;
   int prev_idx = -1;
@@ -56,6 +59,7 @@ public:
   bool decode(FrameReader *reader, int idx, VisionBuf *buf) override;
 
 private:
+  bool decodeIndependent(FrameReader *reader, int idx, VisionBuf *buf);
   bool initHardwareDecoder(AVHWDeviceType hw_device_type);
   AVFrame *decodeFrame(AVPacket *pkt);
   bool copyBuffer(AVFrame *f, VisionBuf *buf);

@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "name": "tab1",
+      "root": {
+        "split": "vertical",
+        "children": [
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1f77b4",
+                "name": "/carControl/enabled"
+              },
+              {
+                "color": "#d62728",
+                "name": "/pandaStates/0/controlsAllowed"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.025,
+              "bottom": -0.025,
+              "left": 0.018309,
+              "right": 59.674401
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#9467bd",
+                "name": "/carState/cumLagMs"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 27.087398,
+              "bottom": -0.905168,
+              "left": 0.018309,
+              "right": 59.674401
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1f77b4",
+                "name": "/pandaStates/0/safetyRxInvalid"
+              },
+              {
+                "color": "#e801ce",
+                "name": "/pandaStates/0/safetyRxChecksInvalid"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.025,
+              "bottom": -0.025,
+              "left": 0.018309,
+              "right": 59.674401
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#d62728",
+                "name": "/pandaStates/0/safetyTxBlocked"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 158.85,
+              "bottom": -2.85,
+              "left": 0.018309,
+              "right": 59.674401
+            }
+          },
+          {
+            "kind": "plot",
+            "title": "...",
+            "curves": [
+              {
+                "color": "#1ac938",
+                "name": "/carState/gasPressed"
+              },
+              {
+                "color": "#ff7f0e",
+                "name": "/carState/brakePressed"
+              }
+            ],
+            "limitY": {},
+            "style": 0,
+            "range": {
+              "top": 1.025,
+              "bottom": -0.025,
+              "left": 0.018309,
+              "right": 59.674401
+            }
+          }
+        ],
+        "sizes": [
+          0.2,
+          0.2,
+          0.2,
+          0.2,
+          0.2
+        ]
+      }
+    }
+  ],
+  "current_tab_index": 0,
+  "formulas": []
+}
