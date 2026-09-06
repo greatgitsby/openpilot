@@ -100,7 +100,9 @@ void endScrollableTabBar() {
 // small input-taking window on top of the host, so the clicks land on ours
 void overrideDockNodeScrollButtons() {
   ImGuiContext &g = *ImGui::GetCurrentContext();
-  const ImVec2 button_size(g.FontSize - 2.0f, ImGui::GetFrameHeight());
+  const float arrows_width = (g.FontSize - 2.0f) * 2.0f;  // what imgui reserved
+  // half again as wide as imgui's arrows: the extra room is taken from the left, over the end of the tab strip
+  const ImVec2 button_size((g.FontSize - 2.0f) * 1.5f, ImGui::GetFrameHeight());
   const float buttons_width = button_size.x * 2.0f;
   for (int n = 0; n < g.DockContext.Nodes.Data.Size; ++n) {
     ImGuiDockNode *node = (ImGuiDockNode *)g.DockContext.Nodes.Data[n].val_p;
@@ -108,9 +110,9 @@ void overrideDockNodeScrollButtons() {
     ImGuiTabBar *tab_bar = node->TabBar;
     if (tab_bar->CurrFrameVisible != g.FrameCount && tab_bar->PrevFrameVisible != g.FrameCount) continue;
     // the bar rect is already reduced when the arrows are shown, so this is "ideal > the full bar width"
-    if (tab_bar->Tabs.Size < 2 || tab_bar->WidthAllTabsIdeal <= tab_bar->BarRect.GetWidth() + buttons_width + 1.0f) continue;
+    if (tab_bar->Tabs.Size < 2 || tab_bar->WidthAllTabsIdeal <= tab_bar->BarRect.GetWidth() + arrows_width + 1.0f) continue;
 
-    const ImVec2 pos(tab_bar->BarRect.Max.x + 1.0f, tab_bar->BarRect.Min.y);
+    const ImVec2 pos(tab_bar->BarRect.Max.x + 1.0f + arrows_width - buttons_width, tab_bar->BarRect.Min.y);
     char name[48];
     snprintf(name, sizeof(name), "##dock_tab_scroll_%08X", node->ID);
     ImGui::SetNextWindowPos(pos);
