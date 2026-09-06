@@ -8,15 +8,15 @@ struct GLFWwindow;
 namespace inistate {
 
 // the dock panes of the main window, in the order of the View menu
-enum Pane { PaneMessages = 0, PaneVideo, PaneCharts, kPaneCount };
-inline constexpr const char *kPaneIniKeys[kPaneCount] = {"MessagesVisible", "VideoVisible", "ChartsVisible"};
+enum Pane { PaneMessages = 0, PaneVideo, kPaneCount };
+inline constexpr const char *kPaneIniKeys[kPaneCount] = {"MessagesVisible", "VideoVisible"};
 
 struct MainWindowState {
   int pos[2] = {0, 0};
   int size[2] = {0, 0};
   bool maximized = false;
   bool has_geometry = false;
-  bool pane_visible[kPaneCount] = {true, true, true};
+  bool pane_visible[kPaneCount] = {true, true};
 };
 
 extern MainWindowState main_window;

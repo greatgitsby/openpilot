@@ -86,12 +86,11 @@ private:
   bool beginPane(inistate::Pane pane, const std::string &name, ImGuiWindowFlags flags = 0);
   void endPane(inistate::Pane pane);
   void drawMessagesPane();
-  // every opened message is its own dock window, tabbed into the center by default
+  // every opened message is its own dock window (a dockable TabBar), tabbed into the center by default
   void openMessagePane(const MessageId &id);  // opens or focuses
   void drawMessagePanes();
-  ImGuiID messageDockId() const;  // the node new message panes dock into
+  ImGuiID welcomeDockId() const;  // the center node, where the welcome pane is
   void drawVideoPane();
-  void drawChartsPane();
   void drawStatusBar();
   void drawWaitDialog();
 
@@ -101,14 +100,9 @@ private:
   std::unique_ptr<AbstractStream> stream_;  // `can` points here, or at dummy_ when no stream is open
   DummyStream dummy_;
   std::unique_ptr<MessagesWidget> messages_widget_;
-  struct MessagePane {
-    std::unique_ptr<DetailWidget> detail;
-    bool open = true;
-    bool first_draw = true;  // docked and focused on its first draw
-    bool focus = false;
-  };
-  std::vector<MessagePane> message_panes_;
-  MessageId active_msg_id_;  // the last focused message pane
+  TabBar message_tabs_;  // one tab (dock window) per opened message
+  std::vector<std::unique_ptr<DetailWidget>> message_panes_;  // by tab index
+  ImGuiID charts_dock_node_ = 0;  // the node of the default layout the chart tabs go to
   std::unique_ptr<VideoWidget> video_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;

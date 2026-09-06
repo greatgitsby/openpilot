@@ -98,8 +98,9 @@ void endScrollableTabBar() {
 }  // namespace
 
 
-int TabBar::addTab(const std::string &text) {
-  tabs_.push_back({text, 0, next_id_++});
+int TabBar::addTab(const std::string &text, const std::string &window_id) {
+  const int id = next_id_++;
+  tabs_.push_back({text, 0, id, {}, {}, window_id.empty() ? std::to_string(id) : window_id});
   int index = count() - 1;
   if (current_index_ == -1) {  // the first tab is current
     current_index_ = index;
@@ -153,8 +154,95 @@ void TabBar::moveTab(int from, int to) {
   select_current_ = true;  // imgui orders the tabs as submitted only when a tab is (re)selected
 }
 
-void TabBar::draw() {
-  if (auto_hide_ && count() < 2) return;  // auto hidden with fewer than two tabs
+void TabBar::setDockable(bool dockable, const std::string &window_id_prefix) {
+  dockable_ = dockable;
+  window_id_prefix_ = window_id_prefix;
+}
+
+std::string TabBar::windowName(int index) const {
+  return tabs_[index].text + "###" + window_id_prefix_ + tabs_[index].window_id;
+}
+
+std::vector<std::string> TabBar::windowNames() const {
+  std::vector<std::string> names;
+  for (int i = 0; i < count(); ++i) names.push_back(windowName(i));
+  return names;
+}
+
+// the node of the current tab's window, else of any docked tab, else of a tab of a past session (the ini keeps
+// the window settings), else the default
+ImGuiID TabBar::dockNodeForNewTabs() const {
+  auto node_of = [](const std::string &name) -> ImGuiID {
+    if (const ImGuiWindow *w = ImGui::FindWindowByName(name.c_str())) return w->DockId;
+    if (const ImGuiWindowSettings *s = ImGui::FindWindowSettingsByID(ImHashStr(name.c_str()))) return s->DockId;
+    return 0;
+  };
+  if (current_index_ >= 0 && tabs_[current_index_].docked) {
+    if (ImGuiID id = node_of(windowName(current_index_))) return id;
+  }
+  for (int i = 0; i < count(); ++i) {
+    if (ImGuiID id = node_of(windowName(i))) return id;
+  }
+  return default_dock_node_ ? default_dock_node_() : 0;
+}
+
+void TabBar::draw(const Content &content) {
+  dockable_ ? drawDocked(content) : drawInline(content);
+}
+
+void TabBar::drawDocked(const Content &content) {
+  const ImGuiID dock_id = dockNodeForNewTabs();
+  const bool select_current = std::exchange(select_current_, false);
+  int close_index = -1;
+  for (int i = 0; i < count(); ++i) {
+    Tab &tab = tabs_[i];
+    if (!tab.docked) {
+      // a new tab joins the others (or floats when they are floating/hidden) and comes to the front
+      if (dock_id) ImGui::SetNextWindowDockID(dock_id, ImGuiCond_Once);
+      ImGui::SetNextWindowFocus();
+      tab.docked = true;
+    } else if (select_current && i == current_index_) {
+      ImGui::SetNextWindowFocus();
+    }
+    // the tab windows float out like the dialogs, and their dock nodes have no window menu button: its
+    // only entry hides the tab bar, and with it the title and the close button
+    ImGuiWindowClass window_class;
+    window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+    window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
+    ImGui::SetNextWindowClass(&window_class);
+
+    bool open = true;
+    const std::string name = windowName(i);
+    const bool visible = ImGui::Begin(name.c_str(), tabs_closable_ ? &open : nullptr, window_flags_);
+    ImGuiWindow *window = ImGui::GetCurrentWindow();
+    // the tab's rect is its item in the dock node's tab bar, else the window itself
+    tab.rect = window->Rect();
+    if (window->DockNode && window->DockNode->TabBar) {
+      ImGuiTabBar *tab_bar = window->DockNode->TabBar;
+      if (const ImGuiTabItem *item = ImGui::TabBarFindTabByID(tab_bar, window->TabId)) {
+        const float x = tab_bar->BarRect.Min.x + item->Offset - tab_bar->ScrollingAnim;
+        tab.rect = ImRect(x, tab_bar->BarRect.Min.y, x + item->Width, tab_bar->BarRect.Max.y);
+      }
+    }
+    // focusing a tab (clicking it, or its window) makes it current
+    if (!select_current && i != current_index_ && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+      current_index_ = i;
+      currentChanged(i);
+    }
+    if (content) content(i, visible);
+    ImGui::End();
+    if (!open) close_index = i;
+  }
+  if (close_index >= 0) tabCloseRequested(close_index);
+}
+
+void TabBar::drawInline(const Content &content) {
+  if (auto_hide_ && count() < 2) {  // auto hidden with fewer than two tabs
+    if (content) {
+      for (int i = 0; i < count(); ++i) content(i, i == current_index_);
+    }
+    return;
+  }
   ImGui::PushID(this);
   // no default tooltip, the tabs carry their own
   if (!beginScrollableTabBar("##tabbar", ImGuiTabBarFlags_NoTooltip)) {
@@ -187,6 +275,9 @@ void TabBar::draw() {
   if (tabs_closable_) style.TabCloseButtonMinWidthUnselected = close_button_min_width;
   endScrollableTabBar();
   ImGui::PopID();
+  if (content) {
+    for (int i = 0; i < count(); ++i) content(i, i == current_index_);
+  }
   if (close_index >= 0) tabCloseRequested(close_index);
 }
 

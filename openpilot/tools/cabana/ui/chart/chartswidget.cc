@@ -27,8 +27,9 @@ bool LogSlider::draw(const char *label, float width) {
 ChartsWidget::ChartsWidget() {
   range_slider_.setRange(1, settings.max_cached_minutes * 60);
 
-  tabbar_.setAutoHide(true);
   tabbar_.setTabsClosable(true);
+  tabbar_.setDockable(true, "ChartsPane_");
+  tabbar_.setWindowFlags(ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
   column_count_ = std::clamp(settings.chart_column_count, 1, MAX_COLUMN_COUNT);
   max_chart_range_ = std::clamp(settings.chart_range, 1, settings.max_cached_minutes * 60);
@@ -43,19 +44,6 @@ ChartsWidget::ChartsWidget() {
   connections_.push_back(settings.changed.connect([this]() { settingChanged(); }));
   connections_.push_back(seriesChanged.connect([this]() { updateTabBar(); }));
   connections_.push_back(tabbar_.tabCloseRequested.connect([this](int index) { removeTab(index); }));
-  connections_.push_back(tabbar_.tabContextMenu.connect([this](int index) {
-    if (ImGui::BeginPopupContextItem()) {
-      if (ImGui::MenuItem("Close Other Tabs")) {
-        tabbar_.moveTab(index, 0);
-        tabbar_.setCurrentIndex(0);
-        while (tabbar_.count() > 1) removeTab(1);
-      }
-      ImGui::EndPopup();
-    }
-  }));
-  connections_.push_back(tabbar_.currentChanged.connect([this](int index) {
-    if (index != -1) updateLayout();
-  }));
 
   newTab();
 }
@@ -73,10 +61,11 @@ std::string ChartsWidget::whatsThis() const {
 }
 
 void ChartsWidget::newTab() {
-  static int tab_unique_id = 0;
+  const int id = next_tab_id_++;
   int idx = tabbar_.addTab("");
-  tabbar_.setTabData(idx, tab_unique_id++);
+  tabbar_.setTabData(idx, id);
   tabbar_.setCurrentIndex(idx);
+  containers_[id] = std::make_unique<ChartsContainer>(this, id);
   updateTabBar();
 }
 
@@ -85,7 +74,9 @@ void ChartsWidget::removeTab(int index) {
   for (auto &c : std::vector<ChartView *>(tab_charts_[id])) {
     removeChart(c);
   }
+  if (drop_container_ && drop_container_->tabId() == id) drop_container_ = nullptr;
   tab_charts_.erase(id);
+  containers_.erase(id);
   tabbar_.removeTab(index);
   updateTabBar();
 }
@@ -93,8 +84,27 @@ void ChartsWidget::removeTab(int index) {
 void ChartsWidget::updateTabBar() {
   for (int i = 0; i < tabbar_.count(); ++i) {
     const auto &charts_in_tab = tab_charts_[tabbar_.tabData(i)];
-    tabbar_.setTabText(i, "Tab " + std::to_string(i + 1) + " (" + std::to_string((int)charts_in_tab.size()) + ")");
+    tabbar_.setTabText(i, "Charts " + std::to_string(i + 1) + " (" + std::to_string((int)charts_in_tab.size()) + ")");
   }
+}
+
+ChartsContainer *ChartsWidget::container(int tab_id) {
+  auto it = containers_.find(tab_id);
+  return it != containers_.end() ? it->second.get() : nullptr;
+}
+
+ChartsContainer *ChartsWidget::containerAt(const ImVec2 &global_pos) {
+  for (auto &[_, c] : containers_) {
+    if (c->scroll && c->viewport.Contains(global_pos)) return c.get();
+  }
+  return nullptr;
+}
+
+ChartsContainer *ChartsWidget::containerOf(ChartView *chart) {
+  for (auto &[id, list] : tab_charts_) {
+    if (std::find(list.begin(), list.end(), chart) != list.end()) return container(id);
+  }
+  return nullptr;
 }
 
 void ChartsWidget::eventsMerged(const MessageEventsMap &new_events) {
@@ -112,7 +122,7 @@ void ChartsWidget::zoomReset() {
 
 ImRect ChartsWidget::chartVisibleRect(ChartView *chart) {
   ImRect r = chart->rect();
-  r.ClipWith(charts_scroll_viewport_);
+  if (auto c = containerOf(chart)) r.ClipWith(c->viewport);
   return r;
 }
 
@@ -122,7 +132,7 @@ void ChartsWidget::showValueTip(double sec) {
   if (sec < 0 && !value_tip_visible_) return;
 
   value_tip_visible_ = sec >= 0;
-  for (auto c : currentCharts()) {
+  for (auto &c : charts_) {
     value_tip_visible_ ? c->showTip(sec) : c->hideTip();
   }
 }
@@ -190,7 +200,8 @@ void ChartsWidget::drawToolBar() {
   }});
 
   const std::string columns_action_text = "Columns:  " + std::to_string(column_count_);
-  if (columns_action_visible_) {
+  const ChartsContainer *drawing = container(currentTabId());
+  if (drawing && drawing->columnsSelectable()) {
     items.push_back({menuButtonWidth(columns_action_text), [this, &columns_action_text]() {
       menuButton("columns", columns_action_text, "columns_menu");
       if (ImGui::BeginPopup("columns_menu")) {
@@ -273,8 +284,8 @@ ChartView *ChartsWidget::createChart(int pos) {
   ChartView *ptr = chart.get();
   pos = std::clamp(pos, 0, (int)charts_.size());
   charts_.insert(charts_.begin() + pos, std::move(chart));
-  currentCharts().insert(currentCharts().begin() + pos, ptr);
-  updateLayout();
+  auto &cur = currentCharts();
+  cur.insert(cur.begin() + std::min<int>(pos, cur.size()), ptr);
   return ptr;
 }
 
@@ -330,15 +341,11 @@ void ChartsWidget::restoreChartsFromIds(const std::vector<std::string> &chart_id
 
 void ChartsWidget::setColumnCount(int n) {
   n = std::clamp(n, 1, MAX_COLUMN_COUNT);
-  if (column_count_ != n) {
-    column_count_ = settings.chart_column_count = n;
-    updateLayout();
-  }
+  column_count_ = settings.chart_column_count = n;
 }
 
-void ChartsWidget::updateLayout() {
-  // the container has not been drawn yet (docked/floated this frame): keep the last known layout
-  const float container_width = charts_container_.geometry().GetWidth();
+void ChartsContainer::updateLayout() {
+  const float container_width = geometry_.GetWidth();
   if (container_width <= 0) return;
 
   int n = MAX_COLUMN_COUNT;
@@ -346,8 +353,8 @@ void ChartsWidget::updateLayout() {
     if ((n * CHART_MIN_WIDTH + (n - 1) * CHART_SPACING) < container_width) break;
   }
 
-  columns_action_visible_ = n > 1;
-  current_column_count_ = std::min(column_count_, n);
+  columns_selectable_ = n > 1;
+  column_count_ = std::min(charts_widget_->column_count_, n);
 }
 
 void ChartsWidget::startChartDrag(ChartView *chart, const ImVec2 &global_pos) {
@@ -373,30 +380,36 @@ void ChartsWidget::dragChartMove(const ImVec2 &global_pos) {
     tabbar_.setCurrentIndex(tab);
   }
 
+  // the drop goes to the tab whose chart area is under the pointer
+  ChartsContainer *drop = containerAt(global_pos);
+  if (std::exchange(drop_container_, drop) != drop && drop_container_ == nullptr) {
+    for (auto &[_, c] : containers_) c->setDropIndicator({});
+  }
   ChartView *target = nullptr;
-  for (auto c : currentCharts()) {
-    if (c != drag_.source && c->rect().Contains(global_pos)) {
-      target = c;
-      break;
+  if (drop) {
+    for (auto c : tab_charts_[drop->tabId()]) {
+      if (c != drag_.source && c->rect().Contains(global_pos)) {
+        target = c;
+        break;
+      }
     }
   }
   if (std::exchange(drop_target_, target) != target) {
     for (auto &c : charts_) c->setDropHighlight(c.get() == target);
   }
-  bool in_viewport = charts_scroll_viewport_.Contains(global_pos);
-  bool on_background = !target && in_viewport && !charts_container_.childAt(global_pos);
-  charts_container_.setDropIndicator(on_background ? global_pos : ImVec2());
-
-  if (in_viewport) {
-    startAutoScroll(global_pos);
+  for (auto &[_, c] : containers_) {
+    const bool on_background = c.get() == drop && !target && !c->childAt(global_pos);
+    c->setDropIndicator(on_background ? global_pos : ImVec2());
   }
+  if (drop) startAutoScroll(global_pos);
 }
 
 void ChartsWidget::cancelChartDrag() {
   drag_ = {};
   stopAutoScroll();
   drag_preview_visible_ = false;
-  charts_container_.setDropIndicator({});
+  for (auto &[_, c] : containers_) c->setDropIndicator({});
+  drop_container_ = nullptr;
   if (auto target = std::exchange(drop_target_, nullptr)) target->setDropHighlight(false);
 }
 
@@ -404,24 +417,23 @@ void ChartsWidget::dragChartRelease(const ImVec2 &global_pos) {
   ChartView *source = drag_.source;
   bool active = drag_.active;
   ChartView *target = drop_target_;
+  ChartsContainer *drop = drop_container_;
   cancelChartDrag();
   if (!active) return;
 
-  bool in_viewport = charts_scroll_viewport_.Contains(global_pos);
   if (target) {
     // merge source into target
     target->takeSignalsFrom(source);
-  } else if (in_viewport && !charts_container_.childAt(global_pos)) {
-    // reorder within the current tab
-    auto w = charts_container_.getDropAfter(global_pos);
+  } else if (drop && !drop->childAt(global_pos)) {
+    // reorder within the tab, or move into another tab
+    auto w = drop->getDropAfter(global_pos);
     if (w != source) {
       for (auto &[_, list] : tab_charts_) {
         list.erase(std::remove(list.begin(), list.end(), source), list.end());
       }
-      auto &cur = currentCharts();
+      auto &cur = tab_charts_[drop->tabId()];
       int to = w ? std::find(cur.begin(), cur.end(), w) - cur.begin() + 1 : 0;
       cur.insert(cur.begin() + to, source);
-      updateLayout();
       updateTabBar();
     }
   }
@@ -458,15 +470,17 @@ void ChartsWidget::stopAutoScroll() {
 }
 
 void ChartsWidget::doAutoScroll() {
-  if (!charts_scroll_) return;
-  const int page_step = charts_scroll_viewport_.GetHeight();
+  ChartsContainer *drop = drop_container_;
+  if (!drop || !drop->scroll) return;
+  ImGuiWindow *charts_scroll_ = drop->scroll;
+  const int page_step = drop->viewport.GetHeight();
   if (auto_scroll_count_ < page_step) {
     ++auto_scroll_count_;
   }
 
   int value = charts_scroll_->Scroll.y;
   ImVec2 pos = auto_scroll_pos_;
-  ImRect area = charts_scroll_viewport_;
+  ImRect area = drop->viewport;
 
   int new_value = value;
   if (pos.y - area.Min.y < settings.chart_height / 2) {
@@ -519,26 +533,19 @@ void ChartsWidget::removeChart(ChartView *chart) {
   for (auto &[_, list] : tab_charts_) {
     list.erase(std::remove(list.begin(), list.end(), chart), list.end());
   }
-  updateLayout();
   seriesChanged();
 }
 
 void ChartsWidget::removeAll() {
-  while (tabbar_.count() > 1) {
-    tabbar_.removeTab(1);
-  }
+  while (tabbar_.count() > 1) removeTab(1);
   std::vector<ChartView *> all;
   for (auto &c : charts_) all.push_back(c.get());
   for (auto c : all) removeChart(c);
-  tab_charts_.clear();
+  for (auto &[_, list] : tab_charts_) list.clear();
   zoomReset();
 }
 
 void ChartsWidget::handleEvents() {
-  // the mouse back button undoes a zoom; there is no swipe-back gesture
-  if (ImGui::IsMouseClicked(3) && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
-    zoom_undo_stack_.undo();
-  }
   if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow)) {
     if (chartDragActive()) cancelChartDrag();
     showValueTip(-1);
@@ -557,9 +564,8 @@ void ChartsWidget::handleEvents() {
 
   // the tip is drawn on the foreground draw list, so the mouse is never "on the tip"
   const ImVec2 delta = ImGui::GetIO().MouseDelta;
-  if (!any_plot_hovered_ &&
-      (delta.x != 0 || delta.y != 0 || !ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows))) {
-    showValueTip(-1);  // the mouse moved off the plot or out of the charts window
+  if (!any_plot_hovered_ && (delta.x != 0 || delta.y != 0 || !pane_hovered_)) {
+    showValueTip(-1);  // the mouse moved off the plot or out of the charts windows
   }
 }
 
@@ -574,16 +580,11 @@ void ChartsWidget::draw() {
   // lags a frame behind the target used on release and the drop lands on the wrong chart
   handleEvents();
 
-  drawToolBar();
-  tabbar_.draw();
-
   any_plot_hovered_ = false;
-  if (ImGui::BeginChild("charts_scroll", ImVec2(0, 0), ImGuiChildFlags_None, 0)) {
-    charts_scroll_ = ImGui::GetCurrentWindow();
-    charts_scroll_viewport_ = charts_scroll_->InnerRect;
-    charts_container_.draw();
-  }
-  ImGui::EndChild();
+  pane_hovered_ = false;
+  tabbar_.draw([this](int index, bool visible) {
+    if (visible) drawTab(index);
+  });
 
   drawDragPreview();
 
@@ -596,17 +597,42 @@ void ChartsWidget::draw() {
   ImGui::PopID();
 }
 
+void ChartsWidget::drawTab(int index) {
+  drawing_tab_ = index;
+  ChartsContainer *c = container(tabbar_.tabData(index));
+  ImGui::PushID(c);
+  if (paneDrawn) paneDrawn(ImGui::GetCurrentWindow()->Rect());
+  if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+    pane_hovered_ = true;
+    // the mouse back button undoes a zoom; there is no swipe-back gesture
+    if (ImGui::IsMouseClicked(3)) zoom_undo_stack_.undo();
+  }
+  drawToolBar();
+  if (ImGui::BeginChild("charts_scroll", ImVec2(0, 0), ImGuiChildFlags_None, 0)) {
+    c->scroll = ImGui::GetCurrentWindow();
+    c->viewport = c->scroll->InnerRect;
+    c->draw();
+  }
+  ImGui::EndChild();
+  ImGui::PopID();
+  drawing_tab_ = -1;
+}
+
+const std::vector<ChartView *> &ChartsContainer::charts() const {
+  return charts_widget_->tab_charts_[tab_id_];
+}
+
 void ChartsContainer::draw() {
   ImGuiWindow *window = ImGui::GetCurrentWindow();
   const ImVec2 start = ImGui::GetCursorScreenPos();
   geometry_ = ImRect(start, start + ImVec2(window->InnerRect.GetWidth(), 0));
-  charts_widget_->updateLayout();
+  updateLayout();
 
-  const int n = std::max(charts_widget_->current_column_count_, 1);
+  const int n = std::max(column_count_, 1);
   const float spacing = CHART_SPACING;
   const float width = (geometry_.GetWidth() - (n - 1) * spacing) / n;
   const ImVec2 origin = ImGui::GetCursorScreenPos() + ImVec2(0, CHART_SPACING);
-  auto current_charts = charts_widget_->currentCharts();  // copy: drawing may remove charts
+  auto current_charts = charts();  // copy: drawing may remove charts
   float bottom = origin.y;
   const bool aligned = ImPlot::BeginAlignedPlots("charts_align", true);
   for (int i = 0; i < current_charts.size(); ++i) {
@@ -638,7 +664,7 @@ void ChartsContainer::drawDropIndicator() {
 }
 
 ChartView *ChartsContainer::getDropAfter(const ImVec2 &pos) const {
-  const auto &charts = charts_widget_->currentCharts();
+  const auto &charts = this->charts();
   auto it = std::find_if(charts.crbegin(), charts.crend(), [&pos](auto c) {
     const ImRect &area = c->rect();
     return pos.x >= area.Min.x && pos.x <= area.Max.x && pos.y >= area.Max.y;
@@ -647,7 +673,7 @@ ChartView *ChartsContainer::getDropAfter(const ImVec2 &pos) const {
 }
 
 ChartView *ChartsContainer::childAt(const ImVec2 &pos) const {
-  for (auto c : charts_widget_->currentCharts()) {
+  for (auto c : charts()) {
     if (c->rect().Contains(pos)) return c;
   }
   return nullptr;
