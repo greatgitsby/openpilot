@@ -810,12 +810,21 @@ void setNextPanelClass() {
   window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
   ImGui::SetNextWindowClass(&window_class);
 }
+
+// a docked panel is a plain area of the window color; its content sits in rounded, bordered cards
+bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags = 0) {
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
+  const bool visible = ImGui::Begin(name, open, flags);
+  ImGui::PopStyleVar(2);
+  return visible;
+}
 }  // namespace
 
 void MainWindow::drawMessagesPanel() {
   const std::string name = messages_widget_->title() + MESSAGES_PANEL_ID;
   setNextPanelClass();
-  if (ImGui::Begin(name.c_str(), &messages_visible_)) {
+  if (beginPanel(name.c_str(), &messages_visible_)) {
     help_overlay_.add(messages_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
     messages_widget_->draw();
   }
@@ -827,7 +836,7 @@ void MainWindow::drawMessagesPanel() {
 void MainWindow::drawVideoPanel() {
   const std::string name = video_dock_title_ + VIDEO_PANEL;
   setNextPanelClass();
-  const bool video_open = ImGui::Begin(name.c_str(), &video_visible_);
+  const bool video_open = beginPanel(name.c_str(), &video_visible_);
   const bool floating = floatingOut();
   if (!video_open) {
     video_widget_->setVisible(false);  // the dock is collapsed or tabbed behind another one, like hideEvent
@@ -893,11 +902,13 @@ void MainWindow::draw() {
   drawDockspace();
 
   // the central widget has no scrollbars of its own (the views inside scroll)
-  if (ImGui::Begin(CENTER_PANEL, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+  if (beginPanel(CENTER_PANEL, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    ImGui::BeginChild("center", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     center_widget_.draw();
     if (auto *detail = center_widget_.getDetailWidget(); detail && help_overlay_.visible()) {
       for (const auto &[text, rect] : detail->helpRects()) help_overlay_.add(text, rect);
     }
+    ImGui::EndChild();
   }
   ImGui::End();
   if (messages_widget_ && messages_visible_) drawMessagesPanel();

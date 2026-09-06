@@ -22,6 +22,10 @@ void objc_msgSend(void);
 
 #include "tools/cabana/ui/icons.h"
 
+namespace {
+ImU32 u32(const ImVec4 &c) { return ImGui::ColorConvertFloat4ToU32(c); }
+}  // namespace
+
 int inputCallback(ImGuiInputTextCallbackData *data) {
   auto *ctx = static_cast<InputContext *>(data->UserData);
   if (data->EventFlag == ImGuiInputTextFlags_CallbackCharFilter) {
@@ -466,4 +470,40 @@ bool menuButton(const char *id, const std::string &text, const char *popup_id, b
   // the menu drops down from below the button, not at the mouse cursor
   ImGui::SetNextWindowPos(ImVec2(min.x, ImGui::GetItemRectMax().y), ImGuiCond_Always);
   return clicked;
+}
+
+void drawSliderHandle(ImDrawList *p, const ImRect &r) {
+  const Palette &pal = palette();
+  p->AddRectFilled(r.Min, r.Max, u32(pal.button_hovered), 2.0f);
+  p->AddRectFilled(ImVec2(r.Min.x, r.GetCenter().y), r.Max, u32(pal.button), 2.0f, ImDrawFlags_RoundCornersBottom);
+  p->AddRect(r.Min, r.Max, u32(pal.border), 2.0f, 0, 1.0f);
+}
+
+bool fusionSliderInt(const char *label, int *v, int min, int max, float width) {
+  // a grey groove over the full width with the part left of the handle filled, and a 13x13 handle on top
+  ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_FrameBgActive, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_SliderGrab, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);  // the slider has no frame
+  ImGui::SetNextItemWidth(width);
+  bool changed = ImGui::SliderInt(label, v, min, max, "", ImGuiSliderFlags_NoInput);
+  ImGui::PopStyleVar();
+  ImGui::PopStyleColor(5);
+
+  const ImVec2 bb_min = ImGui::GetItemRectMin(), bb_max = ImGui::GetItemRectMax();
+  const float cy = (bb_min.y + bb_max.y) * 0.5f;
+  const float groove_h = SLIDER_THICKNESS * 0.5f;
+  const float handle_h = std::min(SLIDER_THICKNESS, bb_max.y - bb_min.y);
+  const float x0 = bb_min.x + SLIDER_LENGTH * 0.5f, x1 = bb_max.x - SLIDER_LENGTH * 0.5f;
+  const float t = max > min ? (float)(*v - min) / (float)(max - min) : 0.0f;
+  const float hx = x0 + (x1 - x0) * t;
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+  const float groove_y0 = cy - groove_h * 0.5f, groove_y1 = cy + groove_h * 0.5f;
+  dl->AddRectFilled(ImVec2(bb_min.x, groove_y0), ImVec2(bb_max.x, groove_y1), u32(palette().separator), groove_h * 0.5f);
+  dl->AddRectFilled(ImVec2(bb_min.x, groove_y0), ImVec2(hx, groove_y1), u32(palette().accent), groove_h * 0.5f);
+  drawSliderHandle(dl, ImRect(ImVec2(hx - SLIDER_LENGTH * 0.5f, cy - handle_h * 0.5f),
+                              ImVec2(hx + SLIDER_LENGTH * 0.5f, cy + handle_h * 0.5f)));
+  return changed;
 }

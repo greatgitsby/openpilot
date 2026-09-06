@@ -4,21 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "imgui.h"
-#include "imgui_internal.h"
-
-#include "tools/cabana/core/color.h"
+#include "tools/cabana/ui/theme.h"
 #include "tools/cabana/utils/util.h"
 
 struct GLFWwindow;
-
-inline ImVec4 colorRgb(int r, int g, int b, float alpha = 1.0f) {
-  return ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, alpha);
-}
-
-inline ImU32 toImU32(const CabanaColor &c) { return IM_COL32(c.r, c.g, c.b, c.a); }
-inline ImVec4 toImVec4(const CabanaColor &c) { return ImVec4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, c.a / 255.0f); }
-inline ImU32 withAlpha(ImU32 c, int alpha) { return (c & ~IM_COL32_A_MASK) | ((ImU32)alpha << IM_COL32_A_SHIFT); }
 
 // the dock window identity of the messages panel (the visible title changes, the part after ### is the id)
 constexpr const char *MESSAGES_PANEL_ID = "###MessagesPanel";
@@ -134,14 +123,6 @@ void drawElidedText(ImDrawList *dl, const ImRect &rect, const std::string &text,
 float markerSize();
 void drawColorMarker(ImDrawList *dl, const ImVec2 &pos, ImU32 col);
 
-void loadFonts();
-void applyTheme(int theme);  // safe to call at runtime
-bool isDarkTheme();  // the theme applyTheme() resolved
-CabanaColor signalFillColor(const CabanaColor &c);
-
-ImU32 highlightedTextColor();
-ImU32 paletteBrightText();
-
 // the next window is a real OS window instead of being drawn inside the main one
 void setNextWindowFloatsOut();
 #ifdef __APPLE__
@@ -186,17 +167,8 @@ void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index);
 float menuButtonWidth(const std::string &text, bool bold = false);
 bool menuButton(const char *id, const std::string &text, const char *popup_id, bool bold = false, float width = 0.0f);
 
-// a 13x13 handle filled with a subtle vertical gradient and a mid grey outline
+// a 13x13 raised handle with a border
 void drawSliderHandle(ImDrawList *p, const ImRect &r);
 
-// full width groove, filled left of the handle, 13x13 handle (style.cc)
+// full width groove, filled left of the handle, 13x13 handle
 bool fusionSliderInt(const char *label, int *v, int min, int max, float width);
-
-ImFont *boldFont();
-ImFont *monoFont();
-void pushMonoFont(float size = 0.0f);  // 0: the size the font was loaded at
-void popMonoFont();
-void pushBoldFont();
-void popBoldFont();
-void pushLargeFont();
-void popLargeFont();

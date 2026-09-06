@@ -653,7 +653,7 @@ void ChartsContainer::drawDropIndicator() {
       r.Max.y = r.Min.y + h;
     }
 
-    ImGui::GetWindowDrawList()->AddRectFilled(r.Min, r.Max, ImGui::GetColorU32(ImGuiCol_Header));
+    ImGui::GetWindowDrawList()->AddRectFilled(r.Min, r.Max, ImGui::GetColorU32(ImGuiCol_Header), ImGui::GetStyle().FrameRounding);
   }
 }
 

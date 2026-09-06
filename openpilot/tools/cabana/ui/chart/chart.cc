@@ -531,13 +531,13 @@ void ChartView::paint() {
   drawStaticLayer();
 
   if (can_drop_) {
-    ImGui::GetWindowDrawList()->AddRect(layout_.rect.Min, layout_.rect.Max, ImGui::GetColorU32(ImGuiCol_Header), 0.0f, 0, 4.0f);
+    ImGui::GetWindowDrawList()->AddRect(layout_.rect.Min, layout_.rect.Max, ImGui::GetColorU32(ImGuiCol_Header), ImGui::GetStyle().ChildRounding, 0, 4.0f);
   }
 }
 
 void ChartView::drawStaticLayer() {
   ImDrawList *painter = ImGui::GetWindowDrawList();
-  painter->AddRectFilled(layout_.rect.Min, layout_.rect.Max, ImGui::GetColorU32(ImGuiCol_ChildBg));
+  painter->AddRectFilled(layout_.rect.Min, layout_.rect.Max, ImGui::GetColorU32(ImGuiCol_ChildBg), ImGui::GetStyle().ChildRounding);
   ImGui::SetCursorScreenPos(layout_.move_icon_rect.Min);
   ImGui::InvisibleButton("grip", layout_.move_icon_rect.GetSize());
   if (ImGui::IsItemActivated()) charts_widget_->startChartDrag(this, ImGui::GetMousePos());
@@ -555,23 +555,12 @@ void ChartView::drawAxes() {
   ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(LAYOUT_MARGINS.x, AXIS_X_TOP_MARGIN));
   ImPlot::PushStyleColor(ImPlotCol_PlotBg, ImVec4(0, 0, 0, 0));
   ImPlot::PushStyleColor(ImPlotCol_FrameBg, ImVec4(0, 0, 0, 0));
-  // every tick is a 1 px line in the text color at alpha 50, the edge ticks close the box, no tick marks.
-  // that alpha washes out on the dark base, so the dark theme draws opaque guides in a mid gray instead.
-  const bool dark = isDarkTheme();
-  ImVec4 grid_color;
-  if (dark) {
-    grid_color = colorRgb(DarkTheme::light.r, DarkTheme::light.g, DarkTheme::light.b);
-  } else {
-    grid_color = ImGui::GetStyleColorVec4(ImGuiCol_Text);
-    grid_color.w = 50.0f / 255.0f;
-  }
-  ImPlot::PushStyleColor(ImPlotCol_AxisGrid, grid_color);
-  ImPlot::PushStyleColor(ImPlotCol_PlotBorder, grid_color);
+  // every tick is a 1 px grid line, the edge ticks close the box, no tick marks
+  ImPlot::PushStyleColor(ImPlotCol_PlotBorder, palette().grid);
   ImPlot::PushStyleColor(ImPlotCol_AxisTick, ImVec4(0, 0, 0, 0));
   ImPlot::PushStyleColor(ImPlotCol_AxisText, ImGui::GetStyleColorVec4(ImGuiCol_Text));
   ImPlot::PushStyleVar(ImPlotStyleVar_MajorTickLen, ImVec2(0, 0));
-  // MajorGridSize is the per-axis line thickness; thicker guides read better on the dark base
-  ImPlot::PushStyleVar(ImPlotStyleVar_MajorGridSize, dark ? ImVec2(2.0f, 2.0f) : ImVec2(1.0f, 1.0f));
+  ImPlot::PushStyleVar(ImPlotStyleVar_MajorGridSize, ImVec2(1.0f, 1.0f));
   const ImPlotFlags flags = ImPlotFlags_NoTitle | ImPlotFlags_NoLegend | ImPlotFlags_NoMenus | ImPlotFlags_NoMouseText |
                             ImPlotFlags_NoBoxSelect | ImPlotFlags_NoInputs | ImPlotFlags_NoFrame;
   const ImPlotAxisFlags axis_flags = ImPlotAxisFlags_NoMenus | ImPlotAxisFlags_NoHighlight | ImPlotAxisFlags_NoSideSwitch | ImPlotAxisFlags_Lock;
@@ -599,7 +588,7 @@ void ChartView::drawAxes() {
     drawForeground();
     ImPlot::EndPlot();
   }
-  ImPlot::PopStyleColor(6);
+  ImPlot::PopStyleColor(5);
   ImPlot::PopStyleVar(3);
 }
 
@@ -722,8 +711,8 @@ void ChartView::drawRubberBandTimeRange() {
   ImDrawList *painter = ImPlot::GetPlotDrawList();
   // ImGuiCol_Header is translucent, so the 1px selection outline is drawn at full alpha
   const ImU32 highlight = withAlpha(ImGui::GetColorU32(ImGuiCol_Header), 255);
-  painter->AddRectFilled(rubber_rect_.Min, rubber_rect_.Max, withAlpha(highlight, 50));
-  painter->AddRect(rubber_rect_.Min, rubber_rect_.Max, highlight);
+  painter->AddRectFilled(rubber_rect_.Min, rubber_rect_.Max, withAlpha(highlight, 50), ImGui::GetStyle().FrameRounding);
+  painter->AddRect(rubber_rect_.Min, rubber_rect_.Max, highlight, ImGui::GetStyle().FrameRounding);
 
   // time labels at the bottom corners (below the plot, so clip to the widget instead of the plot)
   const ImU32 white = IM_COL32_WHITE;
@@ -734,7 +723,7 @@ void ChartView::drawRubberBandTimeRange() {
     std::string sec = formatNumber(secondsAtPoint(pt), 2);
     ImVec2 size = ImGui::CalcTextSize(sec.c_str()) + ImVec2(12, AXIS_X_TOP_MARGIN * 2);
     ImVec2 top_left = pt.x == rubber_rect_.Min.x ? ImVec2(pt.x - size.x, pt.y + 2) : ImVec2(pt.x, pt.y + 2);
-    painter->AddRectFilled(top_left, top_left + size, gray);
+    painter->AddRectFilled(top_left, top_left + size, gray, ImGui::GetStyle().FrameRounding);
     painter->AddText(top_left + ImVec2(6, AXIS_X_TOP_MARGIN), white, sec.c_str());
   }
   painter->PopClipRect();
@@ -749,7 +738,7 @@ void ChartView::drawTimeline() {
   ImVec2 time_str_size = ImGui::CalcTextSize(time_str.c_str()) + ImVec2(8, 2);
   ImVec2 time_str_pos(x - time_str_size.x / 2.0f, layout_.plot_area.Max.y + AXIS_X_TOP_MARGIN);
   const bool dark = isDarkTheme();
-  painter->AddRectFilled(time_str_pos, time_str_pos + time_str_size, dark ? IM_COL32(0x80, 0x80, 0x80, 0xff) : IM_COL32(0xa0, 0xa0, 0xa4, 0xff), 3.0f);
+  painter->AddRectFilled(time_str_pos, time_str_pos + time_str_size, dark ? IM_COL32(0x80, 0x80, 0x80, 0xff) : IM_COL32(0xa0, 0xa0, 0xa4, 0xff), ImGui::GetStyle().FrameRounding);
   painter->AddText(time_str_pos + ImVec2(4, 1), IM_COL32_WHITE, time_str.c_str());
 }
 

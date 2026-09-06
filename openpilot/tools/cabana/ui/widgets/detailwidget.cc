@@ -210,11 +210,10 @@ void DetailWidget::editMsg() {
 }
 
 void DetailWidget::drawTabWidget() {
-  // the pages first, the tab bar below them
-  const float tab_height = ImGui::GetFrameHeight();
-  const float content_height = ImGui::GetContentRegionAvail().y - tab_height - ImGui::GetStyle().ItemSpacing.y;
-  ImGui::BeginChild("tab_widget", ImVec2(0, std::max(content_height, 1.0f)), ImGuiChildFlags_None,
+  // the page fills the widget, the page switch floats over its bottom edge
+  ImGui::BeginChild("tab_widget", ImVec2(0, 0), ImGuiChildFlags_None,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  const ImRect page_rect = ImGui::GetCurrentWindow()->Rect();
   if (tab_widget_index_ == 0) {
     // binary_view_ keeps its size hint, signal_view_ takes the rest
     const float min_height = binary_view_->minimumSizeHint().y;
@@ -226,11 +225,6 @@ void DetailWidget::drawTabWidget() {
     binary_view_->draw();
     ImGui::EndChild();
     ImGui::Dummy(ImVec2(0.0f, 6.0f));
-    const float spacing = ImGui::GetStyle().ItemSpacing.y;
-    const ImRect child_rect = ImGui::GetCurrentWindow()->Rect();
-    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(child_rect.Min.x, ImGui::GetItemRectMin().y - spacing),
-                                              ImVec2(child_rect.Max.x, ImGui::GetItemRectMax().y + spacing),
-                                              ImGui::GetColorU32(ImGuiCol_WindowBg));
     ImGui::BeginChild("signal_view", ImVec2(0, 0));
     signal_view_rect_ = ImGui::GetCurrentWindow()->Rect();
     signal_view_->draw();
@@ -238,35 +232,42 @@ void DetailWidget::drawTabWidget() {
   } else {
     history_log_->draw();
   }
-  ImGui::EndChild();
 
+  // a pill with two segments, centered over the bottom of the page. It is a child submitted after the page so
+  // it draws and receives input above it.
   const std::string labels[] = {std::string(icon::FILE_EARMARK_RULED) + " Messages", std::string(icon::STOPWATCH) + " Logs"};
-  // the tabs are centered in the bar: the bar itself starts at the first tab, so its separator only spans the
-  // tabs and the full width one is drawn underneath it
   const ImGuiStyle &style = ImGui::GetStyle();
-  float tabs_width = 0.0f;
+  const float pad = 3.0f, height = ImGui::GetFrameHeight();
+  float width = pad;
+  for (const auto &label : labels) width += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2 + pad;
+  const ImVec2 size(width, height + pad * 2);
+  const ImVec2 min(std::round(page_rect.GetCenter().x - width * 0.5f), page_rect.Max.y - size.y - style.WindowPadding.y);
+  ImGui::SetNextWindowPos(min);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
+  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, size.y * 0.5f);
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_PopupBg));
+  ImGui::BeginChild("page_switch", size, ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
+                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, height * 0.5f);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pad, 0.0f));
   for (int i = 0; i < 2; ++i) {
-    tabs_width += ImGui::TabItemCalcSize(labels[i].c_str(), false).x + (i ? style.ItemInnerSpacing.x : 0.0f);
-  }
-  ImGuiWindow *window = ImGui::GetCurrentWindow();
-  const float separator_y = ImGui::GetCursorScreenPos().y + ImGui::GetFrameHeight() - 1.0f;
-  window->DrawList->AddLine(ImVec2(window->WorkRect.Min.x, separator_y), ImVec2(window->WorkRect.Max.x, separator_y),
-                            ImGui::GetColorU32(ImGuiCol_TabSelected), style.TabBarBorderSize);
-  ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (ImGui::GetContentRegionAvail().x - tabs_width) * 0.5f));
-
-  if (ImGui::BeginTabBar("tab_widget_tabs")) {
-    for (int i = 0; i < 2; ++i) {
-      if (ImGui::BeginTabItem(labels[i].c_str())) {
-        if (tab_widget_index_ != i) {
-          tab_widget_index_ = i;
-          if (i == 1) history_log_->onShown();
-          updateState();
-        }
-        ImGui::EndTabItem();
-      }
+    const bool selected = tab_widget_index_ == i;
+    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetColorU32(selected ? ImGuiCol_Header : ImGuiCol_Button, selected ? 1.0f : 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetColorU32(selected ? ImGuiCol_HeaderActive : ImGuiCol_ButtonHovered));
+    if (i) ImGui::SameLine();
+    if (ImGui::Button(labels[i].c_str()) && !selected) {
+      tab_widget_index_ = i;
+      if (i == 1) history_log_->onShown();
+      updateState();
     }
-    ImGui::EndTabBar();
+    ImGui::PopStyleColor(2);
   }
+  ImGui::PopStyleVar(3);
+  ImGui::EndChild();
+  ImGui::PopStyleColor();
+  ImGui::PopStyleVar(2);
+  ImGui::EndChild();
 }
 
 void DetailWidget::draw() {
@@ -401,9 +402,6 @@ void CenterWidget::draw() {
 }
 
 void CenterWidget::drawWelcomeWidget() {
-  const ImVec2 win_pos = ImGui::GetWindowPos(), win_size = ImGui::GetWindowSize();
-  ImGui::GetWindowDrawList()->AddRectFilled(win_pos, ImVec2(win_pos.x + win_size.x, win_pos.y + win_size.y), ImGui::GetColorU32(ImGuiCol_ChildBg));
-
   const ImVec2 avail = ImGui::GetContentRegionAvail();
   const ImVec2 origin = ImGui::GetCursorPos();
   auto centered = [&](const char *text, float y) {

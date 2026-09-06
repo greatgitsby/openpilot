@@ -261,13 +261,13 @@ void SignalView::paintCell(ImDrawList *painter, const ImRect &option_rect, const
 
   ImRect rect(option_rect.Min.x + h_margin, option_rect.Min.y + v_margin, option_rect.Max.x - h_margin, option_rect.Max.y - v_margin);
   // selection background is painted by the row's Selectable
-  const ImU32 text_color = selected ? highlightedTextColor() : ImGui::GetColorU32(ImGuiCol_Text);
+  const ImU32 text_color = ImGui::GetColorU32(ImGuiCol_Text);
 
   if (column == 0) {
     if (item->type == SignalModel::Item::Sig) {
       // color label
       ImRect icon_rect(rect.Min.x, rect.Min.y, rect.Min.x + COLOR_LABEL_WIDTH, rect.Max.y);
-      painter->AddRectFilled(icon_rect.Min, icon_rect.Max, toImU32(signalFillColor(item->sig->color).darker(item->highlight ? 125 : 0)), 3.0f);
+      painter->AddRectFilled(icon_rect.Min, icon_rect.Max, toImU32(signalFillColor(item->sig->color).darker(item->highlight ? 125 : 0)), ImGui::GetStyle().FrameRounding);
       drawText(painter, icon_rect, std::to_string(item->row() + 1).c_str(), item->highlight ? IM_COL32_WHITE : IM_COL32_BLACK,
                nullptr, LABEL_FONT);
 
@@ -276,7 +276,7 @@ void SignalView::paintCell(ImDrawList *painter, const ImRect &option_rect, const
       if (item->sig->type != cabana::Signal::Type::Normal) {
         const std::string indicator = multiplexIndicator(item->sig);
         ImRect indicator_rect(rect.Min.x, rect.Min.y, rect.Min.x + ImGui::CalcTextSize(indicator.c_str()).x, rect.Max.y);
-        painter->AddRectFilled(indicator_rect.Min, indicator_rect.Max, IM_COL32(160, 160, 164, 255), 3.0f);
+        painter->AddRectFilled(indicator_rect.Min, indicator_rect.Max, IM_COL32(160, 160, 164, 255), ImGui::GetStyle().FrameRounding);
         drawElidedText(painter, indicator_rect, indicator, IM_COL32_WHITE, false);
         rect.Min.x = indicator_rect.Max.x + h_margin * 2;
       }
@@ -385,7 +385,7 @@ void SignalView::drawEditor(SignalModel::Item *item) {
     const bool clicked = ImGui::Selectable("##editor", false, 0, ImVec2(0, rowHeight()));
     ImGui::PopStyleColor();
     drawElidedText(ImGui::GetWindowDrawList(), ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()), model_.valueText(item),
-                   highlightedTextColor(), false);
+                   ImGui::GetColorU32(ImGuiCol_Text), false);
     if (clicked || take_focus) {
       desc_dlg_ = std::make_unique<ValueDescriptionDlg>(item->sig->val_desc);
       desc_dlg_->title = item->sig->name;

@@ -448,9 +448,8 @@ void BinaryView::paintCell(ImDrawList *painter, const ImRect &rect, const Binary
       painter->AddRectFilled(rect.Min, rect.Max, toImU32(item->bg_color));
     }
   } else if (isSelected(index)) {
-    auto color = resize_sig_ ? toImU32(resize_sig_->color) : paletteHighlight();
-    painter->AddRectFilled(rect.Min, rect.Max, color);
-    pen = paletteBrightText();
+    painter->AddRectFilled(rect.Min, rect.Max, resize_sig_ ? toImU32(resize_sig_->color) : paletteHighlight());
+    if (resize_sig_) pen = IM_COL32_WHITE;
   } else if (!hasSelection() || std::find(item->sigs.begin(), item->sigs.end(), resize_sig_) == item->sigs.end()) {  // not resizing
     if (item->sigs.size() > 0) {
       for (auto &s : item->sigs) {
@@ -465,7 +464,7 @@ void BinaryView::paintCell(ImDrawList *painter, const ImRect &rect, const Binary
       if (item->bg_color.alpha() > 0) painter->AddRectFilled(rect.Min, rect.Max, toImU32(item->bg_color));
     }
     bool bright = std::find(item->sigs.begin(), item->sigs.end(), hovered_sig_) != item->sigs.end();
-    pen = bright ? paletteBrightText() : paletteText(is_message_active_);
+    pen = bright ? IM_COL32_WHITE : paletteText(is_message_active_);
   }
 
   if (item->sigs.size() > 1) {

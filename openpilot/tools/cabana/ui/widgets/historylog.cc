@@ -196,10 +196,10 @@ void LogsWidget::drawHeaderCell(ImDrawList *dl, const ImRect &rect, int column) 
   if (column > 0 && !hexMode()) {
     CabanaColor bg = sigs_[column - 1]->color;
     bg.a = 128;
-    dl->AddRectFilled(rect.Min, rect.Max, toImU32(bg));
+    dl->AddRectFilled(rect.Min, rect.Max, toImU32(bg), ImGui::GetStyle().FrameRounding);
   }
   const std::string text = headerText(column);
-  const ImU32 color = isDarkTheme() ? toImU32(DarkTheme::bright_text) : ImGui::GetColorU32(ImGuiCol_Text);
+  const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
   // right aligned and word wrapped, one line at a time
   const ImRect r(rect.Min.x + 5, rect.Min.y + 3, rect.Max.x - 5, rect.Max.y - 3);
   ImFont *font = ImGui::GetFont();

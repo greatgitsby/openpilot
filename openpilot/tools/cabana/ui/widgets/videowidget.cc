@@ -436,7 +436,7 @@ void Slider::paint(double thumbnail_time) {
   groove_rect.Min.y = std::floor(center_y - groove_height / 2);
   groove_rect.Max.y = groove_rect.Min.y + groove_height;
 
-  p->AddRectFilled(groove_rect.Min, groove_rect.Max, timeline_colors[(int)TimelineType::None]);
+  p->AddRectFilled(groove_rect.Min, groove_rect.Max, timeline_colors[(int)TimelineType::None], groove_height * 0.5f);
 
   double min = minimum() / factor;
   double max = maximum() / factor;
@@ -471,7 +471,7 @@ void Slider::paint(double thumbnail_time) {
   if (thumbnail_time >= 0) {
     float left = rect_.Min.x + (float)((thumbnail_time - min) * width() / span) - 1;
     ImRect rc(ImVec2(left, rect_.Min.y + 1), ImVec2(left + 2, rect_.Max.y - 1));
-    p->AddRectFilled(rc.Min, rc.Max, ImGui::GetColorU32(ImGuiCol_Header), 1.5f);  // ImGuiCol_Header is the theme highlight
+    p->AddRectFilled(rc.Min, rc.Max, ImGui::GetColorU32(ImGuiCol_Header), 1.0f);
   }
 }
 
@@ -558,10 +558,10 @@ const RgbImage *StreamCameraView::thumbnailAt(double sec) {
 }
 
 void StreamCameraView::drawScrubThumbnail(ImDrawList *p, double sec) {
-  p->AddRectFilled(rect().Min, rect().Max, IM_COL32(0, 0, 0, 255));
+  p->AddRectFilled(rect().Min, rect().Max, IM_COL32(0, 0, 0, 255), ImGui::GetStyle().ChildRounding);
   if (const RgbImage *image = thumbnailAt(sec)) {
     const VideoPlacement placement = videoPlacement(rect(), (float)image->width / image->height, settings.crop_video);
-    p->AddImage(big_thumbnail_texture_.ref(), placement.min, placement.max, placement.uv0, placement.uv1);
+    p->AddImageRounded(big_thumbnail_texture_.ref(), placement.min, placement.max, placement.uv0, placement.uv1, IM_COL32_WHITE, ImGui::GetStyle().ChildRounding);
     drawTime(p, rect(), sec);
   }
 }
@@ -578,8 +578,8 @@ void StreamCameraView::drawThumbnail(ImDrawList *p, double sec) {
     int y = height() - h - THUMBNAIL_MARGIN;
 
     ImRect thumb_rect(ImVec2(rect().Min.x + x, rect().Min.y + y), ImVec2(rect().Min.x + x + w, rect().Min.y + y + h));
-    p->AddImage(big_thumbnail_texture_.ref(), thumb_rect.Min, thumb_rect.Max);
-    p->AddRect(thumb_rect.Min, thumb_rect.Max, paletteBrightText(), 0.0f, 0, 2.0f);
+    p->AddImageRounded(big_thumbnail_texture_.ref(), thumb_rect.Min, thumb_rect.Max, ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, ImGui::GetStyle().FrameRounding);
+    p->AddRect(thumb_rect.Min, thumb_rect.Max, IM_COL32_WHITE, ImGui::GetStyle().FrameRounding, 0, 2.0f);
     // look up the alert at the hovered time, the thumbnail frame itself can be seconds away
     if (auto alert = getReplay()->findAlertAtTime(sec)) {
       drawAlert(p, thumb_rect, *alert, POINT_10_FONT_SIZE);
@@ -595,11 +595,11 @@ void StreamCameraView::drawTime(ImDrawList *p, const ImRect &rect, double second
   const ImVec2 text_size = font->CalcTextSizeA(POINT_10_FONT_SIZE, FLT_MAX, 0.0f, text);
   // centered horizontally, above the bottom margin
   p->AddText(font, POINT_10_FONT_SIZE, ImVec2(rect.GetCenter().x - text_size.x / 2, rect.Max.y - THUMBNAIL_MARGIN - text_size.y),
-             paletteBrightText(), text);
+             IM_COL32_WHITE, text);
 }
 
 void StreamCameraView::drawAlert(ImDrawList *p, const ImRect &rect, const Timeline::Entry &alert, float font_size) {
-  const ImU32 pen = paletteBrightText();
+  const ImU32 pen = IM_COL32_WHITE;
   ImU32 color = withAlpha(timeline_colors[int(alert.type)], 128);
   std::string text = alert.text1;
   if (!alert.text2.empty()) text += "\n" + alert.text2;
@@ -608,7 +608,7 @@ void StreamCameraView::drawAlert(ImDrawList *p, const ImRect &rect, const Timeli
   ImFont *font = ImGui::GetFont();
   const float wrap_width = std::max(1.0f, text_rect.GetWidth());
   const ImVec2 r = font->CalcTextSizeA(font_size, FLT_MAX, wrap_width, text.c_str());
-  p->AddRectFilled(ImVec2(text_rect.Min.x, text_rect.Min.y), ImVec2(text_rect.Max.x, text_rect.Min.y + r.y), color);
+  p->AddRectFilled(ImVec2(text_rect.Min.x, text_rect.Min.y), ImVec2(text_rect.Max.x, text_rect.Min.y + r.y), color, ImGui::GetStyle().FrameRounding, ImDrawFlags_RoundCornersTop);
   // each line is centered, wrapped continuations stay left aligned
   float y = text_rect.Min.y;
   for (const auto &line : utils::split(text, '\n')) {
