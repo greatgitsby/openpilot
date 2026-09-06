@@ -31,10 +31,25 @@ void AnalysisCamera::draw(const std::string &file, int frame, const ImVec2 &size
   if (pending_.valid() && pending_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
     try {
       auto image = pending_.get();
-      if (!image.isNull()) { texture_.upload(image); displayed_file_ = requested_file_; displayed_frame_ = requested_frame_; error_.clear(); }
+      if (!image.isNull()) {
+        if (displayed_file_ != file || displayed_frame_ != frame) {
+          texture_.upload(image); displayed_file_ = requested_file_; displayed_frame_ = requested_frame_;
+        }
+        cache_bytes_ += image.data.size();
+        cache_.push_front({requested_file_, requested_frame_, std::move(image)});
+        while (cache_bytes_ > cache_limit_ && cache_.size() > 1) { cache_bytes_ -= cache_.back().image.data.size(); cache_.pop_back(); }
+        error_.clear();
+      }
     } catch (const std::exception &e) { error_ = e.what(); }
   }
-  if (!pending_.valid() && !file.empty() && frame >= 0 && (file != requested_file_ || frame != requested_frame_)) {
+  if (displayed_file_ != file || displayed_frame_ != frame) {
+    auto cached = std::find_if(cache_.begin(), cache_.end(), [&](const auto &entry) { return entry.file == file && entry.frame == frame; });
+    if (cached != cache_.end()) {
+      texture_.upload(cached->image); displayed_file_ = file; displayed_frame_ = frame; error_.clear();
+      cache_.splice(cache_.begin(), cache_, cached);
+    }
+  }
+  if (!pending_.valid() && (displayed_file_ != file || displayed_frame_ != frame) && !file.empty() && frame >= 0 && (file != requested_file_ || frame != requested_frame_)) {
     requested_file_ = file; requested_frame_ = frame;
     pending_ = std::async(std::launch::async, [decoder = decoder_, file, frame]() { return decoder->get(file, frame); });
   }

@@ -149,7 +149,7 @@ void AnalysisWorkspace::toolbar() {
   ImGui::SameLine(); if (button("Step >")) { can->pause(true); can->seekTo(can->currentSec() + step_); }
   ImGui::SameLine(); ImGui::SetNextItemWidth(65); ImGui::InputDouble("Step", &step_, 0, 0, "%.2f"); step_ = std::max(0.001, step_);
   ImGui::SameLine(); ImGui::SetNextItemWidth(70);
-  float speed = can->getSpeed(); if (ImGui::DragFloat("Speed", &speed, 0.1f, 0.1f, 10, "%.1fx")) can->setSpeed(speed);
+  float speed = can->getSpeed(); if (ImGui::DragFloat("Speed", &speed, 0.1f, 0.1f, 10, "%.1fx")) can->setSpeed(speed); record("Speed");
   ImGui::SameLine(); ImGui::Checkbox("Loop", &loop_); record("Loop");
   ImGui::SameLine(); ImGui::Checkbox("Follow", &follow_);
   ImGui::SameLine(); if (button("Time range")) ImGui::OpenPopup("time_range");
@@ -167,7 +167,7 @@ void AnalysisWorkspace::toolbar() {
   }
   double current = can->currentSec(), low = can->minSeconds(), high = std::max(low + 0.001, can->maxSeconds());
   ImGui::SetNextItemWidth(-1);
-  if (ImGui::SliderScalar("##analysis_seek", ImGuiDataType_Double, &current, &low, &high, "%.3f s")) { can->pause(true); can->seekTo(current); }
+  if (ImGui::SliderScalar("##analysis_seek", ImGuiDataType_Double, &current, &low, &high, "%.3f s")) can->seekTo(current);
   record("Timeline");
   if (loop_ && current >= x_max_) can->seekTo(x_min_);
   if (follow_) { double width = x_max_ - x_min_; x_max_ = std::max(width, current); x_min_ = x_max_ - width; }

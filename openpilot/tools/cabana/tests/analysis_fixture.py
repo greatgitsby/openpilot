@@ -84,7 +84,7 @@ if __name__ == '__main__':
   generate(args.directory, args.count)
 
 
-def add_cameras(directory: Path, count=1000):
+def add_cameras(directory: Path, count=1000, resolution="320x180", b_frames=True):
   import subprocess
 
   duration = count / 100
@@ -108,16 +108,20 @@ def add_cameras(directory: Path, count=1000):
       '-f',
       'lavfi',
       '-i',
-      f'color=c={color}:s=320x180:r=20:d={duration}',
+      f'color=c={color}:s={resolution}:r=20:d={duration}',
       '-c:v',
       codec,
+      '-preset',
+      'ultrafast',
       '-threads',
       '1',
       '-pix_fmt',
       'yuv420p',
     ]
     if codec == 'libx265':
-      command += ['-x265-params', 'pools=1:frame-threads=1:log-level=error']
+      command += ['-x265-params', 'pools=1:frame-threads=1:log-level=error' + ('' if b_frames else ':bframes=0:keyint=20:min-keyint=20:scenecut=0')]
+    if not b_frames:
+      command += ['-bf', '0', '-g', '20']
     subprocess.run([*command, str(directory / name)], check=True, capture_output=True)
   layout = {
     'tabs': [

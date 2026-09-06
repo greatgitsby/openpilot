@@ -241,10 +241,19 @@ bool FFmpegVideoDecoder::decode(FrameReader *reader, int idx, VisionBuf *buf) {
 // and count decoded presentation frames rather than assuming one output per packet.
 bool FFmpegVideoDecoder::decodeIndependent(FrameReader *reader, int idx, VisionBuf *buf) {
   int current = reader->prev_idx + 1;
-  if (reader->prev_idx < 0 || idx != current) {
-    if (av_seek_frame(reader->input_ctx, -1, 0, AVSEEK_FLAG_BYTE) < 0) return false;
+  int keyframe = 0;
+  // openpilot records without B-frames, so packet and presentation indices agree.
+  // Reordered streams keep their sequential presentation counter for correctness.
+  if (decoder_ctx->has_b_frames == 0) {
+    for (int i = idx; i > 0; --i) {
+      if (reader->packets_info[i].flags & AV_PKT_FLAG_KEY) { keyframe = i; break; }
+    }
+  }
+  if (reader->prev_idx < 0 || idx < current || keyframe > current) {
+    int64_t position = reader->packets_info[keyframe].pos;
+    if (position < 0 || av_seek_frame(reader->input_ctx, -1, position, AVSEEK_FLAG_BYTE) < 0) return false;
     avcodec_flush_buffers(decoder_ctx);
-    current = 0;
+    current = keyframe;
   }
   bool draining = false;
   for (;;) {

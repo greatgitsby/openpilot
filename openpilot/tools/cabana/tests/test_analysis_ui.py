@@ -19,11 +19,17 @@ BINARY = Path(__file__).resolve().parents[1] / 'cabana'
 
 
 class App:
-  def __init__(self, directory, count=1000, layout='layout.json', live=False, remote=False, route=None):
+  def __init__(self, directory, count=1000, layout='layout.json', live=False, remote=False, route=None, prepared=None):
     self.directory = directory
-    generate(directory, count)
-    if layout == "cameras.json":
-      add_cameras(directory, count)
+    if prepared is None:
+      generate(directory, count)
+      if layout == "cameras.json":
+        add_cameras(directory, count)
+    else:
+      for source in prepared.iterdir():
+        if source.is_file():
+          (directory / source.name).symlink_to(source)
+
     self.xvfb = subprocess.Popen(['Xvfb', '-displayfd', '1', '-screen', '0', '1600x1000x24'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     display = ':' + self.xvfb.stdout.readline().strip()
     self.env = dict(os.environ, DISPLAY=display, XDG_CONFIG_HOME=str(directory / 'config'), LIBGL_ALWAYS_SOFTWARE='1')
@@ -366,3 +372,20 @@ def test_tab_order_persists(app):
   app.x('key', '--delay', 80, 'ctrl+s')
   time.sleep(0.3)
   assert json.loads((app.directory / 'layout.json').read_text())['tabs'][0]['name'] == 'Logs'
+
+
+def test_timeline_seek_preserves_playback(app):
+  def seek(fraction):
+    x1, y1, x2, y2 = app.state()['items']['Timeline'][0]
+    app.x('mousemove', int(x1 + (x2 - x1) * fraction), int((y1 + y2) / 2), 'mousedown', 1)
+    time.sleep(0.08)
+    app.x('mouseup', 1)
+
+  seek(0.2)
+  app.wait(lambda s: s['cursor'] > 1)
+  assert 'Play' in app.state()['items']
+  app.click('Play')
+  seek(0.6)
+  state = app.wait(lambda s: s['cursor'] > 5)
+  assert 'Pause' in state['items']
+  app.wait(lambda s: s['cursor'] > state['cursor'] + 0.3)
