@@ -858,7 +858,7 @@ void MainWindow::drawMessagePanes() {
   for (auto &pane : message_panes_) {
     const MessageId id = pane.detail->messageId();
     if (pane.first_draw) {
-      if (dock_id) ImGui::SetNextWindowDockID(dock_id, ImGuiCond_Once);
+      if (dock_id) ImGui::SetNextWindowDockID(dock_id, ImGuiCond_Always);
       pane.focus = true;
     }
     if (pane.focus) ImGui::SetNextWindowFocus();
