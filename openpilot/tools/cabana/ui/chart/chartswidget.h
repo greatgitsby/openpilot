@@ -47,42 +47,28 @@ private:
 class ChartView;
 class ChartsWidget;
 
-// the grid of one tab's charts
 class ChartsContainer {
 public:
-  ChartsContainer(ChartsWidget *parent, int tab_id) : charts_widget_(parent), tab_id_(tab_id) {}
+  ChartsContainer(ChartsWidget *parent) : charts_widget_(parent) {}
   void setDropIndicator(const ImVec2 &pt) { drop_indicator_pos_ = pt; }
-  void draw();  // grid layout of the tab's charts
+  void draw();  // grid layout of the current tab's charts
   ChartView *getDropAfter(const ImVec2 &pos) const;
   ChartView *childAt(const ImVec2 &pos) const;
   const ImRect &geometry() const { return geometry_; }  // screen coordinates
-  int tabId() const { return tab_id_; }
-  bool columnsSelectable() const { return columns_selectable_; }
-
-  ImGuiWindow *scroll = nullptr;  // the scroll area child window of the last draw
-  ImRect viewport;                // its inner rect
 
 private:
-  void updateLayout();
   void drawDropIndicator();
-  const std::vector<ChartView *> &charts() const;
 
   ImRect geometry_;
   ChartsWidget *charts_widget_;
-  int tab_id_;
   ImVec2 drop_indicator_pos_;
-  bool columns_selectable_ = false;  // wide enough for more than one column
-  int column_count_ = 1;
 };
 
 class ChartsWidget {
 public:
   ChartsWidget();
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
-  void draw();  // every tab's dock window, and the drag preview and dialogs
-  TabBar &tabBar() { return tabbar_; }
-  void newTab();
-  std::function<void(const ImRect &)> paneDrawn;  // called with the rect of every drawn tab window
+  void draw();  // content only; MainWindow wraps it in a child region or the floating window
   void showChart(const MessageId &id, const cabana::Signal *sig, bool show, bool merge);
   inline bool hasSignal(const MessageId &id, const cabana::Signal *sig) { return findChart(id, sig) != nullptr; }
   std::vector<std::string> serializeChartIds() const;
@@ -96,8 +82,7 @@ public:
   Observable<double> showTip;
 
 private:
-  void handleEvents();  // focus loss, the chart drag and the value tip leave
-  void drawTab(int index);  // the toolbar and the chart grid of one tab, inside its window
+  void handleEvents();  // the back button, focus loss, the chart drag and the value tip leave
   void newChart();
   ChartView *createChart(int pos = 0);
   void removeChart(ChartView *chart);
@@ -117,15 +102,12 @@ private:
   void drawToolBar();
   void updateTabBar();
   void setMaxChartRange(int value);
+  void updateLayout();
   void settingChanged();
   void showValueTip(double sec);
+  void newTab();
   void removeTab(int index);
-  // the tab being drawn, else the current (last focused) tab
-  int currentTabId() const { return tabbar_.tabData(drawing_tab_ >= 0 ? drawing_tab_ : tabbar_.currentIndex()); }
-  inline std::vector<ChartView *> &currentCharts() { return tab_charts_[currentTabId()]; }
-  ChartsContainer *container(int tab_id);
-  ChartsContainer *containerAt(const ImVec2 &global_pos);  // the tab whose scroll area covers the point
-  ChartsContainer *containerOf(ChartView *chart);
+  inline std::vector<ChartView *> &currentCharts() { return tab_charts_[tabbar_.tabData(tabbar_.currentIndex())]; }
   ChartView *findChart(const MessageId &id, const cabana::Signal *sig);
   // draws the selector until closed, then runs `accepted` (unless `owner` was removed)
   void execSignalSelector(std::unique_ptr<SignalSelector> dlg, ChartView *owner, std::function<void(SignalSelector &)> accepted);
@@ -137,15 +119,15 @@ private:
 
   std::vector<std::unique_ptr<ChartView>> charts_;
   std::unordered_map<int, std::vector<ChartView *>> tab_charts_;
-  std::unordered_map<int, std::unique_ptr<ChartsContainer>> containers_;
   TabBar tabbar_;
-  int drawing_tab_ = -1;  // index of the tab whose window is being drawn
-  int next_tab_id_ = 0;
+  ChartsContainer charts_container_{this};
+  ImGuiWindow *charts_scroll_ = nullptr;  // the scroll area child window
+  ImRect charts_scroll_viewport_;
   int max_chart_range_ = 0;
   std::pair<double, double> display_range_;
+  bool columns_action_visible_ = false;
   int column_count_ = 1;
-  ChartsContainer *drop_container_ = nullptr;  // the tab under the chart drag
-  bool pane_hovered_ = false;  // any tab window hovered this frame
+  int current_column_count_ = 0;
   struct ChartDrag {
     ChartView *source = nullptr;
     ImVec2 press_pos;  // global
