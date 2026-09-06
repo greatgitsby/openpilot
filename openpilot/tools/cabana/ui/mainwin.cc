@@ -918,9 +918,10 @@ void MainWindow::drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, fl
     ImGui::End();
     return open;
   };
+  // a new tab is auto selected and the last one submitted wins: the signals go after the logs
   view(bits, detail->bitsWhatsThis(), [&]() { detail->drawBits(); });
-  view(signals, detail->signalsWhatsThis(), [&]() { detail->drawSignals(); });
   detail->setLogsVisible(view(logs, {}, [&]() { detail->drawLogs(); }));
+  view(signals, detail->signalsWhatsThis(), [&]() { detail->drawSignals(); });
 }
 
 void MainWindow::drawVideoPane() {
