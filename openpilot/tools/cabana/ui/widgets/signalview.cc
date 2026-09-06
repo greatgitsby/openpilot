@@ -498,7 +498,7 @@ SignalView::SignalView(ChartsWidget *charts) : charts_(charts) {
 
   // seed the size of the [plot][remove] widget (two 22px tool buttons plus the spacing) so the first
   // updateState() calls already leave room for the sparklines
-  button_size_ = ImVec2(22 * 2 + TOOLBAR_ITEM_SPACING, 22);
+  button_size_ = ImVec2(26 * 2 + 4, 26);
   updateToolBar();
 
   connections_.push_back(model_.rowsChanged.connect([this]() { rowsChanged(); }));
@@ -878,27 +878,24 @@ bool SignalView::drawItem(SignalModel::Item *item, int depth, DrawContext &ctx) 
 
 void SignalView::drawIndexWidget(SignalModel::Item *item, const ImRect &rect) {
   // plot_btn + remove_btn, right aligned in the value column
-  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(3.0f, 2.0f));
-  const ImVec2 btn_size(ImGui::CalcTextSize(icon::GRAPH_UP).x + 6.0f, ImGui::GetFrameHeight());
   const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
-  const ImVec2 size(btn_size.x * 2 + spacing, btn_size.y);
+  const ImVec2 size(iconButtonWidth() * 2 + spacing, iconButtonWidth());
   ImGui::SetCursorScreenPos(ImVec2(rect.Max.x - size.x, rect.Min.y + (rect.GetHeight() - size.y) * 0.5f));
 
   const auto sig = item->sig;
   const bool checked = item->chart_opened;
   if (checked) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-  if (ImGui::Button((std::string(icon::GRAPH_UP) + "##plot").c_str(), btn_size) && !editor_open_on_press_) {
+  if (iconButton("plot", icon::GRAPH_UP) && !editor_open_on_press_) {
     item->chart_opened = !checked;
     showChart(model_.msgId(), sig, item->chart_opened, ImGui::GetIO().KeyShift);
   }
   if (checked) ImGui::PopStyleColor();
   ImGui::SetItemTooltip("%s", checked ? "Close Plot" : "Show Plot\nSHIFT click to add to previous opened plot");
   ImGui::SameLine(0.0f, spacing);
-  if (ImGui::Button((std::string(icon::X) + "##remove").c_str(), btn_size) && !editor_open_on_press_) {
+  if (iconButton("remove", icon::X) && !editor_open_on_press_) {
     pending_action_ = [this, sig]() { UndoStack::instance()->push(new RemoveSigCommand(model_.msgId(), sig)); };
   }
   ImGui::SetItemTooltip("Remove signal");
-  ImGui::PopStyleVar();
   button_size_ = size;
 }
 
@@ -920,12 +917,12 @@ bool ValueDescriptionDlg::draw() {
   if (!ImGui::BeginPopupModal(popup_id.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) return ImGui::IsPopupOpen(popup_id.c_str());
 
   bool closing = false;
-  if (ImGui::Button(icon::PLUS)) {
+  if (iconButton("add", icon::PLUS, "Add")) {
     table_.emplace_back("", "");
   }
-  ImGui::SameLine();
+  ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
   ImGui::BeginDisabled(current_row_ == -1);
-  if (ImGui::Button(icon::DASH) && current_row_ < table_.size()) {
+  if (iconButton("remove", icon::DASH, "Remove") && current_row_ < table_.size()) {
     table_.erase(table_.begin() + current_row_);
     current_row_ = -1;
   }

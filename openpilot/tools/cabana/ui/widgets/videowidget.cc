@@ -157,15 +157,15 @@ void VideoWidget::drawPlaybackController() {
   auto seek_forward = []() { can->seekTo(can->currentSec() + 1); };
 
   std::vector<ToolbarItem> items = {
-    {toolbarButtonWidth(icon::REWIND), [&]() { if (toolButton("rewind", icon::REWIND, "Seek backward")) seek_backward(); },
+    {iconButtonWidth(), [&]() { if (toolButton("rewind", icon::REWIND, "Seek backward")) seek_backward(); },
      "Seek backward", seek_backward},
-    {toolbarButtonWidth(play_icon), [&]() { if (toolButton("play", play_icon, play_tooltip)) toggle_play(); },
+    {iconButtonWidth(), [&]() { if (toolButton("play", play_icon, play_tooltip)) toggle_play(); },
      play_tooltip, toggle_play},
-    {toolbarButtonWidth(icon::FAST_FORWARD), [&]() { if (toolButton("fast-forward", icon::FAST_FORWARD, "Seek forward")) seek_forward(); },
+    {iconButtonWidth(), [&]() { if (toolButton("fast-forward", icon::FAST_FORWARD, "Seek forward")) seek_forward(); },
      "Seek forward", seek_forward},
   };
   if (can->liveStreaming()) {
-    items.push_back({toolbarButtonWidth(icon::SKIP_END), [&]() {
+    items.push_back({iconButtonWidth(), [&]() {
       ImGui::BeginDisabled(!skip_to_end_enabled_);
       if (toolButton("skip-end", icon::SKIP_END, "Skip to the end")) skipToEnd();
       ImGui::EndDisabled();
@@ -198,18 +198,18 @@ void VideoWidget::drawPlaybackController() {
     return item;
   };
   const char *aspect_ratio_icon = settings.crop_video ? icon::ASPECT_RATIO_FILL : icon::ASPECT_RATIO;
-  items.push_back({toolbarButtonWidth(aspect_ratio_icon), [&]() {
+  items.push_back({iconButtonWidth(), [&]() {
     if (toolButton("crop_video", aspect_ratio_icon, "Crop to fill")) cropVideoClicked();
   }, "Crop to fill", [this]() { cropVideoClicked(); }});
   if (!can->liveStreaming()) {
     items.push_back(separator());
-    items.push_back({toolbarButtonWidth(loop_icon), [&]() { if (toolButton("loop", loop_icon, "Loop playback")) loopPlaybackClicked(); },
+    items.push_back({iconButtonWidth(), [&]() { if (toolButton("loop", loop_icon, "Loop playback")) loopPlaybackClicked(); },
                      "Loop playback", [this]() { loopPlaybackClicked(); }});
   }
   items.push_back({speed_width, [&]() { drawSpeedDropdown(speed_width); }});
   if (!can->liveStreaming()) {
     items.push_back(separator());
-    items.push_back({toolbarButtonWidth(icon::INFO_CIRCLE),
+    items.push_back({iconButtonWidth(),
                      [&]() { if (toolButton("route_info", icon::INFO_CIRCLE, "View route details")) showRouteInfo(); },
                      "View route details", [this]() { showRouteInfo(); }});
   }

@@ -136,13 +136,11 @@ void ChartView::updateLayout() {
   const ImVec2 grip = ImGui::CalcTextSize(icon::GRIP_HORIZONTAL);
   const ImVec2 top_left = layout_.rect.Min + ImVec2(LAYOUT_MARGINS.x, LAYOUT_MARGINS.y);
   layout_.move_icon_rect = ImRect(top_left, top_left + grip);
-  const ImVec2 pad = ImGui::GetStyle().FramePadding * 2;
-  const ImVec2 close_size = ImGui::CalcTextSize(icon::X) + pad;
-  const ImVec2 manage_size = ImGui::CalcTextSize(icon::LIST) + pad;
-  const ImVec2 close_min(layout_.rect.Max.x - LAYOUT_MARGINS.z - close_size.x, top_left.y);
-  layout_.close_btn_rect = ImRect(close_min, close_min + close_size);
-  const ImVec2 manage_min(close_min.x - manage_size.x - ImGui::GetStyle().ItemSpacing.x, top_left.y);
-  layout_.manage_btn_rect = ImRect(manage_min, manage_min + manage_size);
+  const ImVec2 btn_size(iconButtonWidth(), iconButtonWidth());
+  const ImVec2 close_min(layout_.rect.Max.x - LAYOUT_MARGINS.z - btn_size.x, top_left.y);
+  layout_.close_btn_rect = ImRect(close_min, close_min + btn_size);
+  const ImVec2 manage_min(close_min.x - btn_size.x - ImGui::GetStyle().ItemInnerSpacing.x, top_left.y);
+  layout_.manage_btn_rect = ImRect(manage_min, manage_min + btn_size);
 
   ImFont *bold = boldFont();
   const float font_size = ImGui::GetFontSize();

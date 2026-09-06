@@ -251,7 +251,7 @@ void MessagesWidget::drawToolBar() {
 
   const ImGuiStyle &style = ImGui::GetStyle();
   const float checkbox_width = ImGui::CalcTextSize("Suppress Signals").x + ImGui::GetFrameHeight() + style.ItemInnerSpacing.x;
-  const float view_button_width = ImGui::CalcTextSize(icon::THREE_DOTS).x + style.FramePadding.x * 2;
+  const float view_button_width = iconButtonWidth();
   alignRight(checkbox_width + style.ItemSpacing.x + view_button_width);
 
   bool suppress_defined_signals = settings.suppress_defined_signals;

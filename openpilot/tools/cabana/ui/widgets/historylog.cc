@@ -133,7 +133,7 @@ void LogsWidget::draw() {
   const ImGuiStyle &style = ImGui::GetStyle();
 
   // toolbar: the export button is right aligned and never clipped, the value input shrinks first
-  const float export_w = ImGui::CalcTextSize(icon::FILETYPE_CSV).x + style.FramePadding.x * 2;
+  const float export_w = iconButtonWidth();
   if (!sigs_.empty()) {
     const float clear_w = value_edit_.empty() ? 0.0f : ImGui::CalcTextSize(icon::X).x + style.FramePadding.x * 2;
     const float fixed = DISPLAY_TYPE_WIDTH + SIGNALS_WIDTH + COMPARE_WIDTH + clear_w + style.ItemSpacing.x * 4 + export_w;
@@ -164,9 +164,9 @@ void LogsWidget::draw() {
       filterChanged();
     }
   }
-  alignRight(export_w);
+  alignRight(iconButtonWidth());
   ImGui::BeginDisabled(!export_btn_enabled_);
-  if (ImGui::Button(icon::FILETYPE_CSV)) exportToCSV();
+  if (iconButton("export_csv", icon::FILETYPE_CSV)) exportToCSV();
   ImGui::EndDisabled();
   disabledItemTooltip("Export to CSV file...");
 

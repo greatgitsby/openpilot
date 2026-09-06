@@ -167,10 +167,10 @@ void ChartsWidget::drawToolBar() {
 
   // the labels are captured by reference, they outlive the draw calls below
   std::vector<ToolbarItem> items;
-  items.push_back({toolbarButtonWidth(icon::PLUS_SQUARE), [this]() {
+  items.push_back({iconButtonWidth(), [this]() {
     if (toolButton("new_plot_btn", icon::PLUS_SQUARE, "New Chart")) newChart();
   }});
-  items.push_back({toolbarButtonWidth(icon::WINDOW_STACK), [this]() {
+  items.push_back({iconButtonWidth(), [this]() {
     if (toolButton("new_tab_btn", icon::WINDOW_STACK, "New Tab")) newTab();
   }});
   const std::string title_label = "Charts: " + std::to_string(charts_.size());
@@ -228,12 +228,12 @@ void ChartsWidget::drawToolBar() {
     char buf[64];
     snprintf(buf, sizeof(buf), "%.2f-%.2f", can->timeRange()->first, can->timeRange()->second);
     reset_zoom_text = buf;
-    items.push_back({toolbarButtonWidth(icon::ARROW_COUNTERCLOCKWISE), [this]() {
+    items.push_back({iconButtonWidth(), [this]() {
       ImGui::BeginDisabled(!zoom_undo_stack_.canUndo());
       if (toolButton("undo_zoom", icon::ARROW_COUNTERCLOCKWISE, "Undo Zoom")) zoom_undo_stack_.undo();
       ImGui::EndDisabled();
     }});
-    items.push_back({toolbarButtonWidth(icon::ARROW_CLOCKWISE), [this]() {
+    items.push_back({iconButtonWidth(), [this]() {
       ImGui::BeginDisabled(!zoom_undo_stack_.canRedo());
       if (toolButton("redo_zoom", icon::ARROW_CLOCKWISE, "Redo Zoom")) zoom_undo_stack_.redo();
       ImGui::EndDisabled();
@@ -242,13 +242,13 @@ void ChartsWidget::drawToolBar() {
       if (toolButton("reset_zoom_btn", icon::ZOOM_OUT, "Reset Zoom", reset_zoom_text.c_str())) zoomReset();
     }});
   }
-  items.push_back({toolbarButtonWidth(icon::X_SQUARE), [this]() {
+  items.push_back({iconButtonWidth(), [this]() {
     ImGui::BeginDisabled(charts_.empty());
     if (toolButton("remove_all_btn", icon::X_SQUARE, "Remove all charts")) removeAll();
     ImGui::EndDisabled();
   }});
   const char *dock_btn_icon = is_docked_ ? icon::ARROW_UP_RIGHT_SQUARE : icon::ARROW_DOWN_LEFT_SQUARE;
-  items.push_back({toolbarButtonWidth(dock_btn_icon), [this, dock_btn_icon]() {
+  items.push_back({iconButtonWidth(), [this, dock_btn_icon]() {
     if (toolButton("dock_btn", dock_btn_icon, is_docked_ ? "Float the charts window" : "Dock the charts window")) toggleChartsDocking();
   }});
 

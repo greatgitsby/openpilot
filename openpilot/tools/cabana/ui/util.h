@@ -67,8 +67,14 @@ int doubleValidator(ImGuiInputTextCallbackData *data);
 int ipValidator(ImGuiInputTextCallbackData *data);
 int nonWhitespaceValidator(ImGuiInputTextCallbackData *data);
 
-// auto-raise icon button with a tooltip
+// Buttons come in three standard shapes, all one frame height tall with the style's padding and rounding:
+//   ImGui::Button  a framed text button
+//   iconButton     a framed square icon button
+//   toolButton     a flat square icon button (or flat text button with `text`), transparent until hovered
+// Adjacent buttons of a group are ItemInnerSpacing apart, groups are ItemSpacing apart.
+bool iconButton(const char *id, const char *icon, const char *tooltip = nullptr);
 bool toolButton(const char *id, const char *icon, const char *tooltip = nullptr, const char *text = nullptr);
+float iconButtonWidth();  // the side of a square icon button
 
 // tooltip for the last item that also shows while the item is disabled
 void disabledItemTooltip(const char *text);
@@ -139,8 +145,6 @@ void setNextDialogWindow(const ImVec2 &size);
 // centered modal dialog. false when the popup is not submitted this frame.
 bool beginDialog(const char *id, PopupOwner *owner, const ImVec2 &size, ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize);
 
-const float TOOLBAR_ITEM_SPACING = 1.0f;
-const float TOOLBAR_BUTTON_PADDING = 4.0f;  // auto raise button horizontal margin
 const float SLIDER_LENGTH = 13.0f;
 const float SLIDER_THICKNESS = 13.0f;
 
@@ -154,9 +158,9 @@ struct ToolbarItem {
   bool enabled = true;
   bool in_menu = true;  // false: left out of the ">>" menu (a separator)
 };
-void beginToolbar();  // item spacing and button padding of a tool bar, until endToolbar()
+void beginToolbar();  // the item spacing of a tool bar, until endToolbar()
 void endToolbar();
-float toolbarButtonWidth(const std::string &label);
+float toolbarButtonWidth(const std::string &label);  // a flat text button
 // the width of every item plus the spacing between neighbors and the two groups
 float toolbarWidth(const std::vector<ToolbarItem> &items, size_t spacer_index);
 // items before spacer_index sit at the left, the rest are right aligned; the overflow goes into the ">>" menu

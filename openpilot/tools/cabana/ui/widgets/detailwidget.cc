@@ -102,11 +102,10 @@ void DetailWidget::drawToolBar() {
   ImGui::SameLine();
   ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
   ImGui::SameLine();
-  if (ImGui::Button(icon::PENCIL)) editMsg();
-  ImGui::SetItemTooltip("Edit Message");
-  ImGui::SameLine();
+  if (iconButton("edit_msg", icon::PENCIL, "Edit Message")) editMsg();
+  ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
   ImGui::BeginDisabled(!action_remove_msg_enabled_);
-  if (ImGui::Button(icon::X_LG)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
+  if (iconButton("remove_msg", icon::X_LG)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
   ImGui::EndDisabled();
   disabledItemTooltip("Remove Message");
 }
@@ -212,7 +211,7 @@ void DetailWidget::editMsg() {
 void DetailWidget::drawTabWidget() {
   // the page stops above the page switch, which floats in the strip left below it
   const ImGuiStyle &style = ImGui::GetStyle();
-  const float pad = 3.0f, pill_height = ImGui::GetFrameHeight() + pad * 2;
+  const float pad = style.ItemInnerSpacing.x, pill_height = ImGui::GetFrameHeight() + pad * 2;
   ImGui::BeginChild("tab_widget", ImVec2(0, 0), ImGuiChildFlags_None,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   const ImRect page_rect = ImGui::GetCurrentWindow()->Rect();
@@ -240,20 +239,17 @@ void DetailWidget::drawTabWidget() {
   }
   ImGui::EndChild();
 
-  // a pill with two segments, centered in the strip below the page
+  // two standard buttons in a card, centered in the strip below the page
   const std::string labels[] = {std::string(icon::FILE_EARMARK_RULED) + " Messages", std::string(icon::STOPWATCH) + " Logs"};
-  const float height = ImGui::GetFrameHeight();
   float width = pad;
   for (const auto &label : labels) width += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2 + pad;
   const ImVec2 size(width, pill_height);
   const ImVec2 min(std::round(page_rect.GetCenter().x - width * 0.5f), page_rect.Max.y - size.y);
   ImGui::SetNextWindowPos(min);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
-  ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, size.y * 0.5f);
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetColorU32(ImGuiCol_PopupBg));
   ImGui::BeginChild("page_switch", size, ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, height * 0.5f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pad, 0.0f));
   for (int i = 0; i < 2; ++i) {
@@ -268,10 +264,10 @@ void DetailWidget::drawTabWidget() {
     }
     ImGui::PopStyleColor(2);
   }
-  ImGui::PopStyleVar(3);
+  ImGui::PopStyleVar(2);
   ImGui::EndChild();
   ImGui::PopStyleColor();
-  ImGui::PopStyleVar(2);
+  ImGui::PopStyleVar();
   ImGui::EndChild();
 }
 
