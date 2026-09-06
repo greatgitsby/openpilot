@@ -243,7 +243,7 @@ void LogsWidget::drawTable() {
 
   // fixed section sizes and a horizontal scrollbar, no alternating row colors; the grid is drawn between
   // rows and columns
-  ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_BordersInner |
+  ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX | ImGuiTableFlags_Borders |
                           ImGuiTableFlags_SizingFixedFit;
   // an empty viewport draws no grid
   if (messages_.empty()) flags &= ~ImGuiTableFlags_BordersInnerV;
@@ -279,13 +279,15 @@ void LogsWidget::drawTable() {
           if (!ImGui::TableSetColumnIndex(col)) continue;
           // cells are selected, not rows; there is no hover highlight, only the selection background
           const bool cell_selected = selected_row_ == row && selected_col_ == col;
+          // the text sits inside the cell padding, like the rows of the messages table
+          const ImVec2 pos = ImGui::GetCursorScreenPos();
+          const ImRect rect(pos, ImVec2(pos.x + ImGui::GetContentRegionAvail().x, pos.y + row_height - style.CellPadding.y * 2));
           ImGui::PushID(col);
-          if (viewSelectable("##cell", cell_selected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0, row_height - style.CellPadding.y * 2))) {
+          if (viewSelectable("##cell", cell_selected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0, rect.GetHeight()))) {
             selected_row_ = row;
             selected_col_ = col;
           }
           ImGui::PopID();
-          const ImRect rect = ImGui::TableGetCellBgRect(table, col);
           if (col == 0) {
             drawTextCell(painter, rect, formatTime(m.mono_time), cell_selected, false);
           } else if (hexMode()) {
