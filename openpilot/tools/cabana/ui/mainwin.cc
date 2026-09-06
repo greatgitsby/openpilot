@@ -132,14 +132,24 @@ void MainWindow::drawFileMenu() {
   if (ImGui::MenuItem("Exit", "Ctrl+Q")) close();
 }
 
+namespace {
+// a top level menu keeps one highlight whether the mouse is on its title or inside its popup
+bool beginTopMenu(const char *label, bool enabled = true) {
+  ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::GetColorU32(ImGuiCol_Header));
+  const bool open = ImGui::BeginMenu(label, enabled);
+  ImGui::PopStyleColor();
+  return open;
+}
+}  // namespace
+
 void MainWindow::drawMenuBar() {
   if (!ImGui::BeginMainMenuBar()) return;
-  if (ImGui::BeginMenu("File")) {
+  if (beginTopMenu("File")) {
     drawFileMenu();
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("Edit")) {
+  if (beginTopMenu("Edit")) {
     auto stack = UndoStack::instance();
     const std::string undo_text = stack->canUndo() ? "Undo " + stack->undoText() : "Undo";
     const std::string redo_text = stack->canRedo() ? "Redo " + stack->redoText() : "Redo";
@@ -148,7 +158,7 @@ void MainWindow::drawMenuBar() {
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("View")) {
+  if (beginTopMenu("View")) {
     if (ImGui::MenuItem("Full Screen", "Ctrl+F11")) toggleFullScreen();
     ImGui::Separator();
     ImGui::MenuItem(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &messages_visible_);
@@ -162,13 +172,13 @@ void MainWindow::drawMenuBar() {
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("Tools", hasStream())) {
+  if (beginTopMenu("Tools", hasStream())) {
     if (ImGui::MenuItem("Find Similar Bits")) findSimilarBits();
     if (ImGui::MenuItem("Find Signal")) findSignal();
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("Help")) {
+  if (beginTopMenu("Help")) {
     if (ImGui::MenuItem("Help", "F1")) toggleHelp();
     ImGui::EndMenu();
   }
