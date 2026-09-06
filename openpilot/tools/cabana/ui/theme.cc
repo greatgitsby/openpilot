@@ -16,7 +16,7 @@ constexpr Palette DARK_PALETTE = {
   .window = rgb(0x1d2225), .surface = rgb(0x30373b),
   .frame = rgb(0x1e2224), .frame_hovered = rgb(0x394044), .frame_active = rgb(0x424a4f),
   .button = rgb(0x424a4f), .button_hovered = rgb(0x535f64), .button_active = rgb(0x175886),
-  .header = rgb(0x175886), .header_hovered = rgb(0x424a4f), .header_active = rgb(0x1c6ea8),
+  .header = rgb(0x175886), .header_hovered = rgb(0x24455e), .header_active = rgb(0x1c6ea8),
   .accent = rgb(0x57a9e3),
   .border = rgb(0x65737a), .separator = rgb(0x4b5559),
   .tab = rgb(0x272c2f), .tab_hovered = rgb(0x424a4f), .table_header = rgb(0x424a4f),
@@ -28,7 +28,7 @@ constexpr Palette LIGHT_PALETTE = {
   .window = rgb(0xeeeff0), .surface = rgb(0xffffff),
   .frame = rgb(0xf8f9f9), .frame_hovered = rgb(0xeeeff0), .frame_active = rgb(0xddeef9),
   .button = rgb(0xe3e6e8), .button_hovered = rgb(0xd8dcdf), .button_active = rgb(0xbcddf4),
-  .header = rgb(0xddeef9), .header_hovered = rgb(0xeeeff0), .header_active = rgb(0xbcddf4),
+  .header = rgb(0xbcddf4), .header_hovered = rgb(0xddeef9), .header_active = rgb(0x9fcbec),
   .accent = rgb(0x1c6ea8),
   .border = rgb(0x98a3a9), .separator = rgb(0xcdd3d6),
   .tab = rgb(0xe3e6e8), .tab_hovered = rgb(0xddeef9), .table_header = rgb(0xd8dcdf),
@@ -118,13 +118,16 @@ void applyTheme(int theme) {
   c[ImGuiCol_FrameBg] = p.frame;
   c[ImGuiCol_FrameBgHovered] = p.frame_hovered;
   c[ImGuiCol_FrameBgActive] = p.frame_active;
-  c[ImGuiCol_Button] = c[ImGuiCol_ScrollbarGrab] = p.button;
-  c[ImGuiCol_ButtonHovered] = c[ImGuiCol_ScrollbarGrabHovered] = c[ImGuiCol_SliderGrab] = p.button_hovered;
+  c[ImGuiCol_Button] = p.button;
+  c[ImGuiCol_ButtonHovered] = c[ImGuiCol_SliderGrab] = p.button_hovered;
+  // the scrollbar track is the window color, so its grab has to be darker than any button
+  c[ImGuiCol_ScrollbarGrab] = p.border;
+  c[ImGuiCol_ScrollbarGrabHovered] = p.text_disabled;
   c[ImGuiCol_ButtonActive] = p.button_active;
   c[ImGuiCol_Header] = p.header;
   c[ImGuiCol_HeaderHovered] = p.header_hovered;
-  c[ImGuiCol_HeaderActive] = c[ImGuiCol_ScrollbarGrabActive] = p.header_active;
-  c[ImGuiCol_CheckMark] = c[ImGuiCol_NavCursor] = c[ImGuiCol_SliderGrabActive] = p.accent;
+  c[ImGuiCol_HeaderActive] = p.header_active;
+  c[ImGuiCol_CheckMark] = c[ImGuiCol_NavCursor] = c[ImGuiCol_SliderGrabActive] = c[ImGuiCol_ScrollbarGrabActive] = p.accent;
   c[ImGuiCol_SeparatorActive] = c[ImGuiCol_ResizeGripActive] = c[ImGuiCol_DragDropTarget] = p.accent;
   c[ImGuiCol_TabSelectedOverline] = c[ImGuiCol_PlotHistogram] = p.accent;
   c[ImGuiCol_SeparatorHovered] = c[ImGuiCol_ResizeGripHovered] = alpha(p.accent, 0.6f);

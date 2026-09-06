@@ -210,10 +210,14 @@ void DetailWidget::editMsg() {
 }
 
 void DetailWidget::drawTabWidget() {
-  // the page fills the widget, the page switch floats over its bottom edge
+  // the page stops above the page switch, which floats in the strip left below it
+  const ImGuiStyle &style = ImGui::GetStyle();
+  const float pad = 3.0f, pill_height = ImGui::GetFrameHeight() + pad * 2;
   ImGui::BeginChild("tab_widget", ImVec2(0, 0), ImGuiChildFlags_None,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   const ImRect page_rect = ImGui::GetCurrentWindow()->Rect();
+  ImGui::BeginChild("page", ImVec2(0, std::max(page_rect.GetHeight() - pill_height - style.WindowPadding.y * 2, 1.0f)),
+                    ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   if (tab_widget_index_ == 0) {
     // binary_view_ keeps its size hint, signal_view_ takes the rest
     const float min_height = binary_view_->minimumSizeHint().y;
@@ -232,15 +236,14 @@ void DetailWidget::drawTabWidget() {
   } else {
     history_log_->draw();
   }
+  ImGui::EndChild();
 
-  // a pill with two segments, centered over the bottom of the page. It is a child submitted after the page so
-  // it draws and receives input above it.
+  // a pill with two segments, centered in the strip below the page
   const std::string labels[] = {std::string(icon::FILE_EARMARK_RULED) + " Messages", std::string(icon::STOPWATCH) + " Logs"};
-  const ImGuiStyle &style = ImGui::GetStyle();
-  const float pad = 3.0f, height = ImGui::GetFrameHeight();
+  const float height = ImGui::GetFrameHeight();
   float width = pad;
   for (const auto &label : labels) width += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2 + pad;
-  const ImVec2 size(width, height + pad * 2);
+  const ImVec2 size(width, pill_height);
   const ImVec2 min(std::round(page_rect.GetCenter().x - width * 0.5f), page_rect.Max.y - size.y - style.WindowPadding.y);
   ImGui::SetNextWindowPos(min);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
