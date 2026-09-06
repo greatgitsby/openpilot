@@ -168,10 +168,10 @@ void ChartsWidget::drawToolBar() {
   // the labels are captured by reference, they outlive the draw calls below
   std::vector<ToolbarItem> items;
   items.push_back({iconButtonWidth(), [this]() {
-    if (toolButton("new_plot_btn", icon::PLUS_SQUARE, "New Chart")) newChart();
+    if (toolButton("new_plot_btn", icon::PLUS_LG, "New Chart")) newChart();
   }});
   items.push_back({iconButtonWidth(), [this]() {
-    if (toolButton("new_tab_btn", icon::WINDOW_STACK, "New Tab")) newTab();
+    if (toolButton("new_tab_btn", icon::WINDOW_PLUS, "New Tab")) newTab();
   }});
   const std::string title_label = "Charts: " + std::to_string(charts_.size());
   items.push_back({ImGui::CalcTextSize(title_label.c_str()).x + LAYOUT_HORIZONTAL_SPACING, [&title_label]() {
@@ -244,10 +244,10 @@ void ChartsWidget::drawToolBar() {
   }
   items.push_back({iconButtonWidth(), [this]() {
     ImGui::BeginDisabled(charts_.empty());
-    if (toolButton("remove_all_btn", icon::X_SQUARE, "Remove all charts")) removeAll();
+    if (toolButton("remove_all_btn", icon::TRASH, "Remove all charts")) removeAll();
     ImGui::EndDisabled();
   }});
-  const char *dock_btn_icon = is_docked_ ? icon::ARROW_UP_RIGHT_SQUARE : icon::ARROW_DOWN_LEFT_SQUARE;
+  const char *dock_btn_icon = is_docked_ ? icon::BOX_ARROW_UP_RIGHT : icon::BOX_ARROW_IN_DOWN_LEFT;
   items.push_back({iconButtonWidth(), [this, dock_btn_icon]() {
     if (toolButton("dock_btn", dock_btn_icon, is_docked_ ? "Float the charts window" : "Dock the charts window")) toggleChartsDocking();
   }});

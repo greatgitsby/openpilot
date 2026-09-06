@@ -105,7 +105,7 @@ void DetailWidget::drawToolBar() {
   if (iconButton("edit_msg", icon::PENCIL, "Edit Message")) editMsg();
   ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
   ImGui::BeginDisabled(!action_remove_msg_enabled_);
-  if (iconButton("remove_msg", icon::X_LG)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
+  if (iconButton("remove_msg", icon::TRASH)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
   ImGui::EndDisabled();
   disabledItemTooltip("Remove Message");
 }

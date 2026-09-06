@@ -135,7 +135,7 @@ void LogsWidget::draw() {
   // toolbar: the export button is right aligned and never clipped, the value input shrinks first
   const float export_w = iconButtonWidth();
   if (!sigs_.empty()) {
-    const float clear_w = value_edit_.empty() ? 0.0f : ImGui::CalcTextSize(icon::X).x + style.FramePadding.x * 2;
+    const float clear_w = value_edit_.empty() ? 0.0f : iconButtonWidth();
     const float fixed = DISPLAY_TYPE_WIDTH + SIGNALS_WIDTH + COMPARE_WIDTH + clear_w + style.ItemSpacing.x * 4 + export_w;
     const float value_w = std::clamp(ImGui::GetContentRegionAvail().x - fixed, 30.0f, 120.0f);
 

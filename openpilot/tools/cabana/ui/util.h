@@ -70,7 +70,7 @@ int nonWhitespaceValidator(ImGuiInputTextCallbackData *data);
 // Buttons come in three standard shapes, all one frame height tall with the style's padding and rounding:
 //   ImGui::Button  a framed text button
 //   iconButton     a framed square icon button
-//   toolButton     a flat square icon button (or flat text button with `text`), transparent until hovered
+//   toolButton     iconButton with an optional text after the icon (tool bars)
 // Adjacent buttons of a group are ItemInnerSpacing apart, groups are ItemSpacing apart.
 bool iconButton(const char *id, const char *icon, const char *tooltip = nullptr);
 bool toolButton(const char *id, const char *icon, const char *tooltip = nullptr, const char *text = nullptr);

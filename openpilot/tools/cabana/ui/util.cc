@@ -65,7 +65,7 @@ bool clearableInput(const char *label, std::string *s, const char *hint, ImGuiIn
   if (!s->empty()) {
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::PushID(label);
-    if (toolButton("clear", icon::X)) {
+    if (toolButton("clear", icon::X_LG)) {
       s->clear();
       changed = true;
     }
@@ -161,14 +161,10 @@ bool iconButton(const char *id, const char *icon, const char *tooltip) {
 
 bool toolButton(const char *id, const char *icon, const char *tooltip, const char *text) {
   const bool has_text = text && *text;
-  // no frame, transparent until hovered; a single glyph (an icon) gets a square, a text label its own width
+  // a single glyph (an icon) gets a square, a text label its own width
   const bool square = !has_text && ImTextCountCharsFromUtf8(icon, nullptr) == 1;
-  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
   const bool clicked = square ? squareIconButton(id, icon)
                               : ImGui::Button((has_text ? std::string(icon) + " " + text + "###" + id : std::string(icon) + "###" + id).c_str());
-  ImGui::PopStyleVar();
-  ImGui::PopStyleColor();
   if (tooltip && *tooltip) ImGui::SetItemTooltip("%s", tooltip);
   return clicked;
 }
@@ -436,7 +432,7 @@ void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index) {
     // the extension button sits fully inside the toolbar: its right edge is the content region right edge
     const float extension_x = std::max(start_x, right_edge - extension_width);
     visible == 0 ? ImGui::SetCursorPosX(extension_x) : ImGui::SameLine(extension_x);
-    if (toolButton("toolbar_extension", icon::RAQUO, "More")) ImGui::OpenPopup("toolbar_extension_menu");
+    if (toolButton("toolbar_extension", icon::CHEVRON_DOUBLE_RIGHT, "More")) ImGui::OpenPopup("toolbar_extension_menu");
     // the popup opens inward: its right edge is aligned with the button so it stays inside the window
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y), ImGuiCond_Always, ImVec2(1, 0));
     if (ImGui::BeginPopup("toolbar_extension_menu")) {

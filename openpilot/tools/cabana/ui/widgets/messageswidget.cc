@@ -430,7 +430,7 @@ void MessagesWidget::drawHeader() {
   }
 
   // the filter editors under the header
-  const float clear_width = ImGui::CalcTextSize(icon::X).x + ImGui::GetStyle().FramePadding.x * 2;
+  const float clear_width = iconButtonWidth();
   ImGui::TableNextRow();
   for (int i = 0; i < MessageList::COLUMN_COUNT; i++) {
     if (!ImGui::TableSetColumnIndex(i)) continue;

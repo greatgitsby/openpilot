@@ -673,7 +673,7 @@ void SignalView::updateState(const std::set<MessageId> *msgs) {
 float SignalView::toolBarRightWidth(const std::string &range_label) {
   const ImGuiStyle &style = ImGui::GetStyle();
   return ImGui::CalcTextSize(range_label.c_str()).x + style.ItemSpacing.x + SPARKLINE_SLIDER_WIDTH + style.ItemSpacing.x +
-         ImGui::GetFont()->CalcTextSizeA(COLLAPSE_ICON_SIZE, FLT_MAX, 0.0f, icon::DASH_SQUARE).x + style.FramePadding.x * 2;
+         ImGui::GetFont()->CalcTextSizeA(COLLAPSE_ICON_SIZE, FLT_MAX, 0.0f, icon::ARROWS_COLLAPSE).x + style.FramePadding.x * 2;
 }
 
 // the width at which the tool bar stops squishing: the signal count and the filter box on the left, the
@@ -716,7 +716,7 @@ void SignalView::draw() {
   ImGui::SameLine();
   // auto-raise tool button with a 12x12 icon
   ImGui::PushFont(ImGui::GetFont(), COLLAPSE_ICON_SIZE);
-  const bool collapse = toolButton("collapse_all", icon::DASH_SQUARE, "Collapse All");
+  const bool collapse = toolButton("collapse_all", icon::ARROWS_COLLAPSE, "Collapse All");
   ImGui::PopFont();
   if (collapse) collapseAll();
 
@@ -892,7 +892,7 @@ void SignalView::drawIndexWidget(SignalModel::Item *item, const ImRect &rect) {
   if (checked) ImGui::PopStyleColor();
   ImGui::SetItemTooltip("%s", checked ? "Close Plot" : "Show Plot\nSHIFT click to add to previous opened plot");
   ImGui::SameLine(0.0f, spacing);
-  if (iconButton("remove", icon::X) && !editor_open_on_press_) {
+  if (iconButton("remove", icon::X_LG) && !editor_open_on_press_) {
     pending_action_ = [this, sig]() { UndoStack::instance()->push(new RemoveSigCommand(model_.msgId(), sig)); };
   }
   ImGui::SetItemTooltip("Remove signal");
@@ -917,12 +917,12 @@ bool ValueDescriptionDlg::draw() {
   if (!ImGui::BeginPopupModal(popup_id.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) return ImGui::IsPopupOpen(popup_id.c_str());
 
   bool closing = false;
-  if (iconButton("add", icon::PLUS, "Add")) {
+  if (iconButton("add", icon::PLUS_LG, "Add")) {
     table_.emplace_back("", "");
   }
   ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
   ImGui::BeginDisabled(current_row_ == -1);
-  if (iconButton("remove", icon::DASH, "Remove") && current_row_ < table_.size()) {
+  if (iconButton("remove", icon::DASH_LG, "Remove") && current_row_ < table_.size()) {
     table_.erase(table_.begin() + current_row_);
     current_row_ = -1;
   }
