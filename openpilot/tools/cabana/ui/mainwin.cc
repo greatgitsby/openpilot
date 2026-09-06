@@ -886,14 +886,15 @@ void MainWindow::drawMessagePanes() {
     }
     ImGui::End();
     // the views are top level windows: drawn only while their dockspace is, or imgui undocks them
-    if (open) drawMessageViews(pane.detail.get(), views_dock_id, build_height);
+    if (open) drawMessageViews(pane, views_dock_id, build_height);
     pane.first_draw = pane.focus = false;
   }
   // the close button of a pane closes its message
   message_panes_.erase(std::remove_if(message_panes_.begin(), message_panes_.end(), [](const MessagePane &p) { return !p.open; }), message_panes_.end());
 }
 
-void MainWindow::drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, float build_height) {
+void MainWindow::drawMessageViews(MessagePane &pane, ImGuiID dockspace_id, float build_height) {
+  DetailWidget *detail = pane.detail.get();
   const std::string suffix = "###" + detail->messageId().toString();
   const std::string bits = "Bits" + suffix + "_bits", signals = "Signals" + suffix + "_signals", logs = "Logs" + suffix + "_logs";
   const bool build = build_height > 0.0f;
@@ -906,9 +907,10 @@ void MainWindow::drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, fl
     ImGui::DockBuilderDockWindow(logs.c_str(), bottom);
     ImGui::DockBuilderDockWindow(signals.c_str(), bottom);
     ImGui::DockBuilderFinish(dockspace_id);
+    pane.select_signals = 3;  // the new tabs auto select as they appear: the signals stay focused until that settled
   }
   auto view = [&](const std::string &name, const std::string &whats_this, auto draw) -> bool {
-    if (build && name == signals) ImGui::SetNextWindowFocus();  // the signals tab in front of the logs
+    if (pane.select_signals > 0 && name == signals) ImGui::SetNextWindowFocus();
     setNextPaneClass();
     const bool open = ImGui::Begin(name.c_str(), nullptr, PANE_NO_SCROLL);
     if (open) {
@@ -922,6 +924,7 @@ void MainWindow::drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, fl
   view(bits, detail->bitsWhatsThis(), [&]() { detail->drawBits(); });
   detail->setLogsVisible(view(logs, {}, [&]() { detail->drawLogs(); }));
   view(signals, detail->signalsWhatsThis(), [&]() { detail->drawSignals(); });
+  if (pane.select_signals > 0) --pane.select_signals;
 }
 
 void MainWindow::drawVideoPane() {

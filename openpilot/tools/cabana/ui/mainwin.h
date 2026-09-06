@@ -90,7 +90,8 @@ private:
   void openMessagePane(const MessageId &id);  // opens or focuses
   void drawMessagePanes();
   // the Bits / Signals / Logs windows docked inside a message pane's own dockspace
-  void drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, float build_height);  // build_height > 0: build the layout
+  struct MessagePane;
+  void drawMessageViews(MessagePane &pane, ImGuiID dockspace_id, float build_height);  // build_height > 0: build the layout
   ImGuiID messageDockId() const;  // the node new message panes dock into
   void drawVideoPane();
   void drawChartsPane();
@@ -108,6 +109,7 @@ private:
     bool open = true;
     bool first_draw = true;  // docked and focused on its first draw
     bool focus = false;
+    int select_signals = 0;  // frames left to keep the signals tab selected after the inner layout was built
   };
   std::vector<MessagePane> message_panes_;
   MessageId active_msg_id_;  // the last focused message pane
