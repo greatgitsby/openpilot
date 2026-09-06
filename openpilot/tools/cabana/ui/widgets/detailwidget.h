@@ -10,6 +10,7 @@
 #include "tools/cabana/ui/chart/chartswidget.h"
 #include "tools/cabana/ui/widgets/historylog.h"
 #include "tools/cabana/ui/widgets/signalview.h"
+#include "tools/cabana/ui/widgets/tabbar.h"
 
 // a label that elides its text to the available width
 class ElidedLabel {
@@ -57,37 +58,41 @@ private:
   bool closed_ = false;
 };
 
-// the content of one message's pane: the header, and the Bits / Signals / Logs views MainWindow docks inside it
+// the content of one message's pane: the tool bar and the Bits / Signals / Logs views
 class DetailWidget {
 public:
+  enum View { BitsAndSignals = 0, Bits, Signals, Logs, kViewCount };
+
   DetailWidget(ChartsWidget *charts, const MessageId &message_id);
   const MessageId &messageId() const { return msg_id_; }
   std::string title() const;  // "id name" for the pane title
   void refresh();
-  void drawHeader();   // message name, edit and remove, warnings
-  void drawBits();     // heatmap mode and the binary view
-  float bitsHeight() const;  // the height drawBits() wants: the whole binary view and its tool bar
-  void drawSignals();  // the signal view
-  void drawLogs();     // the history log
-  void setLogsVisible(bool visible);  // hidden: the log stops reloading, shown: it catches up
-  std::string bitsWhatsThis() const;
-  std::string signalsWhatsThis() const;
+  void draw();  // toolbar, warning, the view tabs
+  void setVisible(bool visible);  // hidden: the log stops reloading, shown: it catches up
+  std::vector<std::pair<std::string, ImRect>> helpRects() const;  // HelpOverlay: (whatsThis, rect) of the visible views
 
 private:
   void drawToolBar();
   void drawHeatmapToolBar();
+  void drawViewTabs();
+  void drawBinaryView(float height);  // height 0: the rest of the pane
+  void drawSignalView(float height);  // height 0: the rest of the pane
   void editMsg();
   void updateState(const std::set<MessageId> *msgs = nullptr);
+  bool logsShown() const { return visible_ && view_ == View::Logs; }
 
   MessageId msg_id_;
   const char *warning_icon_ = nullptr;
   std::string warning_label_;
   ElidedLabel name_label_;
   bool warning_widget_visible_ = false;
-  bool logs_visible_ = false;
+  TabBar view_tabs_;
+  View view_ = View::BitsAndSignals;
+  bool visible_ = true;
   bool action_remove_msg_enabled_ = false;
   bool heatmap_live_ = true;
   std::string heatmap_all_text_ = "All";
+  ImRect binary_view_rect_, signal_view_rect_;  // child window rects of the last draw
   std::unique_ptr<LogsWidget> history_log_;
   std::unique_ptr<BinaryView> binary_view_;
   std::unique_ptr<SignalView> signal_view_;
