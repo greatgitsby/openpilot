@@ -875,7 +875,8 @@ void SignalView::drawIndexWidget(SignalModel::Item *item, const ImRect &rect) {
   // plot_btn + remove_btn, right aligned in the value column
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(3.0f, 2.0f));
   const ImVec2 btn_size(ImGui::CalcTextSize(icon::GRAPH_UP).x + 6.0f, ImGui::GetFrameHeight());
-  const ImVec2 size(btn_size.x * 2 + TOOLBAR_ITEM_SPACING, btn_size.y);
+  const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+  const ImVec2 size(btn_size.x * 2 + spacing, btn_size.y);
   ImGui::SetCursorScreenPos(ImVec2(rect.Max.x - size.x, rect.Min.y + (rect.GetHeight() - size.y) * 0.5f));
 
   const auto sig = item->sig;
@@ -887,7 +888,7 @@ void SignalView::drawIndexWidget(SignalModel::Item *item, const ImRect &rect) {
   }
   if (checked) ImGui::PopStyleColor();
   ImGui::SetItemTooltip("%s", checked ? "Close Plot" : "Show Plot\nSHIFT click to add to previous opened plot");
-  ImGui::SameLine(0.0f, TOOLBAR_ITEM_SPACING);
+  ImGui::SameLine(0.0f, spacing);
   if (ImGui::Button((std::string(icon::X) + "##remove").c_str(), btn_size) && !editor_open_on_press_) {
     pending_action_ = [this, sig]() { UndoStack::instance()->push(new RemoveSigCommand(model_.msgId(), sig)); };
   }

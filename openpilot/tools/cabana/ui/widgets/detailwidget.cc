@@ -216,8 +216,9 @@ void DetailWidget::drawTabWidget() {
   ImGui::BeginChild("tab_widget", ImVec2(0, 0), ImGuiChildFlags_None,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   const ImRect page_rect = ImGui::GetCurrentWindow()->Rect();
-  const float gap = style.ItemSpacing.y;  // the same above and below the page switch
-  ImGui::BeginChild("page", ImVec2(0, std::max(page_rect.GetHeight() - pill_height - gap * 2, 1.0f)),
+  // the gap above the switch matches the card padding below it, so it sits centered between page and card edge
+  const float gap = style.WindowPadding.y;
+  ImGui::BeginChild("page", ImVec2(0, std::max(page_rect.GetHeight() - pill_height - gap, 1.0f)),
                     ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   if (tab_widget_index_ == 0) {
     // binary_view_ keeps its size hint, signal_view_ takes the rest
@@ -245,7 +246,7 @@ void DetailWidget::drawTabWidget() {
   float width = pad;
   for (const auto &label : labels) width += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2 + pad;
   const ImVec2 size(width, pill_height);
-  const ImVec2 min(std::round(page_rect.GetCenter().x - width * 0.5f), page_rect.Max.y - size.y - gap);
+  const ImVec2 min(std::round(page_rect.GetCenter().x - width * 0.5f), page_rect.Max.y - size.y);
   ImGui::SetNextWindowPos(min);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, size.y * 0.5f);
