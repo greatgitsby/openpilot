@@ -81,16 +81,15 @@ private:
   void drawManageDBCsMenu();
   void drawRecentFilesMenu();
   void drawDockspace();
-  DetailWidget *ensureDetailWidget();
   // one dock window per pane; the close button of a docked pane hides it, closing a pane that floated out
   // into its own os window brings it back into the default layout
   bool beginPane(inistate::Pane pane, const std::string &name, ImGuiWindowFlags flags = 0);
   void endPane(inistate::Pane pane);
   void drawMessagesPane();
-  void drawMessagePane();
-  void drawPinnedMessagePanes();  // "Open in New Pane" copies, pinned to their message
-  void drawDetailWidget(DetailWidget *detail);
-  void openMessageInNewPane(const MessageId &id);
+  // every opened message is its own dock window, tabbed into the center by default
+  void openMessagePane(const MessageId &id);  // opens or focuses
+  void drawMessagePanes();
+  ImGuiID messageDockId() const;  // the node new message panes dock into
   void drawVideoPane();
   void drawChartsPane();
   void drawStatusBar();
@@ -102,16 +101,14 @@ private:
   std::unique_ptr<AbstractStream> stream_;  // `can` points here, or at dummy_ when no stream is open
   DummyStream dummy_;
   std::unique_ptr<MessagesWidget> messages_widget_;
-  std::unique_ptr<DetailWidget> detail_widget_;  // follows the selection in the messages pane
-  struct PinnedPane {
+  struct MessagePane {
     std::unique_ptr<DetailWidget> detail;
-    std::string id;  // the "###" part of the window name
     bool open = true;
-    bool docked = false;  // docked next to the message pane on its first draw
-    Connection connection;
+    bool first_draw = true;  // docked and focused on its first draw
+    bool focus = false;
   };
-  std::vector<PinnedPane> pinned_panes_;
-  int next_pinned_pane_id_ = 0;
+  std::vector<MessagePane> message_panes_;
+  MessageId active_msg_id_;  // the last focused message pane
   std::unique_ptr<VideoWidget> video_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;

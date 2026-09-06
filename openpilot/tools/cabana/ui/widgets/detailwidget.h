@@ -10,7 +10,6 @@
 #include "tools/cabana/ui/chart/chartswidget.h"
 #include "tools/cabana/ui/widgets/historylog.h"
 #include "tools/cabana/ui/widgets/signalview.h"
-#include "tools/cabana/ui/widgets/tabbar.h"
 
 // a label that elides its text to the available width
 class ElidedLabel {
@@ -58,23 +57,18 @@ private:
   bool closed_ = false;
 };
 
-// the content of a Message pane: the message id tabs, the tool bar and the Bits / Signals / Logs views
+// the content of one message's pane: the tool bar and the Bits / Signals / Logs views
 class DetailWidget {
 public:
   enum View { BitsAndSignals = 0, Bits, Signals, Logs, kViewCount };
 
-  DetailWidget(ChartsWidget *charts);
-  void setMessage(const MessageId &message_id);
+  DetailWidget(ChartsWidget *charts, const MessageId &message_id);
   const MessageId &messageId() const { return msg_id_; }
   std::string title() const;  // "id name" for the pane title
   void refresh();
-  void draw();  // tab bar of message ids, toolbar, warning, the view tabs
+  void draw();  // toolbar, warning, the view tabs
   void setVisible(bool visible);  // hidden: the log stops reloading, shown: it catches up
-  std::pair<std::string, std::vector<std::string>> serializeMessageIds() const;
-  void restoreTabs(const std::string &active_msg_id, const std::vector<std::string> &msg_ids);
   std::vector<std::pair<std::string, ImRect>> helpRects() const;  // HelpOverlay: (whatsThis, rect) of the visible views
-
-  Observable<const MessageId &> openInNewPane;
 
 private:
   void drawToolBar();
@@ -82,8 +76,6 @@ private:
   void drawViewTabs();
   void drawBinaryView(float height);  // height 0: the rest of the pane
   void drawSignalView();
-  int findOrAddTab(const MessageId& message_id);
-  void showTabBarContextMenu(int index);
   void editMsg();
   void updateState(const std::set<MessageId> *msgs = nullptr);
   bool logsShown() const { return visible_ && view_ == View::Logs; }
@@ -93,7 +85,6 @@ private:
   std::string warning_label_;
   ElidedLabel name_label_;
   bool warning_widget_visible_ = false;
-  TabBar tabbar_;
   View view_ = View::BitsAndSignals;
   bool visible_ = true;
   bool action_remove_msg_enabled_ = false;
@@ -108,5 +99,5 @@ private:
   Connections connections_;
 };
 
-// the Message pane until a message is selected
+// the center pane until a message is opened
 void drawWelcomeWidget();

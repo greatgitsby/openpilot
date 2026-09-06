@@ -31,7 +31,8 @@
 namespace {
 // dock window ids (the visible titles change, the part after ### is the identity)
 constexpr const char *VIDEO_PANEL = "###VideoPanel";
-constexpr const char *MESSAGE_PANEL = "###MessagePanel";
+constexpr const char *WELCOME_PANEL = "Cabana###WelcomePanel";  // the center pane until a message is opened
+constexpr const char *MESSAGE_PANEL_ID = "###MessagePane_";  // + the message id
 constexpr const char *CHARTS_PANEL = "Charts###ChartsPanel";
 }  // namespace
 
@@ -152,7 +153,6 @@ void MainWindow::drawMenuBar() {
     if (ImGui::MenuItem("Full Screen", "Ctrl+F11")) toggleFullScreen();
     ImGui::Separator();
     ImGui::MenuItem(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &pane_visible_[Pane::PaneMessages]);
-    ImGui::MenuItem("Message", nullptr, &pane_visible_[Pane::PaneMessage]);
     ImGui::MenuItem(video_dock_title_.empty() ? "Video" : video_dock_title_.c_str(), nullptr, &pane_visible_[Pane::PaneVideo]);
     ImGui::MenuItem("Charts", nullptr, &pane_visible_[Pane::PaneCharts]);
     ImGui::Separator();
@@ -179,7 +179,7 @@ void MainWindow::drawMenuBar() {
 void MainWindow::createDockWidgets() {
   widget_connections_.clear();
   messages_widget_ = std::make_unique<MessagesWidget>();
-  widget_connections_.push_back(messages_widget_->msgSelectionChanged.connect([this](const MessageId &id) { ensureDetailWidget()->setMessage(id); }));
+  widget_connections_.push_back(messages_widget_->msgSelectionChanged.connect([this](const MessageId &id) { openMessagePane(id); }));
 
   charts_widget_ = std::make_unique<ChartsWidget>();
   video_widget_ = std::make_unique<VideoWidget>();
@@ -337,8 +337,7 @@ void MainWindow::releaseStream() {
   widget_connections_.clear();
   charts_widget_.reset();
   video_widget_.reset();
-  pinned_panes_.clear();
-  detail_widget_.reset();
+  message_panes_.clear();
   messages_widget_.reset();
   stream_connections_.clear();
   stream_.reset();
@@ -570,21 +569,14 @@ void MainWindow::updateDownloadProgress(uint64_t cur, uint64_t total, bool succe
   }
 }
 
-DetailWidget *MainWindow::ensureDetailWidget() {
-  if (!detail_widget_) {
-    detail_widget_ = std::make_unique<DetailWidget>(charts_widget_.get());
-    widget_connections_.push_back(detail_widget_->openInNewPane.connect([this](const MessageId &id) { openMessageInNewPane(id); }));
+void MainWindow::openMessagePane(const MessageId &id) {
+  for (auto &pane : message_panes_) {
+    if (pane.detail->messageId() == id) {
+      pane.focus = true;
+      return;
+    }
   }
-  return detail_widget_.get();
-}
-
-void MainWindow::openMessageInNewPane(const MessageId &id) {
-  PinnedPane pane;
-  pane.detail = std::make_unique<DetailWidget>(charts_widget_.get());
-  pane.detail->setMessage(id);
-  pane.id = "###PinnedMessagePane" + std::to_string(next_pinned_pane_id_++);
-  pane.connection = pane.detail->openInNewPane.connect([this](const MessageId &msg_id) { openMessageInNewPane(msg_id); });
-  pinned_panes_.push_back(std::move(pane));
+  message_panes_.push_back({std::make_unique<DetailWidget>(charts_widget_.get(), id)});
 }
 
 void MainWindow::close() {
@@ -663,11 +655,8 @@ void MainWindow::saveSessionState() {
   const auto files = dbc()->nonEmptyDBCFiles();
   if (!files.empty()) settings.recent_dbc_file = files.front()->filename;
 
-  if (detail_widget_) {
-    auto [active_id, ids] = detail_widget_->serializeMessageIds();
-    settings.active_msg_id = active_id;
-    settings.selected_msg_ids = ids;
-  }
+  for (const auto &pane : message_panes_) settings.selected_msg_ids.push_back(pane.detail->messageId().toString());
+  settings.active_msg_id = active_msg_id_.toString();
   if (charts_widget_) {
     settings.active_charts = charts_widget_->serializeChartIds();
   }
@@ -678,9 +667,12 @@ void MainWindow::restoreSessionState() {
 
   if (dbc()->nonEmptyDBCFiles().front()->filename != settings.recent_dbc_file) return;
 
-  if (!settings.selected_msg_ids.empty()) {
-    ensureDetailWidget()->restoreTabs(settings.active_msg_id, settings.selected_msg_ids);
+  for (const auto &str_id : settings.selected_msg_ids) {
+    MessageId id = MessageId::fromString(str_id);
+    if (dbc()->msg(id) != nullptr) openMessagePane(id);
   }
+  MessageId active_id = MessageId::fromString(settings.active_msg_id);
+  if (dbc()->msg(active_id) != nullptr) openMessagePane(active_id);
 
   if (charts_widget_ != nullptr && !settings.active_charts.empty()) {
     charts_widget_->restoreChartsFromIds(settings.active_charts);
@@ -782,7 +774,7 @@ void MainWindow::drawDockspace() {
   // otherwise the host window is a few pixels taller than the viewport and scrolls
   const float status_height = full_screen_ ? 0.0f : ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
-  const ImGuiID dock_id = ImGui::GetID("cabana_dockspace_message_pane");  // a new id: the old three panel layout is not reused
+  const ImGuiID dock_id = ImGui::GetID("cabana_dockspace_message_windows");  // a new id: the old three panel layout is not reused
   if (reset_layout_ || ImGui::DockBuilderGetNode(dock_id) == nullptr) {
     // messages left, the message in the middle, video over charts right
     ImGui::DockBuilderRemoveNode(dock_id);
@@ -793,7 +785,7 @@ void MainWindow::drawDockspace() {
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.4f, &right, &center);
     ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.45f, &video, &right);
     ImGui::DockBuilderDockWindow(MESSAGES_PANEL_ID, left);
-    ImGui::DockBuilderDockWindow(MESSAGE_PANEL, center);
+    ImGui::DockBuilderDockWindow(WELCOME_PANEL, center);
     ImGui::DockBuilderDockWindow(VIDEO_PANEL, video);
     ImGui::DockBuilderDockWindow(CHARTS_PANEL, right);
     ImGui::DockBuilderFinish(dock_id);
@@ -841,39 +833,50 @@ void MainWindow::drawMessagesPane() {
   endPane(Pane::PaneMessages);
 }
 
-void MainWindow::drawDetailWidget(DetailWidget *detail) {
-  if (help_overlay_.visible()) {
-    for (const auto &[text, rect] : detail->helpRects()) help_overlay_.add(text, rect);
-  }
-  detail->draw();
-}
-
-void MainWindow::drawMessagePane() {
-  const std::string name = (detail_widget_ ? detail_widget_->title() : "Message") + MESSAGE_PANEL;
-  const bool open = beginPane(Pane::PaneMessage, name, PANE_NO_SCROLL);
-  if (detail_widget_) detail_widget_->setVisible(open);
-  if (open) {
-    detail_widget_ ? drawDetailWidget(detail_widget_.get()) : drawWelcomeWidget();
-  }
-  endPane(Pane::PaneMessage);
-}
-
-void MainWindow::drawPinnedMessagePanes() {
-  const ImGuiWindow *message_window = ImGui::FindWindowByName(MESSAGE_PANEL);
-  for (auto &pane : pinned_panes_) {
-    if (!pane.docked) {
-      // a new pane opens as a tab next to the message pane (or floats when that one is floating/hidden)
-      if (message_window && message_window->DockId) ImGui::SetNextWindowDockID(message_window->DockId, ImGuiCond_Once);
-      pane.docked = true;
+// the node of the last focused message pane, else the welcome pane's node (from the ini when it isn't drawn)
+ImGuiID MainWindow::messageDockId() const {
+  for (const auto &pane : message_panes_) {
+    if (pane.detail->messageId() == active_msg_id_ && !pane.first_draw) {
+      if (const ImGuiWindow *w = ImGui::FindWindowByName((pane.detail->title() + MESSAGE_PANEL_ID + active_msg_id_.toString()).c_str())) {
+        if (w->DockId) return w->DockId;
+      }
     }
-    setNextPaneClass();
-    const bool open = ImGui::Begin((pane.detail->title() + pane.id).c_str(), &pane.open, PANE_NO_SCROLL);
-    pane.detail->setVisible(open);
-    if (open) drawDetailWidget(pane.detail.get());
-    ImGui::End();
   }
-  // the close button removes the pane
-  pinned_panes_.erase(std::remove_if(pinned_panes_.begin(), pinned_panes_.end(), [](const PinnedPane &p) { return !p.open; }), pinned_panes_.end());
+  if (const ImGuiWindow *w = ImGui::FindWindowByName(WELCOME_PANEL)) return w->DockId;
+  if (const ImGuiWindowSettings *s = ImGui::FindWindowSettingsByID(ImHashStr(WELCOME_PANEL))) return s->DockId;
+  return 0;
+}
+
+void MainWindow::drawMessagePanes() {
+  if (message_panes_.empty()) {
+    setNextPaneClass();
+    if (ImGui::Begin(WELCOME_PANEL, nullptr, PANE_NO_SCROLL)) drawWelcomeWidget();
+    ImGui::End();
+    return;
+  }
+  const ImGuiID dock_id = messageDockId();
+  for (auto &pane : message_panes_) {
+    const MessageId id = pane.detail->messageId();
+    if (pane.first_draw) {
+      if (dock_id) ImGui::SetNextWindowDockID(dock_id, ImGuiCond_Once);
+      pane.focus = true;
+    }
+    if (pane.focus) ImGui::SetNextWindowFocus();
+    setNextPaneClass();
+    const bool open = ImGui::Begin((pane.detail->title() + MESSAGE_PANEL_ID + id.toString()).c_str(), &pane.open, PANE_NO_SCROLL);
+    pane.detail->setVisible(open);
+    if (open) {
+      if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) active_msg_id_ = id;
+      if (help_overlay_.visible()) {
+        for (const auto &[text, rect] : pane.detail->helpRects()) help_overlay_.add(text, rect);
+      }
+      pane.detail->draw();
+    }
+    ImGui::End();
+    pane.first_draw = pane.focus = false;
+  }
+  // the close button of a pane closes its message
+  message_panes_.erase(std::remove_if(message_panes_.begin(), message_panes_.end(), [](const MessagePane &p) { return !p.open; }), message_panes_.end());
 }
 
 void MainWindow::drawVideoPane() {
@@ -911,12 +914,7 @@ void MainWindow::draw() {
   if (!full_screen_) drawMenuBar();
   drawDockspace();
 
-  if (pane_visible_[Pane::PaneMessage]) {
-    drawMessagePane();
-  } else if (detail_widget_) {
-    detail_widget_->setVisible(false);
-  }
-  if (charts_widget_) drawPinnedMessagePanes();
+  drawMessagePanes();
   if (messages_widget_ && pane_visible_[Pane::PaneMessages]) drawMessagesPane();
   if (video_widget_ && !pane_visible_[Pane::PaneVideo]) video_widget_->setVisible(false);
   if (video_widget_ && pane_visible_[Pane::PaneVideo]) drawVideoPane();

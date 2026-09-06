@@ -39,15 +39,7 @@ void ElidedLabel::draw(float width) {
   }
 }
 
-DetailWidget::DetailWidget(ChartsWidget *charts) : charts_(charts) {
-  tabbar_.setUsesScrollButtons(true);
-  tabbar_.setAutoHide(true);
-  tabbar_.setTabsClosable(true);
-  connections_.push_back(tabbar_.currentChanged.connect([this](int index) {
-    if (index >= 0) setMessage(MessageId::fromString(tabbar_.tabText(index)));
-  }));
-  connections_.push_back(tabbar_.tabCloseRequested.connect([this](int index) { tabbar_.removeTab(index); }));
-  connections_.push_back(tabbar_.tabContextMenu.connect([this](int index) { showTabBarContextMenu(index); }));
+DetailWidget::DetailWidget(ChartsWidget *charts, const MessageId &message_id) : msg_id_(message_id), charts_(charts) {
   binary_view_ = std::make_unique<BinaryView>();
   signal_view_ = std::make_unique<SignalView>(charts);
 
@@ -70,6 +62,11 @@ DetailWidget::DetailWidget(ChartsWidget *charts) : charts_(charts) {
     const bool live = !range;
     if (std::exchange(heatmap_live_, live) != live) binary_view_->setHeatmapLiveMode(live);
   }));
+
+  signal_view_->setMessage(msg_id_);
+  binary_view_->setMessage(msg_id_);
+  history_log_->setMessage(msg_id_);
+  refresh();
 }
 
 void DetailWidget::drawToolBar() {
@@ -112,60 +109,6 @@ void DetailWidget::drawHeatmapToolBar() {
     heatmap_live_ = false;
     binary_view_->setHeatmapLiveMode(false);
   }
-}
-
-void DetailWidget::showTabBarContextMenu(int index) {
-  if (ImGui::BeginPopupContextItem()) {
-    if (ImGui::MenuItem("Open in New Pane")) openInNewPane(MessageId::fromString(tabbar_.tabText(index)));
-    if (ImGui::MenuItem("Close Other Tabs")) {
-      tabbar_.moveTab(index, 0);
-      tabbar_.setCurrentIndex(0);
-      while (tabbar_.count() > 1) tabbar_.removeTab(1);
-    }
-    ImGui::EndPopup();
-  }
-}
-
-int DetailWidget::findOrAddTab(const MessageId &message_id) {
-  const std::string text = message_id.toString();
-  int index = tabbar_.count() - 1;
-  for (/**/; index >= 0; --index) {
-    if (tabbar_.tabText(index) == text) break;
-  }
-  if (index == -1) {
-    index = tabbar_.addTab(text);
-    tabbar_.setTabToolTip(index, msgName(message_id));
-  }
-  return index;
-}
-
-void DetailWidget::setMessage(const MessageId &message_id) {
-  if (std::exchange(msg_id_, message_id) == message_id) return;
-
-  tabbar_.setCurrentIndex(findOrAddTab(message_id));
-
-  signal_view_->setMessage(msg_id_);
-  binary_view_->setMessage(msg_id_);
-  history_log_->setMessage(msg_id_);
-  refresh();
-}
-
-std::pair<std::string, std::vector<std::string>> DetailWidget::serializeMessageIds() const {
-  std::vector<std::string> msgs;
-  for (int i = 0; i < tabbar_.count(); ++i) msgs.push_back(tabbar_.tabText(i));
-  return std::make_pair(msg_id_.toString(), msgs);
-}
-
-void DetailWidget::restoreTabs(const std::string &active_msg_id, const std::vector<std::string>& msg_ids) {
-  for (const auto& str_id : msg_ids) {
-    MessageId id = MessageId::fromString(str_id);
-    if (dbc()->msg(id) != nullptr)
-      findOrAddTab(id);
-  }
-
-  auto active_id = MessageId::fromString(active_msg_id);
-  if (dbc()->msg(active_id) != nullptr)
-    setMessage(active_id);
 }
 
 void DetailWidget::refresh() {
@@ -280,7 +223,6 @@ void DetailWidget::drawViewTabs() {
 }
 
 void DetailWidget::draw() {
-  tabbar_.draw();
   drawToolBar();
 
   if (warning_widget_visible_) {
