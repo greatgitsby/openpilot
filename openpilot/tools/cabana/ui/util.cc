@@ -62,7 +62,7 @@ bool inputTextMultiline(const char *label, std::string *s, const ImVec2 &size, I
 bool clearableInput(const char *label, std::string *s, const char *hint, ImGuiInputTextCallback validator) {
   bool changed = validatedInput(label, s, validator, hint);
   if (!s->empty()) {
-    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::PushID(label);
     if (toolButton("clear", icon::X)) {
       s->clear();
