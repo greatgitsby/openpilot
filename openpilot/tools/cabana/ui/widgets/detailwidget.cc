@@ -169,6 +169,10 @@ void DetailWidget::drawBits() {
   ImGui::EndChild();
 }
 
+float DetailWidget::bitsHeight() const {
+  return ImGui::GetFrameHeightWithSpacing() + binary_view_->minimumSizeHint().y + ImGui::GetStyle().WindowPadding.y * 2.0f;
+}
+
 void DetailWidget::drawSignals() {
   signal_view_->draw();
 }

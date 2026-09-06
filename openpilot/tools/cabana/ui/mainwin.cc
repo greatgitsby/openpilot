@@ -872,13 +872,13 @@ void MainWindow::drawMessagePanes() {
     setNextPaneClass();
     const bool open = ImGui::Begin((pane.detail->title() + MESSAGE_PANEL_ID + id.toString()).c_str(), &pane.open, PANE_NO_SCROLL);
     ImGuiID views_dock_id = 0;
-    bool build = false;
+    float build_height = 0.0f;
     if (open) {
       if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) active_msg_id_ = id;
       pane.detail->drawHeader();
       // the views dock inside the pane: bits over signals, logs tabbed behind the signals
       views_dock_id = ImGui::GetID("views");
-      build = ImGui::DockBuilderGetNode(views_dock_id) == nullptr;
+      if (ImGui::DockBuilderGetNode(views_dock_id) == nullptr) build_height = std::max(ImGui::GetContentRegionAvail().y, 1.0f);
       // the views resize and rearrange inside the pane, they never leave it
       ImGui::DockSpace(views_dock_id, ImVec2(0, 0), ImGuiDockNodeFlags_NoUndocking | ImGuiDockNodeFlags_NoWindowMenuButton);
     } else {
@@ -886,25 +886,29 @@ void MainWindow::drawMessagePanes() {
     }
     ImGui::End();
     // the views are top level windows: drawn only while their dockspace is, or imgui undocks them
-    if (open) drawMessageViews(pane.detail.get(), views_dock_id, build);
+    if (open) drawMessageViews(pane.detail.get(), views_dock_id, build_height);
     pane.first_draw = pane.focus = false;
   }
   // the close button of a pane closes its message
   message_panes_.erase(std::remove_if(message_panes_.begin(), message_panes_.end(), [](const MessagePane &p) { return !p.open; }), message_panes_.end());
 }
 
-void MainWindow::drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, bool build) {
+void MainWindow::drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, float build_height) {
   const std::string suffix = "###" + detail->messageId().toString();
   const std::string bits = "Bits" + suffix + "_bits", signals = "Signals" + suffix + "_signals", logs = "Logs" + suffix + "_logs";
+  const bool build = build_height > 0.0f;
   if (build) {
+    // the bits get the height they want (plus their tab bar), the signals the rest
+    const float ratio = std::clamp((detail->bitsHeight() + ImGui::GetFrameHeight()) / build_height, 0.1f, 0.9f);
     ImGuiID top = 0, bottom = dockspace_id;
-    ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Up, 0.4f, &top, &bottom);
+    ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Up, ratio, &top, &bottom);
     ImGui::DockBuilderDockWindow(bits.c_str(), top);
-    ImGui::DockBuilderDockWindow(signals.c_str(), bottom);
     ImGui::DockBuilderDockWindow(logs.c_str(), bottom);
+    ImGui::DockBuilderDockWindow(signals.c_str(), bottom);
     ImGui::DockBuilderFinish(dockspace_id);
   }
   auto view = [&](const std::string &name, const std::string &whats_this, auto draw) -> bool {
+    if (build && name == signals) ImGui::SetNextWindowFocus();  // the signals tab in front of the logs
     setNextPaneClass();
     const bool open = ImGui::Begin(name.c_str(), nullptr, PANE_NO_SCROLL);
     if (open) {

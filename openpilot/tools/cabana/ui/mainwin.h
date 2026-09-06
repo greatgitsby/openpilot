@@ -90,7 +90,7 @@ private:
   void openMessagePane(const MessageId &id);  // opens or focuses
   void drawMessagePanes();
   // the Bits / Signals / Logs windows docked inside a message pane's own dockspace
-  void drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, bool build);
+  void drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, float build_height);  // build_height > 0: build the layout
   ImGuiID messageDockId() const;  // the node new message panes dock into
   void drawVideoPane();
   void drawChartsPane();

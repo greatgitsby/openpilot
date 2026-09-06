@@ -66,6 +66,7 @@ public:
   void refresh();
   void drawHeader();   // message name, edit and remove, warnings
   void drawBits();     // heatmap mode and the binary view
+  float bitsHeight() const;  // the height drawBits() wants: the whole binary view and its tool bar
   void drawSignals();  // the signal view
   void drawLogs();     // the history log
   void setLogsVisible(bool visible);  // hidden: the log stops reloading, shown: it catches up
