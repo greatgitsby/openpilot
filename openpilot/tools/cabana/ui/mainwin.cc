@@ -813,12 +813,12 @@ void setNextPaneClass() {
 }
 
 // the views inside scroll, the panes themselves never do
-constexpr ImGuiWindowFlags PANE_NO_SCROLL = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+constexpr ImGuiWindowFlags PANE_NO_SCROLL = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse;
 }  // namespace
 
 bool MainWindow::beginPane(Pane pane, const std::string &name, ImGuiWindowFlags flags) {
   setNextPaneClass();
-  return ImGui::Begin(name.c_str(), &pane_visible_[pane], flags);
+  return ImGui::Begin(name.c_str(), &pane_visible_[pane], flags | ImGuiWindowFlags_NoCollapse);
 }
 
 void MainWindow::endPane(Pane pane) {
