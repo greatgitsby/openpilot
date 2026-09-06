@@ -31,9 +31,7 @@
 namespace {
 // dock window ids (the visible titles change, the part after ### is the identity)
 constexpr const char *VIDEO_PANEL = "###VideoPanel";
-constexpr const char *BITS_PANEL = "Bits###BitsPanel";
-constexpr const char *SIGNALS_PANEL = "Signals###SignalsPanel";
-constexpr const char *LOGS_PANEL = "Logs###LogsPanel";
+constexpr const char *MESSAGE_PANEL = "###MessagePanel";
 constexpr const char *CHARTS_PANEL = "Charts###ChartsPanel";
 }  // namespace
 
@@ -154,9 +152,7 @@ void MainWindow::drawMenuBar() {
     if (ImGui::MenuItem("Full Screen", "Ctrl+F11")) toggleFullScreen();
     ImGui::Separator();
     ImGui::MenuItem(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &pane_visible_[Pane::PaneMessages]);
-    ImGui::MenuItem("Bits", nullptr, &pane_visible_[Pane::PaneBits]);
-    ImGui::MenuItem("Signals", nullptr, &pane_visible_[Pane::PaneSignals]);
-    ImGui::MenuItem("Logs", nullptr, &pane_visible_[Pane::PaneLogs]);
+    ImGui::MenuItem("Message", nullptr, &pane_visible_[Pane::PaneMessage]);
     ImGui::MenuItem(video_dock_title_.empty() ? "Video" : video_dock_title_.c_str(), nullptr, &pane_visible_[Pane::PaneVideo]);
     ImGui::MenuItem("Charts", nullptr, &pane_visible_[Pane::PaneCharts]);
     ImGui::Separator();
@@ -341,6 +337,7 @@ void MainWindow::releaseStream() {
   widget_connections_.clear();
   charts_widget_.reset();
   video_widget_.reset();
+  pinned_panes_.clear();
   detail_widget_.reset();
   messages_widget_.reset();
   stream_connections_.clear();
@@ -574,8 +571,20 @@ void MainWindow::updateDownloadProgress(uint64_t cur, uint64_t total, bool succe
 }
 
 DetailWidget *MainWindow::ensureDetailWidget() {
-  if (!detail_widget_) detail_widget_ = std::make_unique<DetailWidget>(charts_widget_.get());
+  if (!detail_widget_) {
+    detail_widget_ = std::make_unique<DetailWidget>(charts_widget_.get());
+    widget_connections_.push_back(detail_widget_->openInNewPane.connect([this](const MessageId &id) { openMessageInNewPane(id); }));
+  }
   return detail_widget_.get();
+}
+
+void MainWindow::openMessageInNewPane(const MessageId &id) {
+  PinnedPane pane;
+  pane.detail = std::make_unique<DetailWidget>(charts_widget_.get());
+  pane.detail->setMessage(id);
+  pane.id = "###PinnedMessagePane" + std::to_string(next_pinned_pane_id_++);
+  pane.connection = pane.detail->openInNewPane.connect([this](const MessageId &msg_id) { openMessageInNewPane(msg_id); });
+  pinned_panes_.push_back(std::move(pane));
 }
 
 void MainWindow::close() {
@@ -773,21 +782,18 @@ void MainWindow::drawDockspace() {
   // otherwise the host window is a few pixels taller than the viewport and scrolls
   const float status_height = full_screen_ ? 0.0f : ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
-  const ImGuiID dock_id = ImGui::GetID("cabana_dockspace_panes");  // a new id: the old three panel layout is not reused
+  const ImGuiID dock_id = ImGui::GetID("cabana_dockspace_message_pane");  // a new id: the old three panel layout is not reused
   if (reset_layout_ || ImGui::DockBuilderGetNode(dock_id) == nullptr) {
-    // messages left; bits over signals (logs tabbed behind them) in the middle; video over charts right
+    // messages left, the message in the middle, video over charts right
     ImGui::DockBuilderRemoveNode(dock_id);
     ImGui::DockBuilderAddNode(dock_id, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dock_id, dock_size);
-    ImGuiID center = dock_id, left = 0, right = 0, bits = 0, video = 0;
+    ImGuiID center = dock_id, left = 0, right = 0, video = 0;
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.28f, &left, &center);
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.4f, &right, &center);
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Up, 0.35f, &bits, &center);
     ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.45f, &video, &right);
     ImGui::DockBuilderDockWindow(MESSAGES_PANEL_ID, left);
-    ImGui::DockBuilderDockWindow(BITS_PANEL, bits);
-    ImGui::DockBuilderDockWindow(SIGNALS_PANEL, center);
-    ImGui::DockBuilderDockWindow(LOGS_PANEL, center);
+    ImGui::DockBuilderDockWindow(MESSAGE_PANEL, center);
     ImGui::DockBuilderDockWindow(VIDEO_PANEL, video);
     ImGui::DockBuilderDockWindow(CHARTS_PANEL, right);
     ImGui::DockBuilderFinish(dock_id);
@@ -811,6 +817,9 @@ void setNextPaneClass() {
   window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
   ImGui::SetNextWindowClass(&window_class);
 }
+
+// the views inside scroll, the panes themselves never do
+constexpr ImGuiWindowFlags PANE_NO_SCROLL = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 }  // namespace
 
 bool MainWindow::beginPane(Pane pane, const std::string &name, ImGuiWindowFlags flags) {
@@ -832,44 +841,39 @@ void MainWindow::drawMessagesPane() {
   endPane(Pane::PaneMessages);
 }
 
-// the views inside scroll, the panes themselves never do
-constexpr ImGuiWindowFlags PANE_NO_SCROLL = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-
-void MainWindow::drawBitsPane() {
-  if (beginPane(Pane::PaneBits, BITS_PANEL, PANE_NO_SCROLL)) {
-    if (detail_widget_) {
-      help_overlay_.add(detail_widget_->bitsWhatsThis(), ImGui::GetCurrentWindow()->Rect());
-      detail_widget_->drawBits();
-    } else {
-      drawWelcomeWidget();
-    }
+void MainWindow::drawDetailWidget(DetailWidget *detail) {
+  if (help_overlay_.visible()) {
+    for (const auto &[text, rect] : detail->helpRects()) help_overlay_.add(text, rect);
   }
-  endPane(Pane::PaneBits);
+  detail->draw();
 }
 
-void MainWindow::drawSignalsPane() {
-  if (beginPane(Pane::PaneSignals, SIGNALS_PANEL, PANE_NO_SCROLL)) {
-    if (detail_widget_) {
-      help_overlay_.add(detail_widget_->signalsWhatsThis(), ImGui::GetCurrentWindow()->Rect());
-      detail_widget_->drawSignals();
-    } else {
-      ImGui::TextDisabled("Select a message to view its signals");
-    }
-  }
-  endPane(Pane::PaneSignals);
-}
-
-void MainWindow::drawLogsPane() {
-  const bool open = beginPane(Pane::PaneLogs, LOGS_PANEL, PANE_NO_SCROLL);
-  if (detail_widget_) detail_widget_->setLogsVisible(open);  // collapsed or tabbed behind another pane: no reloads
+void MainWindow::drawMessagePane() {
+  const std::string name = (detail_widget_ ? detail_widget_->title() : "Message") + MESSAGE_PANEL;
+  const bool open = beginPane(Pane::PaneMessage, name, PANE_NO_SCROLL);
+  if (detail_widget_) detail_widget_->setVisible(open);
   if (open) {
-    if (detail_widget_) {
-      detail_widget_->drawLogs();
-    } else {
-      ImGui::TextDisabled("Select a message to view its log");
-    }
+    detail_widget_ ? drawDetailWidget(detail_widget_.get()) : drawWelcomeWidget();
   }
-  endPane(Pane::PaneLogs);
+  endPane(Pane::PaneMessage);
+}
+
+void MainWindow::drawPinnedMessagePanes() {
+  const ImGuiWindow *message_window = ImGui::FindWindowByName(MESSAGE_PANEL);
+  for (auto &pane : pinned_panes_) {
+    if (!pane.docked) {
+      // a new pane opens as a tab next to the message pane (or floats when that one is floating/hidden)
+      if (message_window && message_window->DockId) ImGui::SetNextWindowDockID(message_window->DockId, ImGuiCond_Once);
+      pane.docked = true;
+    }
+    setNextPaneClass();
+    const bool open = ImGui::Begin((pane.detail->title() + pane.id).c_str(), &pane.open, PANE_NO_SCROLL);
+    pane.detail->setVisible(open);
+    if (open) drawDetailWidget(pane.detail.get());
+    ImGui::End();
+  }
+  // the close button removes the pane
+  pinned_panes_.erase(std::remove_if(pinned_panes_.begin(), pinned_panes_.end(), [](const PinnedPane &p) { return !p.open; }), pinned_panes_.end());
 }
 
 void MainWindow::drawVideoPane() {
@@ -907,13 +911,12 @@ void MainWindow::draw() {
   if (!full_screen_) drawMenuBar();
   drawDockspace();
 
-  if (pane_visible_[Pane::PaneBits]) drawBitsPane();
-  if (pane_visible_[Pane::PaneSignals]) drawSignalsPane();
-  if (pane_visible_[Pane::PaneLogs]) {
-    drawLogsPane();
+  if (pane_visible_[Pane::PaneMessage]) {
+    drawMessagePane();
   } else if (detail_widget_) {
-    detail_widget_->setLogsVisible(false);
+    detail_widget_->setVisible(false);
   }
+  if (charts_widget_) drawPinnedMessagePanes();
   if (messages_widget_ && pane_visible_[Pane::PaneMessages]) drawMessagesPane();
   if (video_widget_ && !pane_visible_[Pane::PaneVideo]) video_widget_->setVisible(false);
   if (video_widget_ && pane_visible_[Pane::PaneVideo]) drawVideoPane();

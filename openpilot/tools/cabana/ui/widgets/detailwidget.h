@@ -58,28 +58,35 @@ private:
   bool closed_ = false;
 };
 
-// the selected message: its id tabs, tool bar and the views MainWindow draws in the Bits, Signals and Logs panes
+// the content of a Message pane: the message id tabs, the tool bar and the Bits / Signals / Logs views
 class DetailWidget {
 public:
+  enum View { BitsAndSignals = 0, Bits, Signals, Logs, kViewCount };
+
   DetailWidget(ChartsWidget *charts);
   void setMessage(const MessageId &message_id);
+  const MessageId &messageId() const { return msg_id_; }
+  std::string title() const;  // "id name" for the pane title
   void refresh();
-  void drawBits();     // tab bar of message ids, toolbar, warning, the binary view
-  void drawSignals();  // the signal view
-  void drawLogs();     // the history log
-  // the Logs pane reloads the log when it becomes visible, and stops updating when hidden
-  void setLogsVisible(bool visible);
+  void draw();  // tab bar of message ids, toolbar, warning, the view tabs
+  void setVisible(bool visible);  // hidden: the log stops reloading, shown: it catches up
   std::pair<std::string, std::vector<std::string>> serializeMessageIds() const;
   void restoreTabs(const std::string &active_msg_id, const std::vector<std::string> &msg_ids);
-  std::string bitsWhatsThis() const;
-  std::string signalsWhatsThis() const;
+  std::vector<std::pair<std::string, ImRect>> helpRects() const;  // HelpOverlay: (whatsThis, rect) of the visible views
+
+  Observable<const MessageId &> openInNewPane;
 
 private:
   void drawToolBar();
+  void drawHeatmapToolBar();
+  void drawViewTabs();
+  void drawBinaryView(float height);  // height 0: the rest of the pane
+  void drawSignalView();
   int findOrAddTab(const MessageId& message_id);
   void showTabBarContextMenu(int index);
   void editMsg();
   void updateState(const std::set<MessageId> *msgs = nullptr);
+  bool logsShown() const { return visible_ && view_ == View::Logs; }
 
   MessageId msg_id_;
   const char *warning_icon_ = nullptr;
@@ -87,10 +94,12 @@ private:
   ElidedLabel name_label_;
   bool warning_widget_visible_ = false;
   TabBar tabbar_;
-  bool logs_visible_ = false;
+  View view_ = View::BitsAndSignals;
+  bool visible_ = true;
   bool action_remove_msg_enabled_ = false;
   bool heatmap_live_ = true;
   std::string heatmap_all_text_ = "All";
+  ImRect binary_view_rect_, signal_view_rect_;  // child window rects of the last draw
   std::unique_ptr<LogsWidget> history_log_;
   std::unique_ptr<BinaryView> binary_view_;
   std::unique_ptr<SignalView> signal_view_;
@@ -99,5 +108,5 @@ private:
   Connections connections_;
 };
 
-// the Bits pane until a message is selected
+// the Message pane until a message is selected
 void drawWelcomeWidget();

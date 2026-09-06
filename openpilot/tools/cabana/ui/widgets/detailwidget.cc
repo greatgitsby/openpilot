@@ -74,11 +74,8 @@ DetailWidget::DetailWidget(ChartsWidget *charts) : charts_(charts) {
 
 void DetailWidget::drawToolBar() {
   const ImGuiStyle &style = ImGui::GetStyle();
-  auto radio_width = [&](const char *label) { return ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x; };
   auto button_width = [&](const char *label) { return ImGui::CalcTextSize(label).x + style.FramePadding.x * 2; };
-  const float right_width = ImGui::CalcTextSize("Heatmap:").x + style.ItemSpacing.x + radio_width("Live") + style.ItemSpacing.x +
-                            radio_width(heatmap_all_text_.c_str()) + style.ItemSpacing.x * 3 + 1.0f +
-                            button_width(icon::PENCIL) + style.ItemSpacing.x + button_width(icon::X_LG);
+  const float right_width = button_width(icon::PENCIL) + style.ItemSpacing.x + button_width(icon::X_LG);
   const float avail = ImGui::GetContentRegionAvail().x;
 
   ImGui::AlignTextToFramePadding();
@@ -87,6 +84,23 @@ void DetailWidget::drawToolBar() {
   popBoldFont();
 
   alignRight(right_width);
+  if (ImGui::Button(icon::PENCIL)) editMsg();
+  ImGui::SetItemTooltip("Edit Message");
+  ImGui::SameLine();
+  ImGui::BeginDisabled(!action_remove_msg_enabled_);
+  if (ImGui::Button(icon::X_LG)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
+  ImGui::EndDisabled();
+  disabledItemTooltip("Remove Message");
+}
+
+// the heatmap mode only affects the binary view, so it sits above it inside the Bits views
+void DetailWidget::drawHeatmapToolBar() {
+  const ImGuiStyle &style = ImGui::GetStyle();
+  auto radio_width = [&](const char *label) { return ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x; };
+  const float width = ImGui::CalcTextSize("Heatmap:").x + style.ItemSpacing.x + radio_width("Live") + style.ItemSpacing.x +
+                      radio_width(heatmap_all_text_.c_str());
+  alignRight(width);
+  ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted("Heatmap:");
   ImGui::SameLine();
   if (ImGui::RadioButton("Live##heatmap_live_", heatmap_live_) && !heatmap_live_) {
@@ -98,21 +112,11 @@ void DetailWidget::drawToolBar() {
     heatmap_live_ = false;
     binary_view_->setHeatmapLiveMode(false);
   }
-
-  ImGui::SameLine();
-  ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-  ImGui::SameLine();
-  if (ImGui::Button(icon::PENCIL)) editMsg();
-  ImGui::SetItemTooltip("Edit Message");
-  ImGui::SameLine();
-  ImGui::BeginDisabled(!action_remove_msg_enabled_);
-  if (ImGui::Button(icon::X_LG)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
-  ImGui::EndDisabled();
-  disabledItemTooltip("Remove Message");
 }
 
 void DetailWidget::showTabBarContextMenu(int index) {
   if (ImGui::BeginPopupContextItem()) {
+    if (ImGui::MenuItem("Open in New Pane")) openInNewPane(MessageId::fromString(tabbar_.tabText(index)));
     if (ImGui::MenuItem("Close Other Tabs")) {
       tabbar_.moveTab(index, 0);
       tabbar_.setCurrentIndex(0);
@@ -197,12 +201,18 @@ void DetailWidget::updateState(const std::set<MessageId> *msgs) {
   if ((msgs && !msgs->count(msg_id_)))
     return;
 
-  binary_view_->updateState();
-  if (logs_visible_) history_log_->updateState();
+  if (view_ != View::Logs) binary_view_->updateState();
+  if (logsShown()) history_log_->updateState();
 }
 
-void DetailWidget::setLogsVisible(bool visible) {
-  if (std::exchange(logs_visible_, visible) != visible && visible) history_log_->onShown();
+void DetailWidget::setVisible(bool visible) {
+  const bool was_shown = logsShown();
+  visible_ = visible;
+  if (!was_shown && logsShown()) history_log_->onShown();
+}
+
+std::string DetailWidget::title() const {
+  return msg_id_.toString() + " " + msgName(msg_id_);
 }
 
 void DetailWidget::editMsg() {
@@ -211,7 +221,65 @@ void DetailWidget::editMsg() {
   edit_dlg_ = std::make_unique<EditMessageDialog>(msg_id_, msgName(msg_id_), size, ImGui::GetWindowWidth());
 }
 
-void DetailWidget::drawBits() {
+void DetailWidget::drawBinaryView(float height) {
+  drawHeatmapToolBar();
+  ImGui::BeginChild("binary_view", ImVec2(0, height));
+  binary_view_rect_ = ImGui::GetCurrentWindow()->Rect();
+  binary_view_->draw();
+  ImGui::EndChild();
+}
+
+void DetailWidget::drawSignalView() {
+  ImGui::BeginChild("signal_view", ImVec2(0, 0));
+  signal_view_rect_ = ImGui::GetCurrentWindow()->Rect();
+  signal_view_->draw();
+  ImGui::EndChild();
+}
+
+void DetailWidget::drawViewTabs() {
+  static const std::string labels[View::kViewCount] = {
+    std::string(icon::FILE_EARMARK_RULED) + " Bits + Signals", "Bits", "Signals", std::string(icon::STOPWATCH) + " Logs"};
+  if (ImGui::BeginTabBar("view_tabs")) {
+    for (int i = 0; i < View::kViewCount; ++i) {
+      if (ImGui::BeginTabItem(labels[i].c_str())) {
+        if (view_ != (View)i) {
+          const bool was_shown = logsShown();
+          view_ = (View)i;
+          if (!was_shown && logsShown()) history_log_->onShown();
+          updateState();
+        }
+        ImGui::EndTabItem();
+      }
+    }
+    ImGui::EndTabBar();
+  }
+
+  ImGui::BeginChild("view", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  binary_view_rect_ = signal_view_rect_ = ImRect();
+  switch (view_) {
+    case View::BitsAndSignals: {
+      // binary_view_ keeps its size hint, signal_view_ takes the rest
+      const float avail = ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing();
+      const float max_height = std::max(avail - 6.0f - ImGui::GetStyle().ItemSpacing.y * 2 - 1.0f, 1.0f);
+      drawBinaryView(std::clamp(binary_view_->minimumSizeHint().y, 1.0f, max_height));
+      ImGui::Dummy(ImVec2(0.0f, 6.0f));
+      const float spacing = ImGui::GetStyle().ItemSpacing.y;
+      const ImRect child_rect = ImGui::GetCurrentWindow()->Rect();
+      ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(child_rect.Min.x, ImGui::GetItemRectMin().y - spacing),
+                                                ImVec2(child_rect.Max.x, ImGui::GetItemRectMax().y + spacing),
+                                                ImGui::GetColorU32(ImGuiCol_WindowBg));
+      drawSignalView();
+      break;
+    }
+    case View::Bits: drawBinaryView(0.0f); break;
+    case View::Signals: drawSignalView(); break;
+    case View::Logs: history_log_->draw(); break;
+    default: break;
+  }
+  ImGui::EndChild();
+}
+
+void DetailWidget::draw() {
   tabbar_.draw();
   drawToolBar();
 
@@ -221,9 +289,7 @@ void DetailWidget::drawBits() {
     ImGui::TextUnformatted(warning_label_.c_str());
   }
 
-  ImGui::BeginChild("binary_view", ImVec2(0, 0));
-  binary_view_->draw();
-  ImGui::EndChild();
+  drawViewTabs();
 
   if (edit_dlg_ && !edit_dlg_->draw()) {
     if (edit_dlg_->accepted()) {
@@ -234,16 +300,13 @@ void DetailWidget::drawBits() {
   }
 }
 
-void DetailWidget::drawSignals() {
-  signal_view_->draw();
+// HelpOverlay: the whatsThis text and last drawn rect of the views shown by the current tab
+std::vector<std::pair<std::string, ImRect>> DetailWidget::helpRects() const {
+  std::vector<std::pair<std::string, ImRect>> rects;
+  if (binary_view_rect_.GetArea() > 0) rects.emplace_back(binary_view_->whatsThis(), binary_view_rect_);
+  if (signal_view_rect_.GetArea() > 0) rects.emplace_back(signal_view_->whatsThis(), signal_view_rect_);
+  return rects;
 }
-
-void DetailWidget::drawLogs() {
-  history_log_->draw();
-}
-
-std::string DetailWidget::bitsWhatsThis() const { return binary_view_->whatsThis(); }
-std::string DetailWidget::signalsWhatsThis() const { return signal_view_->whatsThis(); }
 
 EditMessageDialog::EditMessageDialog(const MessageId &msg_id, const std::string &title, int size, float parent_width)
     : msg_id_(msg_id), original_name_(title), name_edit_(title), size_spin_(size), width_(parent_width * 0.9f) {

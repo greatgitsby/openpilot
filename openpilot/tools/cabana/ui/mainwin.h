@@ -87,9 +87,10 @@ private:
   bool beginPane(inistate::Pane pane, const std::string &name, ImGuiWindowFlags flags = 0);
   void endPane(inistate::Pane pane);
   void drawMessagesPane();
-  void drawBitsPane();
-  void drawSignalsPane();
-  void drawLogsPane();
+  void drawMessagePane();
+  void drawPinnedMessagePanes();  // "Open in New Pane" copies, pinned to their message
+  void drawDetailWidget(DetailWidget *detail);
+  void openMessageInNewPane(const MessageId &id);
   void drawVideoPane();
   void drawChartsPane();
   void drawStatusBar();
@@ -101,7 +102,16 @@ private:
   std::unique_ptr<AbstractStream> stream_;  // `can` points here, or at dummy_ when no stream is open
   DummyStream dummy_;
   std::unique_ptr<MessagesWidget> messages_widget_;
-  std::unique_ptr<DetailWidget> detail_widget_;
+  std::unique_ptr<DetailWidget> detail_widget_;  // follows the selection in the messages pane
+  struct PinnedPane {
+    std::unique_ptr<DetailWidget> detail;
+    std::string id;  // the "###" part of the window name
+    bool open = true;
+    bool docked = false;  // docked next to the message pane on its first draw
+    Connection connection;
+  };
+  std::vector<PinnedPane> pinned_panes_;
+  int next_pinned_pane_id_ = 0;
   std::unique_ptr<VideoWidget> video_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;
