@@ -8,9 +8,14 @@
 #include "imgui_internal.h"
 
 namespace {
+// one size everywhere: half again as wide as imgui's own tab bar arrows (font size - 2), a frame tall
+ImVec2 scrollButtonSize() {
+  return ImVec2((ImGui::GetFontSize() - 2.0f) * 1.5f, ImGui::GetFrameHeight());
+}
+
+// the room a tab bar inside a window gives up for the pair: item spacing away from the tabs, no gap between
 float scrollButtonsWidth() {
-  const ImGuiStyle &style = ImGui::GetStyle();
-  return ImGui::GetFrameHeight() * 2.0f + style.ItemInnerSpacing.x + style.ItemSpacing.x * 2.0f;
+  return scrollButtonSize().x * 2.0f + ImGui::GetStyle().ItemSpacing.x;
 }
 
 // the pair of chevron buttons at pos, each `size` big and `spacing` apart, scrolling tab_bar
@@ -45,9 +50,7 @@ void drawScrollButtons(ImGuiTabBar *tab_bar, const ImVec2 &pos, const ImVec2 &si
 }
 
 void drawScrollButtons(ImGuiTabBar *tab_bar) {
-  const ImGuiStyle &style = ImGui::GetStyle();
-  const float size = ImGui::GetFrameHeight();
-  drawScrollButtons(tab_bar, ImVec2(tab_bar->BarRect.Max.x + style.ItemSpacing.x, tab_bar->BarRect.Min.y), ImVec2(size, size), style.ItemInnerSpacing.x);
+  drawScrollButtons(tab_bar, ImVec2(tab_bar->BarRect.Max.x + ImGui::GetStyle().ItemSpacing.x, tab_bar->BarRect.Min.y), scrollButtonSize(), 0.0f);
 }
 
 // the wheel scrolls the tabs while the pointer is over them: a two finger swipe on a touchpad, or a
@@ -101,8 +104,8 @@ void endScrollableTabBar() {
 void overrideDockNodeScrollButtons() {
   ImGuiContext &g = *ImGui::GetCurrentContext();
   const float arrows_width = (g.FontSize - 2.0f) * 2.0f;  // what imgui reserved
-  // half again as wide as imgui's arrows: the extra room is taken from the left, over the end of the tab strip
-  const ImVec2 button_size((g.FontSize - 2.0f) * 1.5f, ImGui::GetFrameHeight());
+  // wider than imgui's arrows: the extra room is taken from the left, over the end of the tab strip
+  const ImVec2 button_size = scrollButtonSize();
   const float buttons_width = button_size.x * 2.0f;
   for (int n = 0; n < g.DockContext.Nodes.Data.Size; ++n) {
     ImGuiDockNode *node = (ImGuiDockNode *)g.DockContext.Nodes.Data[n].val_p;
