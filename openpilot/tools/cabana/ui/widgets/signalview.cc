@@ -686,8 +686,12 @@ float SignalView::minimumWidth() {
 }
 
 void SignalView::draw() {
+  // a card nested in the message card: recessed in the window color so it stands out from the surface
+  // (the children inside keep the same background)
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
   if (!ImGui::BeginChild("SignalView", ImVec2(0, 0), ImGuiChildFlags_Borders)) {
     ImGui::EndChild();
+    ImGui::PopStyleColor();
     return;
   }
 
@@ -724,6 +728,7 @@ void SignalView::draw() {
   current_row_ = model_.signalRow(current_sig_);  // used when the row is removed
 
   ImGui::EndChild();
+  ImGui::PopStyleColor();
 }
 
 void SignalView::collapseAll() {
