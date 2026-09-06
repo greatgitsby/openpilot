@@ -776,7 +776,9 @@ void MainWindow::drawDockspace() {
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
   const ImGuiID dock_id = ImGui::GetID("cabana_dockspace_message_windows");  // a new id: the old three panel layout is not reused
   if (reset_layout_ || ImGui::DockBuilderGetNode(dock_id) == nullptr) {
-    // messages left, the message in the middle, video over charts right
+    // messages left, the message in the middle, video over charts right. The message panes close: floated out or
+    // not, they would otherwise stay where they are
+    message_panes_.clear();
     ImGui::DockBuilderRemoveNode(dock_id);
     ImGui::DockBuilderAddNode(dock_id, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dock_id, dock_size);
