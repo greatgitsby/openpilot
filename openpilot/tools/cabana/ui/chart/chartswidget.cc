@@ -58,7 +58,6 @@ ChartsWidget::ChartsWidget() {
     if (index != -1) updateLayout();
   }));
 
-  setIsDocked(true);
   newTab();
 }
 
@@ -155,11 +154,6 @@ void ChartsWidget::setMaxChartRange(int value) {
   updateState();
 }
 
-void ChartsWidget::setIsDocked(bool docked) {
-  is_docked_ = docked;
-  if (!docked) float_window_init_ = true;
-}
-
 void ChartsWidget::drawToolBar() {
   beginToolbar();
   float slider_width = 150.0f;
@@ -246,10 +240,6 @@ void ChartsWidget::drawToolBar() {
     ImGui::BeginDisabled(charts_.empty());
     if (toolButton("remove_all_btn", icon::X_SQUARE, "Remove all charts")) removeAll();
     ImGui::EndDisabled();
-  }});
-  const char *dock_btn_icon = is_docked_ ? icon::ARROW_UP_RIGHT_SQUARE : icon::ARROW_DOWN_LEFT_SQUARE;
-  items.push_back({toolbarButtonWidth(dock_btn_icon), [this, dock_btn_icon]() {
-    if (toolButton("dock_btn", dock_btn_icon, is_docked_ ? "Float the charts window" : "Dock the charts window")) toggleChartsDocking();
   }});
 
   // the slider shrinks first, the buttons stay pinned to the right edge
@@ -576,15 +566,6 @@ void ChartsWidget::handleEvents() {
 
 void ChartsWidget::draw() {
   deleted_charts_.clear();
-  // the floating window is a top level window sized to its contents: keep it inside the main viewport so its
-  // toolbar stays reachable, then let the user resize it
-  if (float_window_init_ && !is_docked_) {
-    float_window_init_ = false;
-    const ImGuiViewport *viewport = ImGui::GetMainViewport();
-    const ImVec2 size(viewport->WorkSize.x * 0.6f, viewport->WorkSize.y * 0.6f);
-    ImGui::SetWindowSize(size);
-    ImGui::SetWindowPos(viewport->WorkPos + (viewport->WorkSize - size) * 0.5f);
-  }
   ImGui::PushID(this);
   if (auto_scroll_timer_active_ && ImGui::GetTime() >= auto_scroll_timer_next_) {
     auto_scroll_timer_next_ = ImGui::GetTime() + 0.05;

@@ -197,10 +197,12 @@ void DetailWidget::updateState(const std::set<MessageId> *msgs) {
   if ((msgs && !msgs->count(msg_id_)))
     return;
 
-  if (tab_widget_index_ == 0)
-    binary_view_->updateState();
-  else
-    history_log_->updateState();
+  binary_view_->updateState();
+  if (logs_visible_) history_log_->updateState();
+}
+
+void DetailWidget::setLogsVisible(bool visible) {
+  if (std::exchange(logs_visible_, visible) != visible && visible) history_log_->onShown();
 }
 
 void DetailWidget::editMsg() {
@@ -209,67 +211,7 @@ void DetailWidget::editMsg() {
   edit_dlg_ = std::make_unique<EditMessageDialog>(msg_id_, msgName(msg_id_), size, ImGui::GetWindowWidth());
 }
 
-void DetailWidget::drawTabWidget() {
-  // the pages first, the tab bar below them
-  const float tab_height = ImGui::GetFrameHeight();
-  const float content_height = ImGui::GetContentRegionAvail().y - tab_height - ImGui::GetStyle().ItemSpacing.y;
-  ImGui::BeginChild("tab_widget", ImVec2(0, std::max(content_height, 1.0f)), ImGuiChildFlags_None,
-                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  if (tab_widget_index_ == 0) {
-    // binary_view_ keeps its size hint, signal_view_ takes the rest
-    const float min_height = binary_view_->minimumSizeHint().y;
-    const float avail = ImGui::GetContentRegionAvail().y;
-    const float max_height = std::max(avail - 6.0f - ImGui::GetStyle().ItemSpacing.y * 2 - 1.0f, 1.0f);
-    const float height = std::clamp(min_height, 1.0f, max_height);
-    ImGui::BeginChild("binary_view", ImVec2(0, height));
-    binary_view_rect_ = ImGui::GetCurrentWindow()->Rect();
-    binary_view_->draw();
-    ImGui::EndChild();
-    ImGui::Dummy(ImVec2(0.0f, 6.0f));
-    const float spacing = ImGui::GetStyle().ItemSpacing.y;
-    const ImRect child_rect = ImGui::GetCurrentWindow()->Rect();
-    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(child_rect.Min.x, ImGui::GetItemRectMin().y - spacing),
-                                              ImVec2(child_rect.Max.x, ImGui::GetItemRectMax().y + spacing),
-                                              ImGui::GetColorU32(ImGuiCol_WindowBg));
-    ImGui::BeginChild("signal_view", ImVec2(0, 0));
-    signal_view_rect_ = ImGui::GetCurrentWindow()->Rect();
-    signal_view_->draw();
-    ImGui::EndChild();
-  } else {
-    history_log_->draw();
-  }
-  ImGui::EndChild();
-
-  const std::string labels[] = {std::string(icon::FILE_EARMARK_RULED) + " Messages", std::string(icon::STOPWATCH) + " Logs"};
-  // the tabs are centered in the bar: the bar itself starts at the first tab, so its separator only spans the
-  // tabs and the full width one is drawn underneath it
-  const ImGuiStyle &style = ImGui::GetStyle();
-  float tabs_width = 0.0f;
-  for (int i = 0; i < 2; ++i) {
-    tabs_width += ImGui::TabItemCalcSize(labels[i].c_str(), false).x + (i ? style.ItemInnerSpacing.x : 0.0f);
-  }
-  ImGuiWindow *window = ImGui::GetCurrentWindow();
-  const float separator_y = ImGui::GetCursorScreenPos().y + ImGui::GetFrameHeight() - 1.0f;
-  window->DrawList->AddLine(ImVec2(window->WorkRect.Min.x, separator_y), ImVec2(window->WorkRect.Max.x, separator_y),
-                            ImGui::GetColorU32(ImGuiCol_TabSelected), style.TabBarBorderSize);
-  ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (ImGui::GetContentRegionAvail().x - tabs_width) * 0.5f));
-
-  if (ImGui::BeginTabBar("tab_widget_tabs")) {
-    for (int i = 0; i < 2; ++i) {
-      if (ImGui::BeginTabItem(labels[i].c_str())) {
-        if (tab_widget_index_ != i) {
-          tab_widget_index_ = i;
-          if (i == 1) history_log_->onShown();
-          updateState();
-        }
-        ImGui::EndTabItem();
-      }
-    }
-    ImGui::EndTabBar();
-  }
-}
-
-void DetailWidget::draw() {
+void DetailWidget::drawBits() {
   tabbar_.draw();
   drawToolBar();
 
@@ -279,7 +221,9 @@ void DetailWidget::draw() {
     ImGui::TextUnformatted(warning_label_.c_str());
   }
 
-  drawTabWidget();
+  ImGui::BeginChild("binary_view", ImVec2(0, 0));
+  binary_view_->draw();
+  ImGui::EndChild();
 
   if (edit_dlg_ && !edit_dlg_->draw()) {
     if (edit_dlg_->accepted()) {
@@ -290,15 +234,16 @@ void DetailWidget::draw() {
   }
 }
 
-// HelpOverlay: the whatsThis text and last drawn rect of the binary view and the signal view
-std::vector<std::pair<std::string, ImRect>> DetailWidget::helpRects() const {
-  std::vector<std::pair<std::string, ImRect>> rects;
-  if (tab_widget_index_ == 0) {
-    rects.emplace_back(binary_view_->whatsThis(), binary_view_rect_);
-    rects.emplace_back(signal_view_->whatsThis(), signal_view_rect_);
-  }
-  return rects;
+void DetailWidget::drawSignals() {
+  signal_view_->draw();
 }
+
+void DetailWidget::drawLogs() {
+  history_log_->draw();
+}
+
+std::string DetailWidget::bitsWhatsThis() const { return binary_view_->whatsThis(); }
+std::string DetailWidget::signalsWhatsThis() const { return signal_view_->whatsThis(); }
 
 EditMessageDialog::EditMessageDialog(const MessageId &msg_id, const std::string &title, int size, float parent_width)
     : msg_id_(msg_id), original_name_(title), name_edit_(title), size_spin_(size), width_(parent_width * 0.9f) {
@@ -380,27 +325,7 @@ void EditMessageDialog::validateName(const std::string &text) {
   ok_enabled_ = valid;
 }
 
-DetailWidget* CenterWidget::ensureDetailWidget() {
-  if (!detail_widget) {
-    detail_widget = std::make_unique<DetailWidget>(charts_);
-  }
-  return detail_widget.get();
-}
-
-void CenterWidget::clear() {
-  detail_widget.reset();
-  charts_ = nullptr;  // MainWindow recreates the ChartsWidget after startStream
-}
-
-void CenterWidget::draw() {
-  if (detail_widget) {
-    detail_widget->draw();
-  } else {
-    drawWelcomeWidget();
-  }
-}
-
-void CenterWidget::drawWelcomeWidget() {
+void drawWelcomeWidget() {
   const ImVec2 win_pos = ImGui::GetWindowPos(), win_size = ImGui::GetWindowSize();
   ImGui::GetWindowDrawList()->AddRectFilled(win_pos, ImVec2(win_pos.x + win_size.x, win_pos.y + win_size.y), ImGui::GetColorU32(ImGuiCol_ChildBg));
 

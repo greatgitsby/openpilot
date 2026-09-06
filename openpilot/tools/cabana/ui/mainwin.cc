@@ -31,16 +31,18 @@
 namespace {
 // dock window ids (the visible titles change, the part after ### is the identity)
 constexpr const char *VIDEO_PANEL = "###VideoPanel";
-constexpr const char *CENTER_PANEL = "###CenterWidget";
-constexpr const char *CHARTS_WINDOW = "Charts###ChartsWindow";
+constexpr const char *BITS_PANEL = "Bits###BitsPanel";
+constexpr const char *SIGNALS_PANEL = "Signals###SignalsPanel";
+constexpr const char *LOGS_PANEL = "Logs###LogsPanel";
+constexpr const char *CHARTS_PANEL = "Charts###ChartsPanel";
 }  // namespace
+
+using inistate::Pane;
 
 MainWindow::MainWindow(GLFWwindow *window, std::unique_ptr<AbstractStream> stream, StreamLoader stream_loader,
                        const std::string &dbc_file) : window_(window) {
   can = &dummy_;
-  video_splitter_ratio_ = inistate::main_window.video_splitter_ratio;
-  messages_visible_ = inistate::main_window.messages_visible;
-  video_visible_ = inistate::main_window.video_visible;
+  std::copy(std::begin(inistate::main_window.pane_visible), std::end(inistate::main_window.pane_visible), pane_visible_);
   loadFingerprints();
   std::error_code ec;
   for (const auto &entry : std::filesystem::directory_iterator(OPENDBC_FILE_PATH, ec)) {
@@ -151,12 +153,15 @@ void MainWindow::drawMenuBar() {
   if (ImGui::BeginMenu("View")) {
     if (ImGui::MenuItem("Full Screen", "Ctrl+F11")) toggleFullScreen();
     ImGui::Separator();
-    ImGui::MenuItem(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &messages_visible_);
-    ImGui::MenuItem(video_dock_title_.empty() ? "##video_dock" : video_dock_title_.c_str(), nullptr, &video_visible_);
+    ImGui::MenuItem(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &pane_visible_[Pane::PaneMessages]);
+    ImGui::MenuItem("Bits", nullptr, &pane_visible_[Pane::PaneBits]);
+    ImGui::MenuItem("Signals", nullptr, &pane_visible_[Pane::PaneSignals]);
+    ImGui::MenuItem("Logs", nullptr, &pane_visible_[Pane::PaneLogs]);
+    ImGui::MenuItem(video_dock_title_.empty() ? "Video" : video_dock_title_.c_str(), nullptr, &pane_visible_[Pane::PaneVideo]);
+    ImGui::MenuItem("Charts", nullptr, &pane_visible_[Pane::PaneCharts]);
     ImGui::Separator();
     if (ImGui::MenuItem("Reset Window Layout")) {
-      messages_visible_ = video_visible_ = true;
-      video_splitter_ratio_ = -1.0f;
+      std::fill(std::begin(pane_visible_), std::end(pane_visible_), true);
       reset_layout_ = true;
     }
     ImGui::EndMenu();
@@ -178,12 +183,10 @@ void MainWindow::drawMenuBar() {
 void MainWindow::createDockWidgets() {
   widget_connections_.clear();
   messages_widget_ = std::make_unique<MessagesWidget>();
-  widget_connections_.push_back(messages_widget_->msgSelectionChanged.connect([this](const MessageId &id) { center_widget_.setMessage(id); }));
+  widget_connections_.push_back(messages_widget_->msgSelectionChanged.connect([this](const MessageId &id) { ensureDetailWidget()->setMessage(id); }));
 
   charts_widget_ = std::make_unique<ChartsWidget>();
-  center_widget_.setChartsWidget(charts_widget_.get());
   video_widget_ = std::make_unique<VideoWidget>();
-  widget_connections_.push_back(charts_widget_->toggleChartsDocking.connect([this]() { toggleChartsDocking(); }));
   widget_connections_.push_back(charts_widget_->showTip.connect([this](double sec) { video_widget_->showThumbnail(sec); }));
 }
 
@@ -338,7 +341,7 @@ void MainWindow::releaseStream() {
   widget_connections_.clear();
   charts_widget_.reset();
   video_widget_.reset();
-  center_widget_.clear();
+  detail_widget_.reset();
   messages_widget_.reset();
   stream_connections_.clear();
   stream_.reset();
@@ -570,9 +573,9 @@ void MainWindow::updateDownloadProgress(uint64_t cur, uint64_t total, bool succe
   }
 }
 
-void MainWindow::toggleChartsDocking() {
-  charts_floating_ = !charts_floating_;
-  charts_widget_->setIsDocked(!charts_floating_);
+DetailWidget *MainWindow::ensureDetailWidget() {
+  if (!detail_widget_) detail_widget_ = std::make_unique<DetailWidget>(charts_widget_.get());
+  return detail_widget_.get();
 }
 
 void MainWindow::close() {
@@ -596,9 +599,7 @@ void MainWindow::finishClose() {
     glfwGetWindowSize(window_, &state.size[0], &state.size[1]);
   }
   state.has_geometry = state.size[0] > 0 && state.size[1] > 0;
-  state.video_splitter_ratio = video_splitter_ratio_;
-  state.messages_visible = messages_visible_;
-  state.video_visible = video_visible_;
+  std::copy(std::begin(pane_visible_), std::end(pane_visible_), state.pane_visible);
   settings.ui_state = inistate::save();
 
   saveSessionState();
@@ -653,8 +654,8 @@ void MainWindow::saveSessionState() {
   const auto files = dbc()->nonEmptyDBCFiles();
   if (!files.empty()) settings.recent_dbc_file = files.front()->filename;
 
-  if (auto *detail = center_widget_.getDetailWidget()) {
-    auto [active_id, ids] = detail->serializeMessageIds();
+  if (detail_widget_) {
+    auto [active_id, ids] = detail_widget_->serializeMessageIds();
     settings.active_msg_id = active_id;
     settings.selected_msg_ids = ids;
   }
@@ -669,7 +670,7 @@ void MainWindow::restoreSessionState() {
   if (dbc()->nonEmptyDBCFiles().front()->filename != settings.recent_dbc_file) return;
 
   if (!settings.selected_msg_ids.empty()) {
-    center_widget_.ensureDetailWidget()->restoreTabs(settings.active_msg_id, settings.selected_msg_ids);
+    ensureDetailWidget()->restoreTabs(settings.active_msg_id, settings.selected_msg_ids);
   }
 
   if (charts_widget_ != nullptr && !settings.active_charts.empty()) {
@@ -772,19 +773,23 @@ void MainWindow::drawDockspace() {
   // otherwise the host window is a few pixels taller than the viewport and scrolls
   const float status_height = full_screen_ ? 0.0f : ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
-  const ImGuiID dock_id = ImGui::GetID("cabana_dockspace");
+  const ImGuiID dock_id = ImGui::GetID("cabana_dockspace_panes");  // a new id: the old three panel layout is not reused
   if (reset_layout_ || ImGui::DockBuilderGetNode(dock_id) == nullptr) {
-    // messages left, video (with charts) right, center widget in the middle
+    // messages left; bits over signals (logs tabbed behind them) in the middle; video over charts right
     ImGui::DockBuilderRemoveNode(dock_id);
     ImGui::DockBuilderAddNode(dock_id, ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dock_id, dock_size);
-    ImGuiID center = dock_id, left = 0, right = 0;
+    ImGuiID center = dock_id, left = 0, right = 0, bits = 0, video = 0;
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.28f, &left, &center);
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.4f, &right, &center);
+    ImGui::DockBuilderSplitNode(center, ImGuiDir_Up, 0.35f, &bits, &center);
+    ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.45f, &video, &right);
     ImGui::DockBuilderDockWindow(MESSAGES_PANEL_ID, left);
-    ImGui::DockBuilderDockWindow(VIDEO_PANEL, right);
-    ImGui::DockBuilderDockWindow(CENTER_PANEL, center);
-    ImGui::DockBuilderGetNode(center)->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+    ImGui::DockBuilderDockWindow(BITS_PANEL, bits);
+    ImGui::DockBuilderDockWindow(SIGNALS_PANEL, center);
+    ImGui::DockBuilderDockWindow(LOGS_PANEL, center);
+    ImGui::DockBuilderDockWindow(VIDEO_PANEL, video);
+    ImGui::DockBuilderDockWindow(CHARTS_PANEL, right);
     ImGui::DockBuilderFinish(dock_id);
     reset_layout_ = false;
   }
@@ -798,13 +803,9 @@ void MainWindow::drawDockspace() {
 }
 
 namespace {
-// closing a panel that floated out into its own os window brings it back into the default layout, only
-// the close button of a docked panel hides it
-bool floatingOut() { return ImGui::GetWindowViewport() != ImGui::GetMainViewport(); }
-
-// the side panels float out like the dialogs, and their dock nodes have no window menu button: its
+// the panes float out like the dialogs, and their dock nodes have no window menu button: its
 // only entry hides the tab bar, and with it the title and the close button
-void setNextPanelClass() {
+void setNextPaneClass() {
   ImGuiWindowClass window_class;
   window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
   window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
@@ -812,68 +813,82 @@ void setNextPanelClass() {
 }
 }  // namespace
 
-void MainWindow::drawMessagesPanel() {
-  const std::string name = messages_widget_->title() + MESSAGES_PANEL_ID;
-  setNextPanelClass();
-  if (ImGui::Begin(name.c_str(), &messages_visible_)) {
+bool MainWindow::beginPane(Pane pane, const std::string &name, ImGuiWindowFlags flags) {
+  setNextPaneClass();
+  return ImGui::Begin(name.c_str(), &pane_visible_[pane], flags);
+}
+
+void MainWindow::endPane(Pane pane) {
+  const bool floating = ImGui::GetWindowViewport() != ImGui::GetMainViewport();
+  ImGui::End();
+  if (!pane_visible_[pane] && floating) pane_visible_[pane] = reset_layout_ = true;
+}
+
+void MainWindow::drawMessagesPane() {
+  if (beginPane(Pane::PaneMessages, messages_widget_->title() + MESSAGES_PANEL_ID)) {
     help_overlay_.add(messages_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
     messages_widget_->draw();
   }
-  const bool floating = floatingOut();
-  ImGui::End();
-  if (!messages_visible_ && floating) messages_visible_ = reset_layout_ = true;
+  endPane(Pane::PaneMessages);
 }
 
-void MainWindow::drawVideoPanel() {
-  const std::string name = video_dock_title_ + VIDEO_PANEL;
-  setNextPanelClass();
-  const bool video_open = ImGui::Begin(name.c_str(), &video_visible_);
-  const bool floating = floatingOut();
-  if (!video_open) {
-    video_widget_->setVisible(false);  // the dock is collapsed or tabbed behind another one, like hideEvent
-  } else {
-    const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const bool live = can->liveStreaming();
-    // the bordered child pads its content, so the heights the widget asks for grow by the padding
-    const float video_padding = ImGui::GetStyle().WindowPadding.y * 2.0f;
-    // the camera is as wide as the child's content region, not the panel
-    const float default_h = video_widget_->defaultHeight(avail.x - ImGui::GetStyle().WindowPadding.x * 2.0f) + video_padding;
-    const float video_hint = video_splitter_ratio_ >= 0.0f ? avail.y * video_splitter_ratio_ : default_h;
-    float video_h = charts_floating_ ? avail.y : std::clamp(video_hint, 0.0f, avail.y - 1.0f);
-    if (live) video_h = default_h;  // display video at minimum size.
-    // dragging below half of the minimum size collapses the video, it never shrinks below it otherwise
-    if (!charts_floating_ && !live) {
-      const float min_h = std::min(video_widget_->sizeHintHeight() + video_padding, avail.y - 1.0f);
-      video_h = video_h < min_h / 2 ? 0.0f : std::max(video_h, min_h);
-    }
-    if (video_h > 0.0f) {
-      ImGui::BeginChild("video", ImVec2(0, video_h), ImGuiChildFlags_Borders);
-      help_overlay_.add(video_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
-      video_widget_->draw();
-      ImGui::EndChild();
+// the views inside scroll, the panes themselves never do
+constexpr ImGuiWindowFlags PANE_NO_SCROLL = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+
+void MainWindow::drawBitsPane() {
+  if (beginPane(Pane::PaneBits, BITS_PANEL, PANE_NO_SCROLL)) {
+    if (detail_widget_) {
+      help_overlay_.add(detail_widget_->bitsWhatsThis(), ImGui::GetCurrentWindow()->Rect());
+      detail_widget_->drawBits();
     } else {
-      video_widget_->setVisible(false);  // the splitter collapsed the video: stop the vipc thread
-    }
-    if (!charts_floating_) {
-      // the gap between the video and the charts is the same as the padding at the sides
-      ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
-      ImGui::InvisibleButton("##splitter", ImVec2(-1.0f, ImGui::GetStyle().WindowPadding.x));
-      if (ImGui::IsItemActive() && !live) {
-        // the size of the video is the position of the handle inside the splitter
-        const float top = ImGui::GetWindowPos().y + ImGui::GetCursorStartPos().y;
-        video_splitter_ratio_ = std::clamp((ImGui::GetMousePos().y - top) / avail.y, 0.0f, 1.0f);
-      }
-      if (ImGui::IsItemHovered() && !live) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-      // the chart list scrolls in its own child, the container itself never scrolls
-      ImGui::BeginChild("charts", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-      ImGui::PopStyleVar();
-      help_overlay_.add(charts_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
-      charts_widget_->draw();
-      ImGui::EndChild();
+      drawWelcomeWidget();
     }
   }
-  ImGui::End();
-  if (!video_visible_ && floating) video_visible_ = reset_layout_ = true;
+  endPane(Pane::PaneBits);
+}
+
+void MainWindow::drawSignalsPane() {
+  if (beginPane(Pane::PaneSignals, SIGNALS_PANEL, PANE_NO_SCROLL)) {
+    if (detail_widget_) {
+      help_overlay_.add(detail_widget_->signalsWhatsThis(), ImGui::GetCurrentWindow()->Rect());
+      detail_widget_->drawSignals();
+    } else {
+      ImGui::TextDisabled("Select a message to view its signals");
+    }
+  }
+  endPane(Pane::PaneSignals);
+}
+
+void MainWindow::drawLogsPane() {
+  const bool open = beginPane(Pane::PaneLogs, LOGS_PANEL, PANE_NO_SCROLL);
+  if (detail_widget_) detail_widget_->setLogsVisible(open);  // collapsed or tabbed behind another pane: no reloads
+  if (open) {
+    if (detail_widget_) {
+      detail_widget_->drawLogs();
+    } else {
+      ImGui::TextDisabled("Select a message to view its log");
+    }
+  }
+  endPane(Pane::PaneLogs);
+}
+
+void MainWindow::drawVideoPane() {
+  const bool open = beginPane(Pane::PaneVideo, video_dock_title_ + VIDEO_PANEL, PANE_NO_SCROLL);
+  if (!open) {
+    video_widget_->setVisible(false);  // the dock is collapsed or tabbed behind another one, like hideEvent
+  } else {
+    help_overlay_.add(video_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
+    video_widget_->draw();
+  }
+  endPane(Pane::PaneVideo);
+}
+
+void MainWindow::drawChartsPane() {
+  if (beginPane(Pane::PaneCharts, CHARTS_PANEL, PANE_NO_SCROLL)) {
+    help_overlay_.add(charts_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
+    charts_widget_->draw();
+  }
+  endPane(Pane::PaneCharts);
 }
 
 void MainWindow::draw() {
@@ -892,25 +907,17 @@ void MainWindow::draw() {
   if (!full_screen_) drawMenuBar();
   drawDockspace();
 
-  // the central widget has no scrollbars of its own (the views inside scroll)
-  if (ImGui::Begin(CENTER_PANEL, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-    center_widget_.draw();
-    if (auto *detail = center_widget_.getDetailWidget(); detail && help_overlay_.visible()) {
-      for (const auto &[text, rect] : detail->helpRects()) help_overlay_.add(text, rect);
-    }
+  if (pane_visible_[Pane::PaneBits]) drawBitsPane();
+  if (pane_visible_[Pane::PaneSignals]) drawSignalsPane();
+  if (pane_visible_[Pane::PaneLogs]) {
+    drawLogsPane();
+  } else if (detail_widget_) {
+    detail_widget_->setLogsVisible(false);
   }
-  ImGui::End();
-  if (messages_widget_ && messages_visible_) drawMessagesPanel();
-  if (video_widget_ && !video_visible_) video_widget_->setVisible(false);
-  if (video_widget_ && video_visible_) drawVideoPanel();
-  if (charts_widget_ && charts_floating_) {
-    bool open = true;
-    ImGui::SetNextWindowSize(ImGui::GetMainViewport()->WorkSize, ImGuiCond_Appearing);
-    setNextWindowFloatsOut();
-    if (ImGui::Begin(CHARTS_WINDOW, &open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) charts_widget_->draw();
-    ImGui::End();
-    if (!open) toggleChartsDocking();
-  }
+  if (messages_widget_ && pane_visible_[Pane::PaneMessages]) drawMessagesPane();
+  if (video_widget_ && !pane_visible_[Pane::PaneVideo]) video_widget_->setVisible(false);
+  if (video_widget_ && pane_visible_[Pane::PaneVideo]) drawVideoPane();
+  if (charts_widget_ && pane_visible_[Pane::PaneCharts]) drawChartsPane();
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
     it = (*it)->draw() ? it + 1 : tool_dialogs_.erase(it);
   }

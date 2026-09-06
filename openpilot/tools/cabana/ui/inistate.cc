@@ -25,7 +25,6 @@ void *readOpen(ImGuiContext *, ImGuiSettingsHandler *, const char *name) {
 void readLine(ImGuiContext *, ImGuiSettingsHandler *, void *entry, const char *line) {
   auto *state = (MainWindowState *)entry;
   int x = 0, y = 0, flag = 0;
-  float ratio = 0.0f;
   if (sscanf(line, "Pos=%d,%d", &x, &y) == 2) {
     state->pos[0] = x;
     state->pos[1] = y;
@@ -35,12 +34,14 @@ void readLine(ImGuiContext *, ImGuiSettingsHandler *, void *entry, const char *l
     state->has_geometry = true;
   } else if (sscanf(line, "Maximized=%d", &flag) == 1) {
     state->maximized = flag != 0;
-  } else if (sscanf(line, "VideoSplitterRatio=%f", &ratio) == 1) {
-    state->video_splitter_ratio = ratio;
-  } else if (sscanf(line, "MessagesVisible=%d", &flag) == 1) {
-    state->messages_visible = flag != 0;
-  } else if (sscanf(line, "VideoVisible=%d", &flag) == 1) {
-    state->video_visible = flag != 0;
+  } else {
+    for (int i = 0; i < kPaneCount; ++i) {
+      const size_t len = strlen(kPaneIniKeys[i]);
+      if (strncmp(line, kPaneIniKeys[i], len) == 0 && sscanf(line + len, "=%d", &flag) == 1) {
+        state->pane_visible[i] = flag != 0;
+        break;
+      }
+    }
   }
 }
 
@@ -51,9 +52,7 @@ void writeAll(ImGuiContext *, ImGuiSettingsHandler *handler, ImGuiTextBuffer *bu
     buf->appendf("Size=%d,%d\n", main_window.size[0], main_window.size[1]);
   }
   buf->appendf("Maximized=%d\n", main_window.maximized ? 1 : 0);
-  buf->appendf("VideoSplitterRatio=%.4f\n", main_window.video_splitter_ratio);
-  buf->appendf("MessagesVisible=%d\n", main_window.messages_visible ? 1 : 0);
-  buf->appendf("VideoVisible=%d\n", main_window.video_visible ? 1 : 0);
+  for (int i = 0; i < kPaneCount; ++i) buf->appendf("%s=%d\n", kPaneIniKeys[i], main_window.pane_visible[i] ? 1 : 0);
   buf->append("\n");
 }
 
@@ -84,18 +83,12 @@ std::string migrateQtHeaderState(const qtstate::QtHeaderState &header) {
 }
 
 std::string migrateQtState() {
-  auto geometry = qtstate::parseQtGeometry(settings.geometry);
-  auto splitter = qtstate::parseQtSplitter(settings.video_splitter_state);
-
   ImGuiTextBuffer buf;
-  if (geometry || splitter) {
+  if (auto geometry = qtstate::parseQtGeometry(settings.geometry)) {
     buf.append("[Cabana][MainWindow]\n");
-    if (geometry) {
-      buf.appendf("Pos=%d,%d\n", geometry->x, geometry->y);
-      buf.appendf("Size=%d,%d\n", geometry->w, geometry->h);
-      buf.appendf("Maximized=%d\n", geometry->maximized ? 1 : 0);
-    }
-    if (splitter) buf.appendf("VideoSplitterRatio=%.4f\n", splitter->ratio);
+    buf.appendf("Pos=%d,%d\n", geometry->x, geometry->y);
+    buf.appendf("Size=%d,%d\n", geometry->w, geometry->h);
+    buf.appendf("Maximized=%d\n", geometry->maximized ? 1 : 0);
     buf.append("\n");
   }
   if (auto header = qtstate::parseQtHeaderState(settings.message_header_state)) {

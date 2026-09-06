@@ -13,6 +13,7 @@
 #include "tools/cabana/ui/dialogs/settingsdialog.h"
 #include "tools/cabana/ui/dialogs/streamselector.h"
 #include "tools/cabana/ui/helpoverlay.h"
+#include "tools/cabana/ui/inistate.h"
 #include "tools/cabana/ui/tools/tooldialog.h"
 #include "tools/cabana/ui/chart/chartswidget.h"
 #include "tools/cabana/ui/widgets/detailwidget.h"
@@ -26,7 +27,6 @@ public:
   MainWindow(GLFWwindow *window, std::unique_ptr<AbstractStream> stream, StreamLoader stream_loader, const std::string &dbc_file);
   ~MainWindow();
   void draw();
-  void toggleChartsDocking();
   void close();  // remind unsaved changes, save state, exit
   bool exited() const { return exited_; }
   void showStatusMessage(const std::string &msg, int timeout_ms = 0);
@@ -81,8 +81,17 @@ private:
   void drawManageDBCsMenu();
   void drawRecentFilesMenu();
   void drawDockspace();
-  void drawMessagesPanel();
-  void drawVideoPanel();
+  DetailWidget *ensureDetailWidget();
+  // one dock window per pane; the close button of a docked pane hides it, closing a pane that floated out
+  // into its own os window brings it back into the default layout
+  bool beginPane(inistate::Pane pane, const std::string &name, ImGuiWindowFlags flags = 0);
+  void endPane(inistate::Pane pane);
+  void drawMessagesPane();
+  void drawBitsPane();
+  void drawSignalsPane();
+  void drawLogsPane();
+  void drawVideoPane();
+  void drawChartsPane();
   void drawStatusBar();
   void drawWaitDialog();
 
@@ -92,7 +101,7 @@ private:
   std::unique_ptr<AbstractStream> stream_;  // `can` points here, or at dummy_ when no stream is open
   DummyStream dummy_;
   std::unique_ptr<MessagesWidget> messages_widget_;
-  CenterWidget center_widget_;
+  std::unique_ptr<DetailWidget> detail_widget_;
   std::unique_ptr<VideoWidget> video_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;
@@ -103,15 +112,12 @@ private:
   enum { MAX_RECENT_FILES = 15 };
   std::string car_fingerprint_;
   std::string video_dock_title_;
-  bool messages_visible_ = true;
-  bool video_visible_ = true;
+  bool pane_visible_[inistate::kPaneCount];
   bool reset_layout_ = false;
   bool full_screen_ = false;
 #ifndef __APPLE__
   int windowed_rect_[4] = {0, 0, 1600, 900};
 #endif
-  bool charts_floating_ = false;
-  float video_splitter_ratio_ = -1.0f;  // < 0: the video widget is at its size hint
   std::vector<std::unique_ptr<ToolDialog>> tool_dialogs_;
   bool closing_ = false;
   bool exited_ = false;

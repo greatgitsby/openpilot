@@ -77,9 +77,7 @@ public:
 
   void setColumnCount(int n);
   void removeAll();
-  void setIsDocked(bool dock);
 
-  Observable<> toggleChartsDocking;
   Observable<> seriesChanged;
   Observable<double> showTip;
 
@@ -116,8 +114,6 @@ private:
   void drawDragPreview();
 
   LogSlider range_slider_{1000};
-  bool is_docked_ = true;
-  bool float_window_init_ = false;  // the floating window geometry is set once, right after undocking
 
   UndoStack zoom_undo_stack_;
 
