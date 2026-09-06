@@ -109,7 +109,8 @@ void applyTheme(int theme) {
   ImVec4 *c = style.Colors;
   c[ImGuiCol_Text] = p.text;
   c[ImGuiCol_TextDisabled] = p.text_disabled;
-  c[ImGuiCol_WindowBg] = c[ImGuiCol_MenuBarBg] = c[ImGuiCol_ScrollbarBg] = c[ImGuiCol_DockingEmptyBg] = p.window;
+  c[ImGuiCol_WindowBg] = c[ImGuiCol_ScrollbarBg] = c[ImGuiCol_DockingEmptyBg] = p.window;
+  c[ImGuiCol_MenuBarBg] = p.surface;  // the menu bar and the status bar are strips in the card color
   c[ImGuiCol_TitleBg] = c[ImGuiCol_TitleBgActive] = c[ImGuiCol_TitleBgCollapsed] = p.window;
   c[ImGuiCol_ChildBg] = c[ImGuiCol_PopupBg] = p.surface;
   c[ImGuiCol_Border] = c[ImGuiCol_TableBorderStrong] = p.border;
