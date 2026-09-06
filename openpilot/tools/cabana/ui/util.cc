@@ -136,6 +136,7 @@ int nonWhitespaceValidator(ImGuiInputTextCallbackData *data) {
 float iconButtonWidth() { return ImGui::GetFrameHeight(); }
 
 namespace {
+constexpr float ICON_BUTTON_GLYPH_SCALE = 0.8f;
 // the icon glyphs are padded to a square advance and their ink sits off center in it, so a square button
 // draws the glyph itself, centered on the ink
 bool squareIconButton(const char *id, const char *icon) {
@@ -143,11 +144,13 @@ bool squareIconButton(const char *id, const char *icon) {
   const ImRect r(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
   unsigned int codepoint = 0;
   ImTextCharFromUtf8(&codepoint, icon, nullptr);
-  ImFontBaked *baked = ImGui::GetFontBaked();
+  // the glyph is drawn a little smaller than the text so full bleed icons keep a margin inside the frame
+  const float size = std::round(ImGui::GetFontSize() * ICON_BUTTON_GLYPH_SCALE);
+  ImFontBaked *baked = ImGui::GetFont()->GetFontBaked(size);
   if (const ImFontGlyph *g = baked->FindGlyph((ImWchar)codepoint)) {
     const ImVec2 ink((g->X0 + g->X1) * 0.5f, (g->Y0 + g->Y1) * 0.5f);
     const ImVec2 pos(std::round(r.GetCenter().x - ink.x), std::round(r.GetCenter().y - ink.y));
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), pos, ImGui::GetColorU32(ImGuiCol_Text), icon);
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), size, pos, ImGui::GetColorU32(ImGuiCol_Text), icon);
   }
   return clicked;
 }
