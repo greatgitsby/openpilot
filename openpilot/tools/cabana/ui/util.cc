@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -134,20 +135,38 @@ int nonWhitespaceValidator(ImGuiInputTextCallbackData *data) {
 
 float iconButtonWidth() { return ImGui::GetFrameHeight(); }
 
+namespace {
+// the icon glyphs are padded to a square advance and their ink sits off center in it, so a square button
+// draws the glyph itself, centered on the ink
+bool squareIconButton(const char *id, const char *icon) {
+  const bool clicked = ImGui::Button((std::string("###") + id).c_str(), ImVec2(iconButtonWidth(), 0.0f));
+  const ImRect r(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+  unsigned int codepoint = 0;
+  ImTextCharFromUtf8(&codepoint, icon, nullptr);
+  ImFontBaked *baked = ImGui::GetFontBaked();
+  if (const ImFontGlyph *g = baked->FindGlyph((ImWchar)codepoint)) {
+    const ImVec2 ink((g->X0 + g->X1) * 0.5f, (g->Y0 + g->Y1) * 0.5f);
+    const ImVec2 pos(std::round(r.GetCenter().x - ink.x), std::round(r.GetCenter().y - ink.y));
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), pos, ImGui::GetColorU32(ImGuiCol_Text), icon);
+  }
+  return clicked;
+}
+}  // namespace
+
 bool iconButton(const char *id, const char *icon, const char *tooltip) {
-  const bool clicked = ImGui::Button((std::string(icon) + "###" + id).c_str(), ImVec2(iconButtonWidth(), 0.0f));
+  const bool clicked = squareIconButton(id, icon);
   if (tooltip && *tooltip) ImGui::SetItemTooltip("%s", tooltip);
   return clicked;
 }
 
 bool toolButton(const char *id, const char *icon, const char *tooltip, const char *text) {
   const bool has_text = text && *text;
-  const std::string label = has_text ? std::string(icon) + " " + text + "###" + id : std::string(icon) + "###" + id;
   // no frame, transparent until hovered; a single glyph (an icon) gets a square, a text label its own width
   const bool square = !has_text && ImTextCountCharsFromUtf8(icon, nullptr) == 1;
   ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-  const bool clicked = ImGui::Button(label.c_str(), ImVec2(square ? iconButtonWidth() : 0.0f, 0.0f));
+  const bool clicked = square ? squareIconButton(id, icon)
+                              : ImGui::Button((has_text ? std::string(icon) + " " + text + "###" + id : std::string(icon) + "###" + id).c_str());
   ImGui::PopStyleVar();
   ImGui::PopStyleColor();
   if (tooltip && *tooltip) ImGui::SetItemTooltip("%s", tooltip);
