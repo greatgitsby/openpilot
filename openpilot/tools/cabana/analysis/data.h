@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -10,9 +12,22 @@
 namespace cabana::analysis {
 struct Sample { double time, value; };
 struct Channel {
-  std::vector<Sample> samples;
+  // Published replay snapshots share immutable samples. Only the merge worker copies a
+  // changed history; publishing and retiring a snapshot does no bulk work on the UI thread.
+  const std::vector<Sample> &samples() const { return *samples_; }
+  std::vector<Sample> &editSamples(size_t capacity = 0) {
+    if (samples_.use_count() != 1) {
+      auto next = std::make_shared<std::vector<Sample>>();
+      next->reserve(std::max(capacity, samples_->size()));
+      next->assign(samples_->begin(), samples_->end());
+      samples_ = std::move(next);
+    }
+    return *samples_;
+  }
   std::map<int, std::string> labels;
   std::optional<double> at(double time) const;
+private:
+  std::shared_ptr<std::vector<Sample>> samples_ = std::make_shared<std::vector<Sample>>();
 };
 struct LogLine {
   double time = 0, wall = 0;

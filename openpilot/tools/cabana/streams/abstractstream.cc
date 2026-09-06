@@ -12,7 +12,7 @@ static const int EVENT_NEXT_BUFFER_SIZE = 6 * 1024 * 1024;  // 6MB
 AbstractStream *can = nullptr;
 
 AbstractStream::AbstractStream() {
-  event_buffer_ = std::make_unique<MonotonicBuffer>(EVENT_NEXT_BUFFER_SIZE);
+  event_buffer_ = std::make_shared<MonotonicBuffer>(EVENT_NEXT_BUFFER_SIZE);
 
   // connected first so the stream state is updated before any widget handlers run
   connections_.push_back(seekedTo.connect([this](double sec) { updateLastMsgsTo(sec); }));
@@ -248,6 +248,12 @@ void AbstractStream::insertEvents(const std::vector<const CanEvent *> &events, c
     all_events_.insert(pos, events.cbegin(), events.cend());
     eventsMerged(msg_events);
   }
+}
+
+void AbstractStream::publishEvents(std::vector<const CanEvent *> &events, MessageEventsMap &messages, const MessageEventsMap &added) {
+  all_events_.swap(events);
+  events_.swap(messages);
+  if (!added.empty()) eventsMerged(added);
 }
 
 std::pair<CanEventIter, CanEventIter> AbstractStream::eventsInRange(const MessageId &id, std::optional<std::pair<double, double>> time_range) const {

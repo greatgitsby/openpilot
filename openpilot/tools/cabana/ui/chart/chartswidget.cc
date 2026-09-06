@@ -100,11 +100,7 @@ void ChartsWidget::updateTabBar() {
 }
 
 void ChartsWidget::eventsMerged(const MessageEventsMap &new_events) {
-  std::vector<std::future<void>> futures;
-  for (auto &c : charts_) {
-    futures.push_back(ThreadPool::instance().run([c = c.get(), &new_events]() { c->updateSeries(nullptr, &new_events); }));
-  }
-  for (auto &f : futures) f.get();
+  for (auto &chart : charts_) chart->updateSeries(nullptr, &new_events);
 }
 
 void ChartsWidget::zoomReset() {
@@ -130,6 +126,7 @@ void ChartsWidget::showValueTip(double sec) {
 }
 
 void ChartsWidget::updateState() {
+  for (auto &chart : charts_) chart->refreshSeries();
   if (charts_.empty()) return;
 
   const auto &time_range = can->timeRange();

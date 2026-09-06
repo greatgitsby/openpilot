@@ -15,7 +15,9 @@ public:
   void start() override { replay->start(); }
   bool loadRoute(const std::string &route, const std::string &data_dir, uint32_t replay_flags = REPLAY_FLAG_NONE, bool auto_source = false);
   bool eventFilter(const Event *event);
-  void seekTo(double ts) override { replay->seekTo(std::max(double(0), ts), false); }
+  void seekTo(double ts) override {
+    replay->seekTo(std::clamp(ts, minSeconds(), std::max(minSeconds(), maxSeconds() - 0.001)), false);
+  }
   bool liveStreaming() const override { return false; }
   inline std::string routeName() const override { return replay->route().name(); }
   inline std::string carFingerprint() const override { return replay->carFingerprint(); }
@@ -36,6 +38,7 @@ public:
 
 private:
   void mergeSegments();
+  cabana::analysis::Data analysis_snapshot_;  // merge-thread-owned snapshot
   std::unique_ptr<Replay> replay = nullptr;
   Connection settings_connection_;
   std::set<int> processed_segments;

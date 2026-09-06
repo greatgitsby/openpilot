@@ -47,6 +47,7 @@ public:
 
   inline const std::unordered_map<MessageId, CanData> &lastMessages() const { return last_msgs; }
   bool isMessageActive(const MessageId &id) const;
+  std::shared_ptr<const MonotonicBuffer> eventStorage() const { return event_buffer_; }
   inline const MessageEventsMap &eventsMap() const { return events_; }
   inline const std::vector<const CanEvent *> &allEvents() const { return all_events_; }
   const CanData &lastMessage(const MessageId &id) const;
@@ -78,6 +79,7 @@ protected:
   void requestUpdateLastMessages() { postToMainThread([this]() { updateLastMessages(); }); }
   void mergeEvents(const std::vector<const CanEvent *> &events);
   void insertEvents(const std::vector<const CanEvent *> &events, const MessageEventsMap &msg_events);
+  void publishEvents(std::vector<const CanEvent *> &events, MessageEventsMap &messages, const MessageEventsMap &added);
   const CanEvent *newEvent(uint64_t mono_time, const cereal::CanData::Reader &c);
   void updateEvent(const MessageId &id, double sec, const uint8_t *data, uint8_t size);
   void waitForSeekFinshed();
@@ -92,7 +94,7 @@ private:
 
   MessageEventsMap events_;
   std::unordered_map<MessageId, CanData> last_msgs;
-  std::unique_ptr<MonotonicBuffer> event_buffer_;
+  std::shared_ptr<MonotonicBuffer> event_buffer_;
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   Connections connections_;
 

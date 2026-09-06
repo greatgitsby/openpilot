@@ -1,5 +1,52 @@
 # Cabana bug-fixing handoff
 
+## Native macOS integration update — 2026-09-06
+
+This section supersedes the testing instructions and environment below. The user now requires **Computer UI testing on the real demo route; do not use fixtures or Xvfb**. Launch the binary with `--demo`. They want analysis integrated into Cabana and reported whole-UI hitches when segments merge/load. Changes below are included in the Cabana integration update on `jp-slop`.
+
+### Implementation
+
+- CAN and Analysis now share the application shell, workspace switches, timeline, playback/speed controls, and status footer. CAN docking survives workspace switches. File/Edit actions adapt to the active workspace.
+- Replay merges build analysis snapshots and event indices on the merge worker, then publish by swapping on the UI thread. Channel samples use copy-on-write storage. Native tests cover snapshot isolation across trim and merge.
+- Replay CAN chart rebuilding runs asynchronously without waiting for worker futures on the UI thread. Analysis CAN histories decode on demand in workers; the browser caches its hierarchy, plots cache decimation, and formula input serialization runs in workers. Jobs retain copied signal definitions and shared event storage.
+- Analysis cameras use persistent workers with replaceable pending requests, keeping the existing bounded frame cache. Old seek results cannot replace a closer displayed frame. Cached download paths are memoized after resolution to avoid repeated Python launches, with file existence checked before reuse.
+- Main-thread seek acknowledgement runs directly instead of waiting for a queued main-thread callback. Route-end seeks clamp inside the final segment.
+- ImGui keyboard navigation is enabled. Cmd/Ctrl+1 and +2 switch workspaces. Focused timeline supports Home/End and Left/Right (Shift for 10-second steps). Space controls playback without activating focused navigation buttons.
+
+- Follow-up: scrub previews now render above the shared timeline in the foreground, clamped to the viewport, instead of covering/replacing the original camera pane. Thumbnail collection also runs while that pane is hidden. Native build passed; Computer could not reliably trigger timeline hover in the follow-up check.
+
+- Visual follow-up: analysis now uses theme-aware slate/white surfaces, stronger labels and borders, consistent padding and rounded controls, a full-width signal search with column headers, titled panes with right-aligned Options menus, and centered camera images. Plot colors adapt in brightness for the active theme without modifying layout colors. Map route and position have distinct blue/orange styling. No animation or extra camera decode work was added.
+- Visual validation used Computer with real `--demo` routes in `cameras-and-map` and `camera-timings`, in both light and dark mode. Checked pane layout, cameras, plot legends/axes/curves, and search focus. Primary text/panel contrast is 12.89:1 dark and 14.12:1 light; secondary labels are 6.98:1 and 5.69:1 respectively (palette calculation, not an exhaustive accessibility audit). Native build and diff whitespace checks passed. Switched the saved theme while Cabana was closed because Computer could not send the settings shortcut; restored the original dark theme afterward.
+
+- Connect palette follow-up: cloned `greatgitsby/connect` into `/Users/trey/dev/connect`, added `commaai/connect` as `upstream`, and fast-forwarded local `master` by nine commits to `7091050543687f3841f2942fc8bf3f2bf258d0b6`, matching upstream master. GitHub origin was not pushed. Palette source is `src/colors.js` and `src/theme.js`: background `#1D2225`, panels `#30373B`, primary `#57A9E3`, neutral grey controls. Connect only defines dark mode; Cabana light mode uses Connect's lightGrey/lightBlue colors. This supersedes the earlier slate palette and contrast figures: primary text is now 11.47:1 dark / 16.04:1 light; secondary is 6.56:1 / 6.59:1. Native build and diff checks passed; Computer inspected the real demo camera/map layout in both themes. Original dark preference restored.
+
+- Crop follow-up: replay analysis cameras and thumbnail panes now use the shared `videoPlacement(..., settings.crop_video)` helper, matching the existing live/CAN camera behavior. The preference is read on every draw without restarting decoders. Native build and diff checks passed; Computer inspected real demo cameras with crop enabled (fill) and disabled (centered letterbox), changing the saved setting while closed. Original crop-on preference restored. Thumbnail placement shares the helper but was not separately exercised in the UI.
+
+- Video frame follow-up: media panes have a theme-aware rounded border with zero inner padding. Replay, thumbnail, and live camera textures use `AddImageRounded` so opaque video pixels do not cover the rounded corners. Native build/diff checks passed and Computer inspected the real demo.
+
+- Final polish: checkboxes use Cabana's compact checkbox control while keeping button sizing. Table headers and alternating rows have stronger contrast. Media borders draw after the image using the same bounds and radius, with no padding. Core analysis tests and final diff checks passed before committing.
+
+### Validation and limits
+
+- Full native macOS Cabana build and `openpilot/tools/cabana/tests/test_analysis` passed; `git diff --check` passed.
+- Computer tested the real 16-minute demo route with `--layout cameras-and-map`: three cameras visibly update; workspace switching preserves playback; paused Home/End/Right seeks preserve pause and timeline focus; Space does not open a focused Layouts menu. Earlier native checks also exercised search and playing seeks. No exhaustive preset sweep was performed.
+- Computer can capture screenshots and send keyboard input. Its coordinate clicks often hover without activating controls. The user confirmed their own mouse works normally. Do not count failed Computer clicks as functional passes or infer broken Cabana mouse handling. ImGui content is absent from the native accessibility tree; a native accessibility bridge would improve semantic targeting. No bridge was implemented.
+- Settled playback showed roughly 120 FPS in an earlier native check, but sparse Computer screenshots are not a frame-latency benchmark. Worst-case segment-merge and camera latency remain unquantified. Do not claim all hitches are eliminated.
+- Legacy fixture UI tests were not used after the user's correction and were not migrated to the shared footer. Historical measurements below are not measurements of this native build.
+
+Computer on this machine needs an app bundle to target Cabana. `/tmp/Cabana Integration.app` wraps the built binary (symlink under Contents/MacOS). Launch used:
+
+```sh
+open -n '/tmp/Cabana Integration.app' \
+  --env 'PATH=/Users/trey/dev/openpilot/.venv/bin:/usr/bin:/bin' \
+  --env 'PYTHONPATH=/Users/trey/dev/openpilot' \
+  --args --demo --layout cameras-and-map
+```
+
+Current workspace is `/Users/trey/dev/openpilot`. Build with the project `.venv/bin` on PATH. Older Linux paths and push instructions below are historical, not instructions for this session.
+
+## Historical handoff
+
 ## Current mode and user priorities
 
 We are in **bug-fixing mode**. Do not restart the migration or add unrelated features.

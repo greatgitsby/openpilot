@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <future>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -28,15 +29,17 @@ inline std::string msgLabel(const MessageId &id) { return " " + msgName(id) + " 
 class ChartsWidget;
 class ChartView {
 public:
+  struct SeriesData {
+    std::vector<ImPlotPoint> vals, step_vals;
+    SegmentTree segment_tree;
+  };
   struct SigItem {
     MessageId msg_id;
     const cabana::Signal *sig = nullptr;
     CabanaColor color;
     bool visible = true;
-    std::vector<ImPlotPoint> vals;
-    std::vector<ImPlotPoint> step_vals;
+    std::shared_ptr<SeriesData> series = std::make_shared<SeriesData>();
     ImPlotPoint track_pt{};
-    SegmentTree segment_tree;
     double min = 0;
     double max = 0;
   };
@@ -45,6 +48,7 @@ public:
   void addSignal(const MessageId &msg_id, const cabana::Signal *sig);
   bool hasSignal(const MessageId &msg_id, const cabana::Signal *sig) const;
   void updateSeries(const cabana::Signal *sig = nullptr, const MessageEventsMap *msg_new_events = nullptr);
+  void refreshSeries();
   void updatePlot(double cur, double min, double max);
   void setSeriesType(SeriesType type) { series_type_ = type; }
   void showTip(double sec);
@@ -132,6 +136,10 @@ private:
   ImGuiID context_menu_id_ = 0;
 
   TipLabel tip_label_;
+  struct SeriesResult { MessageId id; const cabana::Signal *signal; std::shared_ptr<SeriesData> data; };
+  std::future<std::vector<SeriesResult>> pending_series_;
+  uint64_t series_generation_ = 0, pending_generation_ = 0;
+  bool series_dirty_ = false;
   std::vector<SigItem> sigs_;
   double cur_sec_ = 0;
   SeriesType series_type_ = SeriesType::Line;

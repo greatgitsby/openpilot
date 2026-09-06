@@ -19,10 +19,11 @@ ReplayStream::ReplayStream() {
 
 ReplayStream::~ReplayStream() {
   cancelWaits();
+  replay.reset();  // stop callbacks before destroying merge-thread-owned state
 }
 
-// runs on replay's merge thread: a segment of CAN data takes ~30 ms to parse and group, which dropped
-// frames when it ran on the main thread. Only the sorted insert and the merged signal need the main thread.
+// Replay's merge thread is the sole writer of these histories. Prepare replacement containers
+// while the UI reads the published ones; the acknowledged publication swaps them in constant time.
 void ReplayStream::mergeSegments() {
   auto event_data = replay->getEventData();
   for (const auto &[n, seg] : event_data->segments) {
@@ -47,7 +48,25 @@ void ReplayStream::mergeSegments() {
           }
         }
       }
-      postToMainThreadAndWait([&]() { analysis_data.merge(std::move(analysis_batch)); insertEvents(new_events, msg_events); });
+      auto next_events = allEvents();
+      auto next_messages = eventsMap();
+      for (const auto &[id, added] : msg_events) {
+        auto &history = next_messages[id];
+        auto pos = std::upper_bound(history.begin(), history.end(), added.front()->mono_time, CompareCanEvent());
+        history.insert(pos, added.begin(), added.end());
+      }
+      if (!new_events.empty()) {
+        auto pos = std::upper_bound(next_events.begin(), next_events.end(), new_events.front()->mono_time, CompareCanEvent());
+        next_events.insert(pos, new_events.begin(), new_events.end());
+      }
+      auto next_analysis = analysis_snapshot_;
+      next_analysis.merge(std::move(analysis_batch));
+      analysis_snapshot_ = next_analysis;
+      postToMainThreadAndWait([&]() {
+        std::swap(analysis_data, next_analysis);
+        publishEvents(next_events, next_messages, msg_events);
+      });
+      // next_analysis now owns the retired UI snapshot. Release it here, not in the UI callback.
     }
   }
 }
@@ -68,8 +87,10 @@ bool ReplayStream::loadRoute(const std::string &route, const std::string &data_d
   // replay callbacks arrive on replay threads
   replay->onSeeking = [this](double sec) { postToMainThread([this, sec]() { seeking(sec); }); };
   replay->onSeekedTo = [this](double sec) {
-    postToMainThread([this, sec]() { seekedTo(sec); });
-    waitForSeekFinshed();
+    // Cached seeks can acknowledge synchronously from the UI. Never wait for that same
+    // thread to drain a queued acknowledgement; background completions still synchronize.
+    if (utils::isMainThread()) seekedTo(sec);
+    else postToMainThreadAndWait([this, sec]() { seekedTo(sec); });
   };
   replay->onQLogLoaded = [this](std::shared_ptr<LogReader> qlog) { postToMainThread([this, qlog]() { qLogLoaded(qlog); }); };
   replay->onSegmentsMerged = [this]() { mergeSegments(); };

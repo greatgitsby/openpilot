@@ -13,6 +13,7 @@
 #include "tools/cabana/ui/chart/chartswidget.h"
 #include "tools/cabana/ui/icons.h"
 #include "tools/cabana/ui/util.h"
+#include "tools/cabana/ui/threadpool.h"
 #include "tools/cabana/utils/strings.h"
 
 const int AXIS_X_TOP_MARGIN = 4;
@@ -95,6 +96,7 @@ bool ChartView::hasSignal(const MessageId &msg_id, const cabana::Signal *sig) co
 }
 
 void ChartView::removeIf(std::function<bool(const SigItem &s)> predicate) {
+  ++series_generation_; series_dirty_ = !can->liveStreaming();
   int prev_size = sigs_.size();
   sigs_.erase(std::remove_if(sigs_.begin(), sigs_.end(), predicate), sigs_.end());
   if (sigs_.empty()) {
@@ -203,34 +205,87 @@ void ChartView::appendCanEvents(const cabana::Signal *sig, const std::vector<con
 }
 
 void ChartView::updateSeries(const cabana::Signal *sig, const MessageEventsMap *msg_new_events) {
+  if (!can->liveStreaming()) { ++series_generation_; series_dirty_ = true; return; }
   for (auto &s : sigs_) {
     if (!sig || s.sig == sig) {
       if (!msg_new_events) {
-        s.vals.clear();
-        s.step_vals.clear();
+        s.series->vals.clear();
+        s.series->step_vals.clear();
       }
       auto events = msg_new_events ? msg_new_events : &can->eventsMap();
       auto it = events->find(s.msg_id);
       if (it == events->end() || it->second.empty()) continue;
 
-      if (s.vals.empty() || can->toSeconds(it->second.back()->mono_time) > s.vals.back().x) {
-        appendCanEvents(s.sig, it->second, s.vals, s.step_vals);
+      if (s.series->vals.empty() || can->toSeconds(it->second.back()->mono_time) > s.series->vals.back().x) {
+        appendCanEvents(s.sig, it->second, s.series->vals, s.series->step_vals);
       } else {
         std::vector<ImPlotPoint> vals, step_vals;
         appendCanEvents(s.sig, it->second, vals, step_vals);
         if (vals.empty()) continue;
-        s.vals.insert(std::lower_bound(s.vals.begin(), s.vals.end(), vals.front().x, xLessThan),
+        s.series->vals.insert(std::lower_bound(s.series->vals.begin(), s.series->vals.end(), vals.front().x, xLessThan),
                       vals.begin(), vals.end());
-        s.step_vals.insert(std::lower_bound(s.step_vals.begin(), s.step_vals.end(), step_vals.front().x, xLessThan),
+        s.series->step_vals.insert(std::lower_bound(s.series->step_vals.begin(), s.series->step_vals.end(), step_vals.front().x, xLessThan),
                            step_vals.begin(), step_vals.end());
       }
 
       if (!can->liveStreaming()) {
-        s.segment_tree.build(s.vals.size(), [&vals = s.vals](int i) { return vals[i].y; });
+        s.series->segment_tree.build(s.series->vals.size(), [&vals = s.series->vals](int i) { return vals[i].y; });
       }
     }
   }
   updateAxisY();
+}
+
+void ChartView::refreshSeries() {
+  if (pending_series_.valid()) {
+    if (pending_series_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    auto results = pending_series_.get();
+    if (pending_generation_ == series_generation_) {
+      for (auto &result : results) for (auto &s : sigs_) {
+        if (s.msg_id == result.id && s.sig == result.signal) s.series.swap(result.data);
+      }
+      updateAxisY();
+    }
+    // Retire the old history (or a superseded result) away from the rendering thread.
+    ThreadPool::instance().run([results = std::move(results)] {});
+  }
+  if (!series_dirty_ || can->liveStreaming()) return;
+  series_dirty_ = false; pending_generation_ = series_generation_;
+  struct Input {
+    MessageId id;
+    const cabana::Signal *identity;
+    cabana::Signal signal;
+    std::optional<cabana::Signal> multiplexor;
+    std::vector<const CanEvent *> events;
+  };
+  std::vector<Input> inputs;
+  for (const auto &s : sigs_) {
+    Input input{s.msg_id, s.sig, *s.sig, {}, can->events(s.msg_id)};
+    if (s.sig->multiplexor) input.multiplexor = *s.sig->multiplexor;
+    inputs.push_back(std::move(input));
+  }
+  auto task = std::make_shared<std::packaged_task<std::vector<SeriesResult>()>>(
+    [inputs = std::move(inputs), storage = can->eventStorage(), origin = can->beginMonoTime()]() mutable {
+      std::vector<SeriesResult> results;
+      for (auto &input : inputs) {
+        input.signal.multiplexor = input.multiplexor ? &*input.multiplexor : nullptr;
+        auto data = std::make_shared<SeriesData>();
+        data->vals.reserve(input.events.size()); data->step_vals.reserve(input.events.size() * 2);
+        for (const auto *event : input.events) {
+          double value;
+          if (!input.signal.getValue(event->dat, event->size, &value)) continue;
+          double time = std::max(0.0, (double(event->mono_time) - double(origin)) * 1e-9);
+          data->vals.emplace_back(time, value);
+          if (!data->step_vals.empty()) data->step_vals.emplace_back(time, data->step_vals.back().y);
+          data->step_vals.emplace_back(time, value);
+        }
+        data->segment_tree.build(data->vals.size(), [&data](int i) { return data->vals[i].y; });
+        results.push_back({input.id, input.identity, std::move(data)});
+      }
+      return results;
+    });
+  pending_series_ = task->get_future();
+  ThreadPool::instance().run([task] { (*task)(); });
 }
 
 std::pair<ChartView::PointIter, ChartView::PointIter> ChartView::visibleRange(const std::vector<ImPlotPoint> &points) const {
@@ -240,8 +295,8 @@ std::pair<ChartView::PointIter, ChartView::PointIter> ChartView::visibleRange(co
 }
 
 const ImPlotPoint *ChartView::lastPointBefore(const SigItem &s, double sec) const {
-  auto it = std::lower_bound(s.vals.crbegin(), s.vals.crend(), sec, [](auto &p, double x) { return p.x > x + EPSILON; });
-  return it != s.vals.crend() && it->x >= x_min_ ? &*it : nullptr;
+  auto it = std::lower_bound(s.series->vals.crbegin(), s.series->vals.crend(), sec, [](auto &p, double x) { return p.x > x + EPSILON; });
+  return it != s.series->vals.crend() && it->x >= x_min_ ? &*it : nullptr;
 }
 
 void ChartView::updateAxisY() {
@@ -259,7 +314,7 @@ void ChartView::updateAxisY() {
       unit.clear();
     }
 
-    auto [first, last] = visibleRange(s.vals);
+    auto [first, last] = visibleRange(s.series->vals);
     s.min = std::numeric_limits<double>::max();
     s.max = std::numeric_limits<double>::lowest();
     if (can->liveStreaming()) {
@@ -268,7 +323,7 @@ void ChartView::updateAxisY() {
         if (it->y > s.max) s.max = it->y;
       }
     } else {
-      std::tie(s.min, s.max) = s.segment_tree.minmax(std::distance(s.vals.cbegin(), first), std::distance(s.vals.cbegin(), last));
+      std::tie(s.min, s.max) = s.series->segment_tree.minmax(std::distance(s.series->vals.cbegin(), first), std::distance(s.series->vals.cbegin(), last));
     }
     min = std::min(min, s.min);
     max = std::max(max, s.max);
@@ -438,6 +493,7 @@ void ChartView::takeSignalsFrom(ChartView *source) {
     sigs_.back().color = uniqueColor(sigs_.back().color, sigs_.back().sig);
   }
   source->sigs_.clear();
+  if (!can->liveStreaming()) updateSeries();
   updateAxisY();
   charts_widget_->removeChart(source);
 }
@@ -449,12 +505,14 @@ std::vector<ChartView::SigItem> ChartView::takeExtraSignals() {
     extra.push_back(std::move(*it));
   }
   sigs_.resize(1);
+  if (!can->liveStreaming()) updateSeries();
   updateAxisY();
   return extra;
 }
 
 void ChartView::adoptSignal(SigItem s) {
   sigs_.push_back(std::move(s));
+  if (!can->liveStreaming()) updateSeries();
   updateAxisY();
 }
 
@@ -499,6 +557,7 @@ void ChartView::hideTip() {
 }
 
 void ChartView::draw(float width) {
+  refreshSeries();
   ImGui::PushID(this);
   width = std::max(width, (float)CHART_MIN_WIDTH);
   layout_.plot_hovered = false;
@@ -652,11 +711,11 @@ void ChartView::drawSeries() {
     if (!s.visible) continue;
 
     // visible points in vals to compute point density
-    auto [first, last] = visibleRange(s.vals);
+    auto [first, last] = visibleRange(s.series->vals);
     int num_points = std::max<int>(last - first, 1);
     double pixels_per_point = 0;
     if (first != last) {
-      const ImPlotPoint &right_pt = last == s.vals.cend() ? s.vals.back() : *last;
+      const ImPlotPoint &right_pt = last == s.series->vals.cend() ? s.series->vals.back() : *last;
       pixels_per_point = (xPos(right_pt.x) - xPos(first->x)) / num_points;
     }
 
@@ -670,7 +729,7 @@ void ChartView::drawSeries() {
       spec.MarkerSize = radius;
       if (first != last) ImPlot::PlotScatter(label.c_str(), &first->x, &first->y, last - first, spec);
     } else {
-      const auto &points = series_type_ == SeriesType::StepLine ? s.step_vals : s.vals;
+      const auto &points = series_type_ == SeriesType::StepLine ? s.series->step_vals : s.series->vals;
       // one sample beyond each edge so the line runs out of the plot
       auto [begin, end] = visibleRange(points);
       if (begin != points.cbegin()) --begin;

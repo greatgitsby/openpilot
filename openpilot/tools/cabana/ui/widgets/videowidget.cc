@@ -243,6 +243,8 @@ void VideoWidget::createSpeedDropdown() {
 }
 
 void VideoWidget::drawSpeedDropdown(float width) {
+  speed_text_ = speedText(can->getSpeed());
+  speed_index_ = std::find(std::begin(speeds), std::end(speeds), float(can->getSpeed())) - std::begin(speeds);
   menuButton("speed_btn", speed_text_, "speed_menu", true, width);
   if (ImGui::BeginPopup("speed_menu")) {
     drawSpeedMenuItems();
@@ -291,14 +293,10 @@ void VideoWidget::createCameraWidget() {
 void VideoWidget::drawCameraWidget() {
   camera_tab_->draw();
 
-  // cam_widget_: minimum height MIN_VIDEO_HEIGHT, takes the space left by the slider and the toolbar
+  // Playback lives in the shared transport; the camera fills this pane.
   const ImVec2 avail = ImGui::GetContentRegionAvail();
-  const float cam_height = std::max((float)MIN_VIDEO_HEIGHT, avail.y - SLIDER_HEIGHT - toolbarHeight());
-  cam_widget_->draw(ImVec2(avail.x, cam_height), thumbnail_display_time_);
-
-  if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());
-  slider_->draw(thumbnail_display_time_);
-  updateSliderThumbnail();
+  const float cam_height = std::max((float)MIN_VIDEO_HEIGHT, avail.y);
+  cam_widget_->draw(ImVec2(avail.x, cam_height));
 }
 
 void VideoWidget::vipcAvailableStreamsUpdated(std::set<VisionStreamType> streams) {
@@ -366,8 +364,8 @@ void VideoWidget::updateSliderThumbnail() {
 }
 
 float VideoWidget::sizeHintHeight() const {
-  // the camera minimum height plus the slider and the toolbar
-  return MIN_VIDEO_HEIGHT + SLIDER_HEIGHT + toolbarHeight();
+  // The transport is outside the camera pane.
+  return MIN_VIDEO_HEIGHT;
 }
 
 // the video pane opens with the camera at its natural aspect ratio, filling the width of the dock
@@ -375,7 +373,7 @@ float VideoWidget::defaultHeight(float width) const {
   if (!cam_widget_) return toolbarHeight();  // live streams have no camera or slider
   const float cam_height = std::max((float)MIN_VIDEO_HEIGHT, width / cam_widget_->frameAspectRatio());
   const float tab_height = camera_tab_->count() >= 2 ? ImGui::GetFrameHeight() : 0.0f;
-  return cam_height + tab_height + SLIDER_HEIGHT + toolbarHeight();
+  return cam_height + tab_height;
 }
 
 void VideoWidget::draw() {
@@ -383,6 +381,21 @@ void VideoWidget::draw() {
   if (!can->liveStreaming())
     drawCameraWidget();
 
+  ImGui::PopStyleVar();
+}
+
+float VideoWidget::transportHeight() const {
+  return toolbarHeight() + (slider_ ? SLIDER_HEIGHT : 0) + ImGui::GetStyle().ItemSpacing.y;
+}
+
+void VideoWidget::drawTransport() {
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0));
+  if (slider_) {
+    if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());
+    slider_->draw(thumbnail_display_time_);
+    updateSliderThumbnail();
+    if (cam_widget_) cam_widget_->drawThumbnail(slider_->rect(), thumbnail_display_time_);
+  }
   drawPlaybackController();
   ImGui::PopStyleVar();
 
@@ -392,13 +405,25 @@ void VideoWidget::draw() {
 }
 
 void Slider::draw(double thumbnail_time) {
-  ImGui::InvisibleButton("##slider", ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), SLIDER_HEIGHT));
+  ImGui::InvisibleButton("##slider", ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x), SLIDER_HEIGHT), ImGuiButtonFlags_EnableNav);
   rect_ = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
   const bool hovered = ImGui::IsItemHovered();
   left_ = hovered_ && !hovered;
   hovered_ = hovered;
 
-  if (ImGui::IsItemActivated()) handleMousePress();
+  if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) handleMousePress();
+  if (ImGui::IsItemFocused()) {
+    const ImGuiID owner = ImGui::GetItemID();
+    for (auto key : {ImGuiKey_LeftArrow, ImGuiKey_RightArrow, ImGuiKey_Home, ImGuiKey_End})
+      ImGui::SetKeyOwner(key, owner, ImGuiInputFlags_LockUntilRelease);
+    int next = value();
+    const int step = factor * (ImGui::GetIO().KeyShift ? 10 : 1);
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, ImGuiInputFlags_Repeat, owner)) next -= step;
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, ImGuiInputFlags_Repeat, owner)) next += step;
+    if (ImGui::IsKeyPressed(ImGuiKey_Home, ImGuiInputFlags_Repeat, owner)) next = minimum();
+    if (ImGui::IsKeyPressed(ImGuiKey_End, ImGuiInputFlags_Repeat, owner)) next = maximum();
+    if (next != value()) { setValue(next); sliderReleased(); }
+  }
   if (slider_down_) {
     if (ImGui::IsItemActive()) {
       // the handle keeps its grab offset while dragging
@@ -527,17 +552,12 @@ void StreamCameraView::collectThumbnails() {
   }
 }
 
-void StreamCameraView::draw(const ImVec2 &size, double thumbnail_time) {
+void StreamCameraView::draw(const ImVec2 &size) {
   collectThumbnails();
   CameraWidget::draw(size);
 
   ImDrawList *p = ImGui::GetWindowDrawList();
-  bool scrubbing = false;
-  if (thumbnail_time >= 0) {
-    scrubbing = can->isPaused();
-    scrubbing ? drawScrubThumbnail(p, thumbnail_time) : drawThumbnail(p, thumbnail_time);
-  }
-  if (auto alert = getReplay() ? getReplay()->findAlertAtTime(scrubbing ? thumbnail_time : can->currentSec()) : std::nullopt) {
+  if (auto alert = getReplay() ? getReplay()->findAlertAtTime(can->currentSec()) : std::nullopt) {
     drawAlert(p, rect(), *alert, ImGui::GetFontSize());
   }
 
@@ -561,27 +581,23 @@ const RgbImage *StreamCameraView::thumbnailAt(double sec) {
   return &it->second;
 }
 
-void StreamCameraView::drawScrubThumbnail(ImDrawList *p, double sec) {
-  p->AddRectFilled(rect().Min, rect().Max, IM_COL32(0, 0, 0, 255));
+void StreamCameraView::drawThumbnail(const ImRect &timeline, double sec) {
+  collectThumbnails();
+  if (sec < 0) return;
   if (const RgbImage *image = thumbnailAt(sec)) {
-    const VideoPlacement placement = videoPlacement(rect(), (float)image->width / image->height, settings.crop_video);
-    p->AddImage(big_thumbnail_texture_.ref(), placement.min, placement.max, placement.uv0, placement.uv1);
-    drawTime(p, rect(), sec);
-  }
-}
-
-void StreamCameraView::drawThumbnail(ImDrawList *p, double sec) {
-  if (const RgbImage *image = thumbnailAt(sec)) {
-    // AddImage scales the stored image to the thumbnail height, keeping the aspect ratio
-    const int h = MIN_VIDEO_HEIGHT - THUMBNAIL_MARGIN * 2;
-    const int w = std::max(1, (int)std::lround((double)image->width * h / image->height));
+    const ImGuiViewport *viewport = ImGui::GetWindowViewport();
+    const float margin = THUMBNAIL_MARGIN;
+    const float h = std::min(float(MIN_VIDEO_HEIGHT) - margin * 2,
+                             std::max(1.0f, timeline.Min.y - viewport->WorkPos.y - margin * 2));
+    const float w = std::min(h * image->width / image->height, std::max(1.0f, viewport->WorkSize.x - margin * 2));
     auto [min_sec, max_sec] = displayedTimeRange();
-    int pos = (sec - min_sec) * width() / (max_sec - min_sec);
-    const int max_x = (int)width() - w - THUMBNAIL_MARGIN + 1;
-    int x = std::clamp(pos - w / 2, THUMBNAIL_MARGIN, std::max(THUMBNAIL_MARGIN, max_x));
-    int y = height() - h - THUMBNAIL_MARGIN;
-
-    ImRect thumb_rect(ImVec2(rect().Min.x + x, rect().Min.y + y), ImVec2(rect().Min.x + x + w, rect().Min.y + y + h));
+    const float fraction = max_sec > min_sec ? std::clamp((sec - min_sec) / (max_sec - min_sec), 0.0, 1.0) : 0;
+    const float left = viewport->WorkPos.x + margin;
+    const float right = std::max(left, viewport->WorkPos.x + viewport->WorkSize.x - w - margin);
+    const float x = std::clamp(timeline.Min.x + fraction * timeline.GetWidth() - w / 2, left, right);
+    const float y = timeline.Min.y - h - margin;
+    const ImRect thumb_rect(ImVec2(x, y), ImVec2(x + w, y + h));
+    ImDrawList *p = ImGui::GetForegroundDrawList(ImGui::GetWindowViewport());
     p->AddImage(big_thumbnail_texture_.ref(), thumb_rect.Min, thumb_rect.Max);
     p->AddRect(thumb_rect.Min, thumb_rect.Max, paletteBrightText(), 0.0f, 0, 2.0f);
     // look up the alert at the hovered time, the thumbnail frame itself can be seconds away

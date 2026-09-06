@@ -4,6 +4,9 @@
 #include <fcntl.h>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+#include <filesystem>
+#include <unordered_map>
 #include <mutex>
 #include <sys/wait.h>
 #include <thread>
@@ -186,11 +189,31 @@ void installDownloadProgressHandler(DownloadProgressHandler handler) {
 namespace PyDownloader {
 
 std::string download(const std::string &url, bool use_cache, std::atomic<bool> *abort) {
-  std::vector<std::string> args = {"download", url};
-  if (!use_cache) {
-    args.push_back("--no-cache");
+  if (abort && *abort) return {};
+  // Replay and analysis cameras request the same immutable route files. Once Python has
+  // resolved a cached path, reuse it without forking an interpreter on every segment seek.
+  static std::mutex cache_mutex;
+  static std::unordered_map<std::string, std::string> resolved_paths;
+  const char *cache_root = std::getenv("COMMA_CACHE");
+  const std::string key = std::string(cache_root ? cache_root : "") + "\n" + url;
+  if (use_cache) {
+    std::lock_guard lock(cache_mutex);
+    auto found = resolved_paths.find(key);
+    std::error_code error;
+    if (found != resolved_paths.end()) {
+      if (std::filesystem::is_regular_file(found->second, error)) return found->second;
+      resolved_paths.erase(found);
+    }
   }
-  return runPython(args, abort);
+  std::vector<std::string> args = {"download", url};
+  if (!use_cache) args.push_back("--no-cache");
+  auto path = runPython(args, abort);
+  if (use_cache && !path.empty() && !(abort && *abort)) {
+    std::lock_guard lock(cache_mutex);
+    if (resolved_paths.size() >= 1024) resolved_paths.clear();
+    resolved_paths[key] = path;
+  }
+  return path;
 }
 
 std::string decompress(const std::string &path, std::atomic<bool> *abort) {

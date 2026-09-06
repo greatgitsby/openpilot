@@ -7,8 +7,9 @@
 
 namespace cabana::analysis {
 std::optional<double> Channel::at(double time) const {
-  auto it = std::upper_bound(samples.begin(), samples.end(), time, [](double t, const Sample &s) { return t < s.time; });
-  return it == samples.begin() ? std::nullopt : std::optional<double>(std::prev(it)->value);
+  const auto &points = samples();
+  auto it = std::upper_bound(points.begin(), points.end(), time, [](double t, const Sample &s) { return t < s.time; });
+  return it == points.begin() ? std::nullopt : std::optional<double>(std::prev(it)->value);
 }
 
 void Data::visit(const std::string &path, capnp::DynamicValue::Reader value, double time, int depth) {
@@ -40,7 +41,7 @@ void Data::visit(const std::string &path, capnp::DynamicValue::Reader value, dou
     }
     default: break;
   }
-  if (number && std::isfinite(*number)) channels[path].samples.push_back({time, *number});
+  if (number && std::isfinite(*number)) channels[path].editSamples().push_back({time, *number});
 }
 
 void Data::append(cereal::Event::Reader event) {
@@ -52,9 +53,9 @@ void Data::append(cereal::Event::Reader event) {
   KJ_IF_MAYBE(field, object.which()) {
     std::string service = field->getProto().getName().cStr();
     std::string root = "/" + service;
-    channels[root + "/__logMonoTime"].samples.push_back({time, double(event.getLogMonoTime())});
-    channels[root + "/__logMonoTimeSeconds"].samples.push_back({time, time});
-    channels[root + "/__valid"].samples.push_back({time, double(event.getValid())});
+    channels[root + "/__logMonoTime"].editSamples().push_back({time, double(event.getLogMonoTime())});
+    channels[root + "/__logMonoTimeSeconds"].editSamples().push_back({time, time});
+    channels[root + "/__valid"].editSamples().push_back({time, double(event.getValid())});
     if (service != "can" && service != "sendcan") visit(root, object.get(*field), time);
     if (service == "sendcan") {
       for (auto frame : event.getSendcan()) {
@@ -98,9 +99,15 @@ void Data::merge(Data batch) {
   ++revision;
   for (auto &[name, channel] : batch.channels) {
     auto &target = channels[name];
-    size_t n = target.samples.size();
-    target.samples.insert(target.samples.end(), channel.samples.begin(), channel.samples.end());
-    std::inplace_merge(target.samples.begin(), target.samples.begin() + n, target.samples.end(), [](auto &a, auto &b) { return a.time < b.time; });
+    if (target.samples().empty()) {
+      target = std::move(channel);
+      continue;
+    }
+    auto &points = target.editSamples(target.samples().size() + channel.samples().size());
+    size_t n = points.size();
+    points.insert(points.end(), channel.samples().begin(), channel.samples().end());
+    if (n && !channel.samples().empty() && points[n].time < points[n - 1].time)
+      std::inplace_merge(points.begin(), points.begin() + n, points.end(), [](auto &a, auto &b) { return a.time < b.time; });
     target.labels.insert(channel.labels.begin(), channel.labels.end());
   }
   sent_frames.insert(sent_frames.end(), std::make_move_iterator(batch.sent_frames.begin()), std::make_move_iterator(batch.sent_frames.end()));
@@ -113,8 +120,9 @@ void Data::merge(Data batch) {
 
 void Data::trim(double before) {
   for (auto &[_, channel] : channels) {
-    auto it = std::lower_bound(channel.samples.begin(), channel.samples.end(), before, [](auto &s, double t) { return s.time < t; });
-    channel.samples.erase(channel.samples.begin(), it);
+    auto &points = channel.editSamples();
+    auto it = std::lower_bound(points.begin(), points.end(), before, [](auto &s, double t) { return s.time < t; });
+    points.erase(points.begin(), it);
   }
   logs.erase(std::remove_if(logs.begin(), logs.end(), [before](auto &s) { return s.time < before; }), logs.end());
   thumbnails.erase(std::remove_if(thumbnails.begin(), thumbnails.end(), [before](auto &s) { return s.time < before; }), thumbnails.end());
@@ -124,13 +132,13 @@ void Data::trim(double before) {
 
 std::vector<Sample> transform(const Channel &source, double scale, double offset, bool derivative, double dt) {
   std::vector<Sample> result;
-  result.reserve(source.samples.size());
-  for (size_t i = derivative ? 1 : 0; i < source.samples.size(); ++i) {
-    auto point = source.samples[i];
+  result.reserve(source.samples().size());
+  for (size_t i = derivative ? 1 : 0; i < source.samples().size(); ++i) {
+    auto point = source.samples()[i];
     if (derivative) {
-      double elapsed = dt > 0 ? dt : point.time - source.samples[i - 1].time;
+      double elapsed = dt > 0 ? dt : point.time - source.samples()[i - 1].time;
       if (elapsed <= 0) continue;
-      point = {source.samples[i - 1].time, (point.value - source.samples[i - 1].value) / elapsed};
+      point = {source.samples()[i - 1].time, (point.value - source.samples()[i - 1].value) / elapsed};
     }
     point.value = point.value * scale + offset;
     result.push_back(point);

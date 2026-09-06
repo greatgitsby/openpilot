@@ -1,5 +1,8 @@
 #pragma once
-#include <future>
+#include <condition_variable>
+#include <mutex>
+#include <optional>
+#include <thread>
 #include <list>
 #include "tools/cabana/ui/widgets/cameraview.h"
 #include "tools/replay/framereader.h"
@@ -14,7 +17,7 @@ public:
 private:
   struct Decoder;
   std::shared_ptr<Decoder> decoder_;
-  std::future<RgbImage> pending_;
+
   GlTexture texture_;
   struct CachedFrame { std::string file; int frame; RgbImage image; };
   std::list<CachedFrame> cache_;

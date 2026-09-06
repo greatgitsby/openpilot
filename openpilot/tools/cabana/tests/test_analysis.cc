@@ -21,17 +21,17 @@ void tests(const std::filesystem::path &cabana) {
     data.append(event.asReader());
   }
   auto &speed = data.channels.at("/carState/vEgo");
-  REQUIRE(speed.samples.size() == 1000);
+  REQUIRE(speed.samples().size() == 1000);
   REQUIRE(!speed.at(0)); REQUIRE(std::abs(*speed.at(1.505) - 1.0) < 1e-5);
   REQUIRE(!data.channels.at("/carState/gearShifter").labels.empty());
   auto derivative = transform(speed, 1, 0, true, 0);
   REQUIRE(derivative.size() == 999); REQUIRE(std::abs(derivative.front().value - 2) < 1e-5);
-  REQUIRE(derivative.front().time == speed.samples.front().time);
-  Channel duplicate; duplicate.samples = {{0, 1}, {0, 2}, {2, 6}};
+  REQUIRE(derivative.front().time == speed.samples().front().time);
+  Channel duplicate; duplicate.editSamples() = {{0, 1}, {0, 2}, {2, 6}};
   REQUIRE(transform(duplicate, 1, 0, true, 0).size() == 1);
   REQUIRE(transform(duplicate, 2, 5, true, 1)[1].value == 13);
-  data.trim(8); REQUIRE(data.channels.at("/carState/vEgo").samples.front().time >= 8);
-  REQUIRE(data.channels.at("/carState/vEgo").samples.size() <= 300);
+  data.trim(8); REQUIRE(data.channels.at("/carState/vEgo").samples().front().time >= 8);
+  REQUIRE(data.channels.at("/carState/vEgo").samples().size() <= 300);
 
   Data ordered;
   for (int i : {2, 0, 1}) {
@@ -40,8 +40,21 @@ void tests(const std::filesystem::path &cabana) {
     event.setLogMonoTime(1000000000ULL * (i + 1)); event.initCarState().setVEgo(i);
     batch.append(event.asReader()); ordered.merge(std::move(batch));
   }
-  auto &points = ordered.channels.at("/carState/vEgo").samples;
+  auto &points = ordered.channels.at("/carState/vEgo").samples();
   REQUIRE(points.size() == 3); REQUIRE(points[0].value == 0); REQUIRE(points[2].value == 2);
+
+  // A background merge/trim must not mutate the snapshot still being rendered.
+  Data published = ordered;
+  REQUIRE(published.channels.at("/carState/vEgo").samples().data() == points.data());
+  ordered.trim(2.5);
+  REQUIRE(published.channels.at("/carState/vEgo").samples().size() == 3);
+  REQUIRE(ordered.channels.at("/carState/vEgo").samples().size() == 1);
+  Data later;
+  later.revision = 1; later.first = later.last = 4;
+  later.channels["/carState/vEgo"].editSamples().push_back({4, 3});
+  ordered.merge(std::move(later));
+  REQUIRE(ordered.channels.at("/carState/vEgo").samples().size() == 2);
+  REQUIRE(published.channels.at("/carState/vEgo").samples().back().value == 2);
 
   Layout layout;
   layout.tabs[0].root.curves.push_back(Curve{.name = "/carState/vEgo", .derivative = true, .scale = 3.6});
@@ -73,7 +86,7 @@ void tests(const std::filesystem::path &cabana) {
       event.initCarState().setVEgo(i); batch.append(event.asReader());
     }
     live.merge(std::move(batch)); live.trim(live.last - 2);
-    REQUIRE(live.channels.at("/carState/vEgo").samples.size() <= 2001);
+    REQUIRE(live.channels.at("/carState/vEgo").samples().size() <= 2001);
   }
 }
 int main(int argc, char **argv) { return run_native_test([&]() { tests(std::filesystem::absolute(argv[0]).parent_path().parent_path()); }); }

@@ -92,13 +92,21 @@ void MainWindow::loadFingerprints() {
 
 void MainWindow::drawFileMenu() {
   const bool has_stream = hasStream();
+  const bool analysis_active = analysis_ && analysis_->visible;
   if (ImGui::MenuItem("Open Stream...")) selectAndOpenStream();
   if (ImGui::MenuItem("Close stream", nullptr, false, has_stream)) closeStream();
   if (ImGui::MenuItem("Export to CSV...", nullptr, false, has_stream)) exportToCSV();
   ImGui::Separator();
 
-  if (ImGui::MenuItem("New DBC File", "Ctrl+N")) newFile();
-  if (ImGui::MenuItem("Open DBC File...", "Ctrl+O")) openFile();
+  if (analysis_active) {
+    if (ImGui::MenuItem("New layout", "Ctrl+N")) analysis_->shortcut('N', false);
+    if (ImGui::MenuItem("Open layout...", "Ctrl+O")) analysis_->shortcut('O', false);
+    if (ImGui::MenuItem("Save layout", "Ctrl+S")) analysis_->shortcut('S', false);
+    if (ImGui::MenuItem("Save layout as...", "Ctrl+Shift+S")) analysis_->shortcut('S', true);
+    ImGui::Separator();
+  }
+  if (ImGui::MenuItem("New DBC File", analysis_active ? nullptr : "Ctrl+N")) newFile();
+  if (ImGui::MenuItem("Open DBC File...", analysis_active ? nullptr : "Ctrl+O")) openFile();
 
   if (ImGui::BeginMenu("Manage DBC Files", has_stream)) {
     drawManageDBCsMenu();
@@ -121,8 +129,8 @@ void MainWindow::drawFileMenu() {
   ImGui::Separator();
   const int cnt = dbc()->nonEmptyDBCCount();
   const std::string save_text = cnt > 1 ? "Save " + std::to_string(cnt) + " DBCs..." : "Save DBC...";
-  if (ImGui::MenuItem(save_text.c_str(), "Ctrl+S", false, cnt > 0)) save();
-  if (ImGui::MenuItem("Save DBC As...", "Ctrl+Shift+S", false, cnt == 1)) saveAs();
+  if (ImGui::MenuItem(save_text.c_str(), analysis_active ? nullptr : "Ctrl+S", false, cnt > 0)) save();
+  if (ImGui::MenuItem("Save DBC As...", analysis_active ? nullptr : "Ctrl+Shift+S", false, cnt == 1)) saveAs();
   // TODO: Support clipboard for multiple files
   if (ImGui::MenuItem("Copy DBC To Clipboard", nullptr, false, cnt == 1)) saveToClipboard();
 
@@ -141,15 +149,24 @@ void MainWindow::drawMenuBar() {
   }
 
   if (ImGui::BeginMenu("Edit")) {
-    auto stack = UndoStack::instance();
-    const std::string undo_text = stack->canUndo() ? "Undo " + stack->undoText() : "Undo";
-    const std::string redo_text = stack->canRedo() ? "Redo " + stack->redoText() : "Redo";
-    if (ImGui::MenuItem(undo_text.c_str(), "Ctrl+Z", false, stack->canUndo())) stack->undo();
-    if (ImGui::MenuItem(redo_text.c_str(), "Ctrl+Shift+Z", false, stack->canRedo())) stack->redo();
+    if (analysis_ && analysis_->visible) {
+      analysis_->editMenu();
+    } else {
+      auto stack = UndoStack::instance();
+      const std::string undo_text = stack->canUndo() ? "Undo " + stack->undoText() : "Undo";
+      const std::string redo_text = stack->canRedo() ? "Redo " + stack->redoText() : "Redo";
+      if (ImGui::MenuItem(undo_text.c_str(), "Ctrl+Z", false, stack->canUndo())) stack->undo();
+      if (ImGui::MenuItem(redo_text.c_str(), "Ctrl+Shift+Z", false, stack->canRedo())) stack->redo();
+    }
     ImGui::EndMenu();
   }
 
   if (ImGui::BeginMenu("View")) {
+    if (analysis_) {
+      if (ImGui::MenuItem("CAN workspace", "Ctrl+1", !analysis_->visible)) analysis_->visible = false;
+      if (ImGui::MenuItem("Analysis workspace", "Ctrl+2", analysis_->visible)) analysis_->visible = true;
+      ImGui::Separator();
+    }
     if (ImGui::MenuItem("Full Screen", "Ctrl+F11")) toggleFullScreen();
     ImGui::Separator();
     ImGui::MenuItem(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &messages_visible_);
@@ -707,6 +724,10 @@ void MainWindow::handleShortcuts() {
       toggleFullScreen();
     }
     if (!ctrl) continue;
+    if (analysis_ && !io.WantTextInput && (e.key == GLFW_KEY_1 || e.key == GLFW_KEY_2)) {
+      analysis_->visible = e.key == GLFW_KEY_2;
+      continue;
+    }
     if (analysis_ && analysis_->visible && !io.WantTextInput && (e.key == GLFW_KEY_F || e.key == GLFW_KEY_Z || e.key == GLFW_KEY_S || e.key == GLFW_KEY_N || e.key == GLFW_KEY_O)) {
       analysis_->shortcut(e.key, shift); continue;
     }
@@ -789,7 +810,17 @@ void MainWindow::drawDockspace() {
   // the status bar sits below the dockspace: reserve its height plus the item spacing between the two,
   // otherwise the host window is a few pixels taller than the viewport and scrolls
   const float status_height = full_screen_ ? 0.0f : ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
-  const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
+  if (analysis_) {
+    if (ImGui::RadioButton("CAN", !analysis_->visible)) analysis_->visible = false;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Analysis", analysis_->visible)) analysis_->visible = true;
+    ImGui::SameLine();
+    if (ImGui::Button("Layouts")) ImGui::OpenPopup("workspace_layouts");
+    if (ImGui::BeginPopup("workspace_layouts")) { analysis_->menu(); ImGui::EndPopup(); }
+  }
+  const float transport_height = video_widget_ ? video_widget_->transportHeight() : 0.0f;
+  const ImVec2 dock_size(ImGui::GetContentRegionAvail().x,
+                        std::max(1.0f, ImGui::GetContentRegionAvail().y - status_height - transport_height - ImGui::GetStyle().ItemSpacing.y));
   const ImGuiID dock_id = ImGui::GetID("cabana_dockspace");
   if (reset_layout_ || ImGui::DockBuilderGetNode(dock_id) == nullptr) {
     // messages left, video (with charts) right, center widget in the middle
@@ -809,8 +840,17 @@ void MainWindow::drawDockspace() {
   // a panel never shrinks past half the width where the signal view's tool bar squishes
   const float min_panel_width = (SignalView::minimumWidth() + (ImGui::GetStyle().WindowPadding.x + ImGui::GetStyle().WindowBorderSize) * 2) * 0.5f;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(min_panel_width, ImGui::GetStyle().WindowMinSize.y));
-  ImGui::DockSpace(dock_id, dock_size);
+  if (analysis_ && analysis_->visible) {
+    ImGui::DockSpace(dock_id, ImVec2(0, 0), ImGuiDockNodeFlags_KeepAliveOnly);
+    ImGui::BeginChild("analysis_content", dock_size);
+    analysis_->draw();
+    ImGui::EndChild();
+  } else {
+    ImGui::DockSpace(dock_id, dock_size);
+    if (analysis_) analysis_->draw();
+  }
   ImGui::PopStyleVar();
+  if (video_widget_) video_widget_->drawTransport();
   if (!full_screen_) drawStatusBar();
   ImGui::End();
 }
@@ -910,8 +950,7 @@ void MainWindow::draw() {
   if (auto log = dynamic_cast<LogFileStream *>(can)) log->tick();
   if (can->analysis_data.revision) wait_dlg_.open = false;
   if (!full_screen_) drawMenuBar();
-  if (!analysis_ || !analysis_->visible) drawDockspace();
-  if (analysis_) analysis_->draw();
+  drawDockspace();
 
   const bool analysis_mode = analysis_ && analysis_->visible;
   if (analysis_mode && video_widget_) video_widget_->setVisible(false);
@@ -938,6 +977,12 @@ void MainWindow::draw() {
   }
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
     it = (*it)->draw() ? it + 1 : tool_dialogs_.erase(it);
+  }
+
+  // Space belongs to playback; keyboard activation of focused controls uses Enter.
+  // Register ahead of the next frame so ImGui navigation cannot also activate a button.
+  if (!ImGui::GetIO().WantTextInput) {
+    ImGui::SetKeyOwner(ImGuiKey_Space, ImHashStr("cabana_playback"), ImGuiInputFlags_LockUntilRelease);
   }
 
   stream_selector_.draw();
