@@ -89,6 +89,8 @@ private:
   // every opened message is its own dock window, tabbed into the center by default
   void openMessagePane(const MessageId &id);  // opens or focuses
   void drawMessagePanes();
+  // the Bits / Signals / Logs windows docked inside a message pane's own dockspace
+  void drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, bool build);
   ImGuiID messageDockId() const;  // the node new message panes dock into
   void drawVideoPane();
   void drawChartsPane();

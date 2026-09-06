@@ -16,8 +16,6 @@
 
 namespace {
 
-constexpr float MIN_SIGNAL_VIEW_HEIGHT = 300.0f;  // in the split view, the rest scrolls
-
 bool iequals(const std::string &a, const std::string &b) {
   return a.size() == b.size() &&
          std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) { return std::tolower((unsigned char)x) == std::tolower((unsigned char)y); });
@@ -63,16 +61,6 @@ DetailWidget::DetailWidget(ChartsWidget *charts, const MessageId &message_id) : 
     heatmap_all_text_ = range ? text : "All";
     const bool live = !range;
     if (std::exchange(heatmap_live_, live) != live) binary_view_->setHeatmapLiveMode(live);
-  }));
-
-  const char *labels[View::kViewCount] = {"Bits + Signals", "Bits", "Signals", "Logs"};
-  for (const auto &label : labels) view_tabs_.addTab(label);
-  connections_.push_back(view_tabs_.currentChanged.connect([this](int index) {
-    if (index < 0 || view_ == (View)index) return;
-    const bool was_shown = logsShown();
-    view_ = (View)index;
-    if (!was_shown && logsShown()) history_log_->onShown();
-    updateState();
   }));
 
   signal_view_->setMessage(msg_id_);
@@ -156,14 +144,12 @@ void DetailWidget::updateState(const std::set<MessageId> *msgs) {
   if ((msgs && !msgs->count(msg_id_)))
     return;
 
-  if (view_ != View::Logs) binary_view_->updateState();
-  if (logsShown()) history_log_->updateState();
+  binary_view_->updateState();
+  if (logs_visible_) history_log_->updateState();
 }
 
-void DetailWidget::setVisible(bool visible) {
-  const bool was_shown = logsShown();
-  visible_ = visible;
-  if (!was_shown && logsShown()) history_log_->onShown();
+void DetailWidget::setLogsVisible(bool visible) {
+  if (std::exchange(logs_visible_, visible) != visible && visible) history_log_->onShown();
 }
 
 std::string DetailWidget::title() const {
@@ -176,50 +162,22 @@ void DetailWidget::editMsg() {
   edit_dlg_ = std::make_unique<EditMessageDialog>(msg_id_, msgName(msg_id_), size, ImGui::GetWindowWidth());
 }
 
-void DetailWidget::drawBinaryView(float height) {
+void DetailWidget::drawBits() {
   drawHeatmapToolBar();
-  ImGui::BeginChild("binary_view", ImVec2(0, height));
-  binary_view_rect_ = ImGui::GetCurrentWindow()->Rect();
+  ImGui::BeginChild("binary_view", ImVec2(0, 0));
   binary_view_->draw();
   ImGui::EndChild();
 }
 
-void DetailWidget::drawSignalView(float height) {
-  ImGui::BeginChild("signal_view", ImVec2(0, height), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  signal_view_rect_ = ImGui::GetCurrentWindow()->Rect();
+void DetailWidget::drawSignals() {
   signal_view_->draw();
-  ImGui::EndChild();
 }
 
-void DetailWidget::drawViewTabs() {
-  view_tabs_.draw();
-
-  // the split view scrolls as a whole when the pane is too short for both, the single views fill the pane
-  const bool split = view_ == View::BitsAndSignals;
-  ImGui::BeginChild("view", ImVec2(0, 0), ImGuiChildFlags_None, split ? 0 : ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  binary_view_rect_ = signal_view_rect_ = ImRect();
-  switch (view_) {
-    case View::BitsAndSignals: {
-      // binary_view_ keeps its size hint, signal_view_ takes the rest but never less than a few rows
-      drawBinaryView(std::max(binary_view_->minimumSizeHint().y, 1.0f));
-      ImGui::Dummy(ImVec2(0.0f, 6.0f));
-      const float spacing = ImGui::GetStyle().ItemSpacing.y;
-      const ImRect child_rect = ImGui::GetCurrentWindow()->Rect();
-      ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(child_rect.Min.x, ImGui::GetItemRectMin().y - spacing),
-                                                ImVec2(child_rect.Max.x, ImGui::GetItemRectMax().y + spacing),
-                                                ImGui::GetColorU32(ImGuiCol_WindowBg));
-      drawSignalView(std::max(ImGui::GetContentRegionAvail().y, MIN_SIGNAL_VIEW_HEIGHT));
-      break;
-    }
-    case View::Bits: drawBinaryView(0.0f); break;
-    case View::Signals: drawSignalView(0.0f); break;
-    case View::Logs: history_log_->draw(); break;
-    default: break;
-  }
-  ImGui::EndChild();
+void DetailWidget::drawLogs() {
+  history_log_->draw();
 }
 
-void DetailWidget::draw() {
+void DetailWidget::drawHeader() {
   drawToolBar();
 
   if (warning_widget_visible_) {
@@ -227,8 +185,6 @@ void DetailWidget::draw() {
     ImGui::SameLine();
     ImGui::TextUnformatted(warning_label_.c_str());
   }
-
-  drawViewTabs();
 
   if (edit_dlg_ && !edit_dlg_->draw()) {
     if (edit_dlg_->accepted()) {
@@ -239,13 +195,8 @@ void DetailWidget::draw() {
   }
 }
 
-// HelpOverlay: the whatsThis text and last drawn rect of the views shown by the current tab
-std::vector<std::pair<std::string, ImRect>> DetailWidget::helpRects() const {
-  std::vector<std::pair<std::string, ImRect>> rects;
-  if (binary_view_rect_.GetArea() > 0) rects.emplace_back(binary_view_->whatsThis(), binary_view_rect_);
-  if (signal_view_rect_.GetArea() > 0) rects.emplace_back(signal_view_->whatsThis(), signal_view_rect_);
-  return rects;
-}
+std::string DetailWidget::bitsWhatsThis() const { return binary_view_->whatsThis(); }
+std::string DetailWidget::signalsWhatsThis() const { return signal_view_->whatsThis(); }
 
 EditMessageDialog::EditMessageDialog(const MessageId &msg_id, const std::string &title, int size, float parent_width)
     : msg_id_(msg_id), original_name_(title), name_edit_(title), size_spin_(size), width_(parent_width * 0.9f) {

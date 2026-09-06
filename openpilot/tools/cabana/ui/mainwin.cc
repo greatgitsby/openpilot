@@ -871,19 +871,51 @@ void MainWindow::drawMessagePanes() {
     if (pane.focus) ImGui::SetNextWindowFocus();
     setNextPaneClass();
     const bool open = ImGui::Begin((pane.detail->title() + MESSAGE_PANEL_ID + id.toString()).c_str(), &pane.open, PANE_NO_SCROLL);
-    pane.detail->setVisible(open);
+    ImGuiID views_dock_id = 0;
+    bool build = false;
     if (open) {
       if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) active_msg_id_ = id;
-      if (help_overlay_.visible()) {
-        for (const auto &[text, rect] : pane.detail->helpRects()) help_overlay_.add(text, rect);
-      }
-      pane.detail->draw();
+      pane.detail->drawHeader();
+      // the views dock inside the pane: bits over signals, logs tabbed behind the signals
+      views_dock_id = ImGui::GetID("views");
+      build = ImGui::DockBuilderGetNode(views_dock_id) == nullptr;
+      ImGui::DockSpace(views_dock_id, ImVec2(0, 0));
+    } else {
+      pane.detail->setLogsVisible(false);
     }
     ImGui::End();
+    // the views are top level windows: drawn only while their dockspace is, or imgui undocks them
+    if (open) drawMessageViews(pane.detail.get(), views_dock_id, build);
     pane.first_draw = pane.focus = false;
   }
   // the close button of a pane closes its message
   message_panes_.erase(std::remove_if(message_panes_.begin(), message_panes_.end(), [](const MessagePane &p) { return !p.open; }), message_panes_.end());
+}
+
+void MainWindow::drawMessageViews(DetailWidget *detail, ImGuiID dockspace_id, bool build) {
+  const std::string suffix = "###" + detail->messageId().toString();
+  const std::string bits = "Bits" + suffix + "_bits", signals = "Signals" + suffix + "_signals", logs = "Logs" + suffix + "_logs";
+  if (build) {
+    ImGuiID top = 0, bottom = dockspace_id;
+    ImGui::DockBuilderSplitNode(bottom, ImGuiDir_Up, 0.4f, &top, &bottom);
+    ImGui::DockBuilderDockWindow(bits.c_str(), top);
+    ImGui::DockBuilderDockWindow(signals.c_str(), bottom);
+    ImGui::DockBuilderDockWindow(logs.c_str(), bottom);
+    ImGui::DockBuilderFinish(dockspace_id);
+  }
+  auto view = [&](const std::string &name, const std::string &whats_this, auto draw) -> bool {
+    setNextPaneClass();
+    const bool open = ImGui::Begin(name.c_str(), nullptr, PANE_NO_SCROLL);
+    if (open) {
+      if (!whats_this.empty()) help_overlay_.add(whats_this, ImGui::GetCurrentWindow()->Rect());
+      draw();
+    }
+    ImGui::End();
+    return open;
+  };
+  view(bits, detail->bitsWhatsThis(), [&]() { detail->drawBits(); });
+  view(signals, detail->signalsWhatsThis(), [&]() { detail->drawSignals(); });
+  detail->setLogsVisible(view(logs, {}, [&]() { detail->drawLogs(); }));
 }
 
 void MainWindow::drawVideoPane() {
