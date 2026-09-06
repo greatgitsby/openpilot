@@ -137,6 +137,29 @@ float iconButtonWidth() { return ImGui::GetFrameHeight(); }
 
 namespace {
 constexpr float ICON_BUTTON_GLYPH_SCALE = 0.8f;
+
+// the bounds of the visible ink of a glyph, in the glyph's own units: the corners imgui reports include the
+// rasterization slack, which differs per icon and makes a row of them look misaligned
+struct GlyphInk { float x0, y0, x1, y1; };
+GlyphInk glyphInk(const ImFontGlyph *g) {
+  ImTextureData *tex = ImGui::GetIO().Fonts->TexData;
+  const int px0 = (int)std::lround(g->U0 * tex->Width), px1 = (int)std::lround(g->U1 * tex->Width);
+  const int py0 = (int)std::lround(g->V0 * tex->Height), py1 = (int)std::lround(g->V1 * tex->Height);
+  int ix0 = px1, iy0 = py1, ix1 = px0, iy1 = py0;
+  for (int y = py0; y < py1; ++y) {
+    for (int x = px0; x < px1; ++x) {
+      const unsigned char *p = (const unsigned char *)tex->GetPixelsAt(x, y);
+      const unsigned char alpha = tex->Format == ImTextureFormat_Alpha8 ? p[0] : p[3];
+      if (alpha < 64) continue;
+      ix0 = std::min(ix0, x); ix1 = std::max(ix1, x + 1);
+      iy0 = std::min(iy0, y); iy1 = std::max(iy1, y + 1);
+    }
+  }
+  if (ix0 >= ix1 || py1 <= py0 || px1 <= px0) return {g->X0, g->Y0, g->X1, g->Y1};
+  const float sx = (g->X1 - g->X0) / (px1 - px0), sy = (g->Y1 - g->Y0) / (py1 - py0);
+  return {g->X0 + (ix0 - px0) * sx, g->Y0 + (iy0 - py0) * sy, g->X0 + (ix1 - px0) * sx, g->Y0 + (iy1 - py0) * sy};
+}
+
 // the icon glyphs are padded to a square advance and their ink sits off center in it, so a square button
 // draws the glyph itself, centered on the ink
 bool squareIconButton(const char *id, const char *icon) {
@@ -148,8 +171,11 @@ bool squareIconButton(const char *id, const char *icon) {
   const float size = std::round(ImGui::GetFontSize() * ICON_BUTTON_GLYPH_SCALE);
   ImFontBaked *baked = ImGui::GetFont()->GetFontBaked(size);
   if (const ImFontGlyph *g = baked->FindGlyph((ImWchar)codepoint)) {
-    const ImVec2 ink((g->X0 + g->X1) * 0.5f, (g->Y0 + g->Y1) * 0.5f);
-    const ImVec2 pos(std::round(r.GetCenter().x - ink.x), std::round(r.GetCenter().y - ink.y));
+    const GlyphInk ink = glyphInk(g);
+    // snapped to the framebuffer pixel, not the logical one, so a hidpi screen keeps the half pixels
+    const float snap = std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x);
+    auto snapped = [snap](float v) { return std::round(v * snap) / snap; };
+    const ImVec2 pos(snapped(r.GetCenter().x - (ink.x0 + ink.x1) * 0.5f), snapped(r.GetCenter().y - (ink.y0 + ink.y1) * 0.5f));
     ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), size, pos, ImGui::GetColorU32(ImGuiCol_Text), icon);
   }
   return clicked;
