@@ -180,7 +180,7 @@ void ChartsWidget::drawToolBar() {
 
   const int type_count = (int)std::size(SERIES_TYPE_NAMES);
   const std::string chart_type_text = std::string("Type:  ") + SERIES_TYPE_NAMES[std::clamp(settings.chart_series_type, 0, type_count - 1)];
-  auto chart_type_items = [this, type_count]() {
+  auto chart_type_items = [this]() {
     for (int i = 0; i < type_count; ++i) {
       if (ImGui::MenuItem(SERIES_TYPE_NAMES[i], nullptr, settings.chart_series_type == i)) {
         settings.chart_series_type = i;
