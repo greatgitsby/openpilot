@@ -895,7 +895,7 @@ void MainWindow::drawVideoPanel() {
     // charts behave the same at the other end: they keep at least their tool bar row or collapse entirely
     bool charts_collapsed = false;
     if (!charts_floating_ && !live) {
-      const float splitter_h = ImGui::GetStyle().WindowPadding.x;
+      const float splitter_h = ImGui::GetStyle().WindowPadding.x * 2.0f + 2.0f;
       const float min_h = std::min(video_widget_->sizeHintHeight() + video_padding, avail.y - 1.0f);
       video_h = video_h < min_h / 2 ? 0.0f : std::max(video_h, min_h);
       const float charts_min_h = ImGui::GetFrameHeight() + video_padding + ImGui::GetStyle().ChildBorderSize * 2.0f;
@@ -907,8 +907,7 @@ void MainWindow::drawVideoPanel() {
         video_h = avail.y - splitter_h - charts_min_h;
       }
     }
-    // the video, the splitter and the charts stack with no spacing: the splitter is the gap, as tall as the
-    // padding at the sides
+    // the video, the splitter and the charts stack with no spacing: the splitter is the gap
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
     if (video_h > 0.0f) {
       ImGui::BeginChild("video", ImVec2(0, video_h), ImGuiChildFlags_Borders);
@@ -919,7 +918,8 @@ void MainWindow::drawVideoPanel() {
       video_widget_->setVisible(false);  // the splitter collapsed the video: stop the vipc thread
     }
     if (!charts_floating_) {
-      ImGui::InvisibleButton("##splitter", ImVec2(-1.0f, ImGui::GetStyle().WindowPadding.x));
+      // the gap matches the dock splitters between the columns: the side padding on each side of a 2 px line
+      ImGui::InvisibleButton("##splitter", ImVec2(-1.0f, ImGui::GetStyle().WindowPadding.x * 2.0f + 2.0f));
       const bool splitter_hovered = ImGui::IsItemHovered() && !live, splitter_active = ImGui::IsItemActive() && !live;
       if (splitter_active) {
         // the size of the video is the position of the handle inside the splitter
