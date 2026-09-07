@@ -158,9 +158,8 @@ struct ToolbarItem {
   std::function<void()> trigger;
   bool enabled = true;
   bool in_menu = true;  // false: left out of the ">>" menu (a separator)
+  bool tight = false;   // true: ItemInnerSpacing before it, it belongs to the previous item's group
 };
-void beginToolbar();  // the item spacing of a tool bar, until endToolbar()
-void endToolbar();
 float toolbarButtonWidth(const std::string &label);  // a flat text button
 // the width of every item plus the spacing between neighbors and the two groups
 float toolbarWidth(const std::vector<ToolbarItem> &items, size_t spacer_index);

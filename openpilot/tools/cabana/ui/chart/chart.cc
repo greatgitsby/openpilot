@@ -19,7 +19,7 @@ const int AXIS_X_TOP_MARGIN = 4;
 const int X_TICK_COUNT = 5;
 const double MIN_ZOOM_SECONDS = 0.01;  // 10ms
 const double EPSILON = 1e-6;
-constexpr ImVec4 LAYOUT_MARGINS{8, 6, 8, 6};  // left, top, right, bottom
+constexpr ImVec4 LAYOUT_MARGINS{0, 6, 0, 6};  // left, top, right, bottom: the content lines up with the tool bar
 static inline bool xLessThan(const ImPlotPoint &p, double x) { return p.x < (x - EPSILON); }
 static inline bool isNull(const ImPlotPoint &p) { return p.x == 0 && p.y == 0; }
 

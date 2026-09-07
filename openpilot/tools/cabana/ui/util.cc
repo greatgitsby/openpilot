@@ -407,20 +407,18 @@ bool beginDialog(const char *id, PopupOwner *owner, const ImVec2 &size, ImGuiWin
 
 // tool bar
 
-void beginToolbar() {
-  // the items of a tool bar are one group
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemInnerSpacing.x, ImGui::GetStyle().ItemSpacing.y));
-}
-
-void endToolbar() { ImGui::PopStyleVar(); }
-
 float toolbarButtonWidth(const std::string &label) {
   return ImGui::CalcTextSize(label.c_str(), nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2;
 }
 
+// the spacing in front of an item: groups are ItemSpacing apart, the items of a group ItemInnerSpacing
+static float toolbarSpacing(const ToolbarItem &item) {
+  return item.tight ? ImGui::GetStyle().ItemInnerSpacing.x : ImGui::GetStyle().ItemSpacing.x;
+}
+
 static float toolbarGroupWidth(const std::vector<ToolbarItem> &items, size_t begin, size_t end) {
   float w = 0;
-  for (size_t i = begin; i < end; ++i) w += items[i].width + (i > begin ? ImGui::GetStyle().ItemSpacing.x : 0);
+  for (size_t i = begin; i < end; ++i) w += items[i].width + (i > begin ? toolbarSpacing(items[i]) : 0);
   return w;
 }
 
@@ -448,7 +446,7 @@ void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index) {
     const float usable = avail - (extension_width + style.ItemSpacing.x);
     float used = 0;
     for (visible = 0; visible < items.size(); ++visible) {
-      const float w = items[visible].width + (visible ? style.ItemSpacing.x : 0);
+      const float w = items[visible].width + (visible ? toolbarSpacing(items[visible]) : 0);
       if (used + w > usable) break;
       used += w;
     }
@@ -457,7 +455,7 @@ void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index) {
   for (size_t i = 0; i < visible; ++i) {
     if (i == 0) ImGui::SetCursorPosX(start_x);
     else if (fits && i == spacer_index) ImGui::SameLine(right_edge - right_width);
-    else ImGui::SameLine();
+    else ImGui::SameLine(0.0f, toolbarSpacing(items[i]));
     items[i].draw();
   }
 
@@ -497,20 +495,19 @@ bool menuButton(const char *id, const std::string &text, const char *popup_id, b
   const ImGuiStyle &style = ImGui::GetStyle();
   const bool popup_open = ImGui::IsPopupOpen(popup_id);
   if (width <= 0.0f) width = menuButtonWidth(text, bold);
-  // no frame, transparent until hovered; the button is drawn pressed while the menu is open. The menu opens
-  // on press; a press while it is open toggles it closed (imgui closes the popup at the end of the frame of
-  // a click outside it, so only open when it is not already open)
+  // a framed button drawn pressed while the menu is open. The menu opens on press; a press while it is open
+  // toggles it closed (imgui closes the popup at the end of the frame of a click outside it, so only open
+  // when it is not already open)
   if (bold) pushBoldFont();
   const float text_width = ImGui::CalcTextSize(text.c_str(), nullptr, true).x;
   const float ascent = ImGui::GetFontBaked()->Ascent;
   // the text and the arrow are centered as a group in the button
   const float padding_x = std::max(style.FramePadding.x, (width - (text_width + MENU_ARROW_SPACING + MENU_ARROW_SIZE)) * 0.5f);
-  ImGui::PushStyleColor(ImGuiCol_Button, popup_open ? style.Colors[ImGuiCol_ButtonActive] : ImVec4(0, 0, 0, 0));
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+  ImGui::PushStyleColor(ImGuiCol_Button, popup_open ? style.Colors[ImGuiCol_ButtonActive] : style.Colors[ImGuiCol_Button]);
   ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(padding_x, style.FramePadding.y));
   ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
   const bool clicked = ImGui::ButtonEx((text + "###" + id).c_str(), ImVec2(width, 0.0f), ImGuiButtonFlags_PressedOnClick);
-  ImGui::PopStyleVar(3);
+  ImGui::PopStyleVar(2);
   ImGui::PopStyleColor();
   if (bold) popBoldFont();
   // a 6 px arrow right after the text, sitting on the text baseline

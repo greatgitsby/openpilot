@@ -141,7 +141,6 @@ std::string VideoWidget::whatsThis() const {
 static float toolbarHeight() { return TOOLBAR_MARGIN_Y + ImGui::GetFrameHeight(); }
 
 void VideoWidget::drawPlaybackController() {
-  beginToolbar();
   ImGui::SetCursorPosY(ImGui::GetCursorPosY() + TOOLBAR_MARGIN_Y);
   const float speed_width = menuButtonWidth("0.05x", true);
 
@@ -160,27 +159,31 @@ void VideoWidget::drawPlaybackController() {
     {iconButtonWidth(), [&]() { if (toolButton("rewind", icon::REWIND, "Seek backward")) seek_backward(); },
      "Seek backward", seek_backward},
     {iconButtonWidth(), [&]() { if (toolButton("play", play_icon, play_tooltip)) toggle_play(); },
-     play_tooltip, toggle_play},
+     play_tooltip, toggle_play, true, true, true},
     {iconButtonWidth(), [&]() { if (toolButton("fast-forward", icon::FAST_FORWARD, "Seek forward")) seek_forward(); },
-     "Seek forward", seek_forward},
+     "Seek forward", seek_forward, true, true, true},
   };
   if (can->liveStreaming()) {
     items.push_back({iconButtonWidth(), [&]() {
       ImGui::BeginDisabled(!skip_to_end_enabled_);
       if (toolButton("skip-end", icon::SKIP_END, "Skip to the end")) skipToEnd();
       ImGui::EndDisabled();
-    }, "Skip to the end", [this]() { skipToEnd(); }, skip_to_end_enabled_});
+    }, "Skip to the end", [this]() { skipToEnd(); }, skip_to_end_enabled_, true, true});
   }
   if (slider_ || msgs_received_) {
     // a mono font: with proportional digits the time changed width as it ticked and the items after it moved
     pushMonoFont(ImGui::GetFontSize());
-    const float time_width = toolbarButtonWidth(time_text);
+    const float time_width = ImGui::CalcTextSize(time_text.c_str()).x;
     popMonoFont();
+    // a readout, not a button: a click still toggles between elapsed and absolute time
     items.push_back({time_width,
                      [&]() {
                        pushMonoFont(ImGui::GetFontSize());
-                       if (toolButton("time_display", time_text.c_str(), time_tooltip)) toggleTimeDisplay();
+                       ImGui::AlignTextToFramePadding();
+                       ImGui::TextUnformatted(time_text.c_str());
                        popMonoFont();
+                       if (ImGui::IsItemClicked()) toggleTimeDisplay();
+                       ImGui::SetItemTooltip("%s", time_tooltip);
                      },
                      time_text, [this]() { toggleTimeDisplay(); }});
   }
@@ -195,6 +198,7 @@ void VideoWidget::drawPlaybackController() {
       ImGui::GetWindowDrawList()->AddLine(ImVec2(x, min.y + 4.0f), ImVec2(x, min.y + ImGui::GetFrameHeight() - 4.0f), ImGui::GetColorU32(ImGuiCol_Separator));
     }};
     item.in_menu = false;
+    item.tight = true;  // the separator and the item after it sit close, like the sides of a border
     return item;
   };
   const char *aspect_ratio_icon = settings.crop_video ? icon::ASPECT_RATIO_FILL : icon::ASPECT_RATIO;
@@ -204,18 +208,17 @@ void VideoWidget::drawPlaybackController() {
   if (!can->liveStreaming()) {
     items.push_back(separator());
     items.push_back({iconButtonWidth(), [&]() { if (toolButton("loop", loop_icon, "Loop playback")) loopPlaybackClicked(); },
-                     "Loop playback", [this]() { loopPlaybackClicked(); }});
+                     "Loop playback", [this]() { loopPlaybackClicked(); }, true, true, true});
   }
   items.push_back({speed_width, [&]() { drawSpeedDropdown(speed_width); }});
   if (!can->liveStreaming()) {
     items.push_back(separator());
     items.push_back({iconButtonWidth(),
                      [&]() { if (toolButton("route_info", icon::INFO_CIRCLE, "View route details")) showRouteInfo(); },
-                     "View route details", [this]() { showRouteInfo(); }});
+                     "View route details", [this]() { showRouteInfo(); }, true, true, true});
   }
 
   drawToolbar(items, spacer_index);
-  endToolbar();
 }
 
 void VideoWidget::skipToEnd() {

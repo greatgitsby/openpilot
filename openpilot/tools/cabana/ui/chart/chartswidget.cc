@@ -17,7 +17,6 @@
 const int MAX_COLUMN_COUNT = 4;
 const int CHART_SPACING = 4;
 const int START_DRAG_DISTANCE = 10;
-const float LAYOUT_HORIZONTAL_SPACING = 6.0f;
 const float MIN_RANGE_SLIDER_WIDTH = 40.0f;
 
 bool LogSlider::draw(const char *label, float width) {
@@ -161,7 +160,6 @@ void ChartsWidget::setIsDocked(bool docked) {
 }
 
 void ChartsWidget::drawToolBar() {
-  beginToolbar();
   float slider_width = 150.0f;
   const bool is_zoomed = can->timeRange().has_value();
 
@@ -173,12 +171,11 @@ void ChartsWidget::drawToolBar() {
   items.push_back({iconButtonWidth(), [this]() {
     if (toolButton("new_tab_btn", icon::WINDOW_PLUS, "New Tab")) newTab();
   }});
+  items.back().tight = true;
   const std::string title_label = "Charts: " + std::to_string(charts_.size());
-  items.push_back({ImGui::CalcTextSize(title_label.c_str()).x + LAYOUT_HORIZONTAL_SPACING, [&title_label]() {
+  items.push_back({ImGui::CalcTextSize(title_label.c_str()).x, [&title_label]() {
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(title_label.c_str());
-    ImGui::SameLine(0.0f, LAYOUT_HORIZONTAL_SPACING);
-    ImGui::Dummy(ImVec2(0.0f, 0.0f));
   }});
 
   const int type_count = (int)std::size(SERIES_TYPE_NAMES);
@@ -251,6 +248,7 @@ void ChartsWidget::drawToolBar() {
   items.push_back({iconButtonWidth(), [this, dock_btn_icon]() {
     if (toolButton("dock_btn", dock_btn_icon, is_docked_ ? "Float the charts window" : "Dock the charts window")) toggleChartsDocking();
   }});
+  items.back().tight = true;
 
   // the slider shrinks first, the buttons stay pinned to the right edge
   if (slider_index != (size_t)-1) {
@@ -261,7 +259,6 @@ void ChartsWidget::drawToolBar() {
     }
   }
   drawToolbar(items, spacer_index);
-  endToolbar();
 }
 
 void ChartsWidget::settingChanged() {
