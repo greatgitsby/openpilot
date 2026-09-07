@@ -159,6 +159,7 @@ struct ToolbarItem {
   bool enabled = true;
   bool in_menu = true;  // false: left out of the ">>" menu (a separator)
   bool tight = false;   // true: ItemInnerSpacing before it, it belongs to the previous item's group
+  std::function<void()> submenu;  // set: the ">>" entry is a submenu with these items instead of an action
 };
 float toolbarButtonWidth(const std::string &label);  // a flat text button
 // the width of every item plus the spacing between neighbors and the two groups

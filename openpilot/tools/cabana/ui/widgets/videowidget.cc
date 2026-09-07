@@ -185,7 +185,7 @@ void VideoWidget::drawPlaybackController() {
                        if (ImGui::IsItemClicked()) toggleTimeDisplay();
                        ImGui::SetItemTooltip("%s", time_tooltip);
                      },
-                     time_text, [this]() { toggleTimeDisplay(); }});
+                     time_tooltip, [this]() { toggleTimeDisplay(); }});
   }
   // the expanding spacer: the items after it are right aligned as long as everything fits
   const size_t spacer_index = items.size();
@@ -210,8 +210,9 @@ void VideoWidget::drawPlaybackController() {
     items.push_back({iconButtonWidth(), [&]() { if (toolButton("loop", loop_icon, "Loop playback")) loopPlaybackClicked(); },
                      "Loop playback", [this]() { loopPlaybackClicked(); }, true, true, true});
   }
-  items.push_back({speed_width, [&]() { drawSpeedDropdown(speed_width); }});
+  items.push_back({speed_width, [&]() { drawSpeedDropdown(speed_width); }, "Speed"});
   items.back().tight = true;  // with the loop button, like the playback buttons
+  items.back().submenu = [this]() { drawSpeedMenuItems(); };
   if (!can->liveStreaming()) {
     items.push_back(separator());
     items.push_back({iconButtonWidth(),

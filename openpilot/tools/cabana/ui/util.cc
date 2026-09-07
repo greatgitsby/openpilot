@@ -471,6 +471,11 @@ void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index) {
         if (!items[i].in_menu) continue;
         if (items[i].menu_label.empty()) {
           items[i].draw();
+        } else if (items[i].submenu) {
+          if (ImGui::BeginMenu(items[i].menu_label.c_str(), items[i].enabled)) {
+            items[i].submenu();
+            ImGui::EndMenu();
+          }
         } else if (ImGui::MenuItem(items[i].menu_label.c_str(), nullptr, false, items[i].enabled)) {
           items[i].trigger();
         }
