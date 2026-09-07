@@ -891,10 +891,21 @@ void MainWindow::drawVideoPanel() {
     const float video_hint = video_splitter_ratio_ >= 0.0f ? avail.y * video_splitter_ratio_ : default_h;
     float video_h = charts_floating_ ? avail.y : std::clamp(video_hint, 0.0f, avail.y - 1.0f);
     if (live) video_h = default_h;  // display video at minimum size.
-    // dragging below half of the minimum size collapses the video, it never shrinks below it otherwise
+    // dragging below half of the minimum size collapses the video, it never shrinks below it otherwise; the
+    // charts behave the same at the other end: they keep at least their tool bar row or collapse entirely
+    bool charts_collapsed = false;
     if (!charts_floating_ && !live) {
+      const float splitter_h = ImGui::GetStyle().WindowPadding.x;
       const float min_h = std::min(video_widget_->sizeHintHeight() + video_padding, avail.y - 1.0f);
       video_h = video_h < min_h / 2 ? 0.0f : std::max(video_h, min_h);
+      const float charts_min_h = ImGui::GetFrameHeight() + video_padding + ImGui::GetStyle().ChildBorderSize * 2.0f;
+      const float charts_h = avail.y - video_h - splitter_h;
+      if (charts_h < charts_min_h / 2) {
+        charts_collapsed = true;
+        video_h = avail.y - splitter_h;
+      } else if (charts_h < charts_min_h) {
+        video_h = avail.y - splitter_h - charts_min_h;
+      }
     }
     // the video, the splitter and the charts stack with no spacing: the splitter is the gap, as tall as the
     // padding at the sides
@@ -922,12 +933,14 @@ void MainWindow::drawVideoPanel() {
       const float line_y = std::floor(splitter.GetCenter().y) - 1.0f;
       ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(splitter.Min.x, line_y), ImVec2(splitter.Max.x, line_y + 2.0f),
                                                 ImGui::GetColorU32(splitter_active ? ImGuiCol_SeparatorActive : splitter_hovered ? ImGuiCol_SeparatorHovered : ImGuiCol_Border));
-      // the chart list scrolls in its own child, the container itself never scrolls
-      ImGui::BeginChild("charts", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
       ImGui::PopStyleVar();  // the stacking spacing ends here: the charts widget lays out with the normal spacing
-      help_overlay_.add(charts_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
-      charts_widget_->draw();
-      ImGui::EndChild();
+      if (!charts_collapsed) {
+        // the chart list scrolls in its own child, the container itself never scrolls
+        ImGui::BeginChild("charts", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        help_overlay_.add(charts_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
+        charts_widget_->draw();
+        ImGui::EndChild();
+      }
     } else {
       ImGui::PopStyleVar();
     }
