@@ -218,7 +218,10 @@ void ChartsWidget::drawToolBar() {
     }});
     slider_index = items.size();
     items.push_back({slider_width, [this, &slider_width]() {
-      if (range_slider_.draw("##range_slider", slider_width)) setMaxChartRange(range_slider_.value());
+      // in the ">>" menu the slider spans the menu like the entries, in the bar it takes its shrunk width
+      const bool in_menu = ImGui::GetCurrentWindow()->Flags & ImGuiWindowFlags_Popup;
+      const float width = in_menu ? std::max(ImGui::GetContentRegionAvail().x, 150.0f) : slider_width;
+      if (range_slider_.draw("##range_slider", width)) setMaxChartRange(range_slider_.value());
       ImGui::SetItemTooltip("Set the chart range");
     }});
   } else {
@@ -243,11 +246,12 @@ void ChartsWidget::drawToolBar() {
     ImGui::BeginDisabled(charts_.empty());
     if (toolButton("remove_all_btn", icon::TRASH, "Remove all charts")) removeAll();
     ImGui::EndDisabled();
-  }});
+  }, "Remove all charts", [this]() { removeAll(); }, !charts_.empty()});
   const char *dock_btn_icon = is_docked_ ? icon::BOX_ARROW_UP_RIGHT : icon::BOX_ARROW_IN_DOWN_LEFT;
-  items.push_back({iconButtonWidth(), [this, dock_btn_icon]() {
-    if (toolButton("dock_btn", dock_btn_icon, is_docked_ ? "Float the charts window" : "Dock the charts window")) toggleChartsDocking();
-  }});
+  const char *dock_label = is_docked_ ? "Float the charts window" : "Dock the charts window";
+  items.push_back({iconButtonWidth(), [this, dock_btn_icon, dock_label]() {
+    if (toolButton("dock_btn", dock_btn_icon, dock_label)) toggleChartsDocking();
+  }, dock_label, [this]() { toggleChartsDocking(); }});
   items.back().tight = true;
 
   // the slider shrinks first, the buttons stay pinned to the right edge
