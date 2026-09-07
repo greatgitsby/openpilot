@@ -15,6 +15,7 @@ public:
   virtual void undo() = 0;
   virtual void redo() = 0;
   std::string text;
+  bool changes_document = true;
 };
 
 class UndoStack {
@@ -24,7 +25,7 @@ public:
   void redo();
   void clear();
   void setClean();
-  bool isClean() const { return clean_index_ == index_; }
+  bool isClean() const;
   bool canUndo() const { return index_ > 0; }
   bool canRedo() const { return index_ < (int)commands_.size(); }
   std::string undoText() const { return canUndo() ? commands_[index_ - 1]->text : ""; }
