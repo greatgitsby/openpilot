@@ -133,37 +133,56 @@ void MainWindow::drawFileMenu() {
 }
 
 namespace {
+// the x range of the open top level menu's dropdown; the menu bar leaves its separator out there so the
+// dropdown continues the bar
+ImVec2 g_open_menu_range(0.0f, 0.0f);
+
 // a top level menu keeps one highlight whether the mouse is on its title or inside its popup
 bool beginTopMenu(const char *label, bool enabled = true) {
   ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::GetColorU32(ImGuiCol_Header));
   const bool open = ImGui::BeginMenu(label, enabled);
   ImGui::PopStyleColor();
   if (open) {
-    // the dropdown hangs off the menu bar: its top corners are squared so it sits flush with the bar
+    // the dropdown hangs off the menu bar: its top corners are squared and its top border removed so it
+    // continues the bar
     const ImGuiStyle &style = ImGui::GetStyle();
     const ImGuiWindow *w = ImGui::GetCurrentWindow();
     const float r = style.PopupRounding, b = style.PopupBorderSize;
     const ImVec2 min = w->Pos, max(w->Pos.x + w->Size.x, w->Pos.y + w->Size.y);
     const ImU32 bg = ImGui::GetColorU32(ImGuiCol_PopupBg), border = ImGui::GetColorU32(ImGuiCol_Border);
     ImDrawList *dl = w->DrawList;
-    for (const float x0 : {min.x, max.x - r}) {
-      dl->AddRectFilled(ImVec2(x0, min.y), ImVec2(x0 + r, min.y + r), bg);
-      dl->AddRectFilled(ImVec2(x0, min.y), ImVec2(x0 + r, min.y + b), border);  // the top edge
-    }
+    g_open_menu_range = ImVec2(min.x + b, max.x - b);
+    dl->PushClipRect(min, max, false);  // the window's own clip rect excludes its border
+    dl->AddRectFilled(min, ImVec2(max.x, min.y + r), bg);  // the corners and the top edge
     dl->AddRectFilled(ImVec2(min.x, min.y), ImVec2(min.x + b, min.y + r), border);  // the left edge
     dl->AddRectFilled(ImVec2(max.x - b, min.y), ImVec2(max.x, min.y + r), border);  // the right edge
+    dl->PopClipRect();
   }
   return open;
 }
 }  // namespace
 
 void MainWindow::drawMenuBar() {
-  if (!ImGui::BeginMainMenuBar()) return;
+  // the bar draws its own separator, not a window border
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  const bool open = ImGui::BeginMainMenuBar();
+  ImGui::PopStyleVar();
+  if (!open) return;
   {
-    // a separator along the bottom edge towards the panels, like the footer's
+    // a separator along the bottom edge towards the panels, like the footer's, interrupted under an open
+    // dropdown (its range is the one of the last frame; the menus below update it)
     const ImVec2 min = ImGui::GetWindowPos();
     const ImVec2 max(min.x + ImGui::GetWindowWidth(), min.y + ImGui::GetWindowHeight());
-    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(min.x, max.y - 1.0f), max, ImGui::GetColorU32(ImGuiCol_Separator));
+    const ImU32 col = ImGui::GetColorU32(ImGuiCol_Separator);
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    const ImVec2 gap = g_open_menu_range;
+    g_open_menu_range = ImVec2(0.0f, 0.0f);
+    if (gap.y > gap.x) {
+      dl->AddRectFilled(ImVec2(min.x, max.y - 1.0f), ImVec2(gap.x, max.y), col);
+      dl->AddRectFilled(ImVec2(gap.y, max.y - 1.0f), max, col);
+    } else {
+      dl->AddRectFilled(ImVec2(min.x, max.y - 1.0f), max, col);
+    }
   }
   if (beginTopMenu("File")) {
     drawFileMenu();
@@ -912,11 +931,12 @@ void MainWindow::drawVideoPanel() {
         video_splitter_ratio_ = std::clamp((ImGui::GetMousePos().y - top) / avail.y, 0.0f, 1.0f);
       }
       if (splitter_hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-      // the same 2 px line the dock splitters between the columns draw, crisp at the center of the gap
+      // the same 2 px line in the border color the dock splitters between the columns draw, crisp at the
+      // center of the gap
       const ImRect splitter(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
       const float line_y = std::floor(splitter.GetCenter().y) - 1.0f;
       ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(splitter.Min.x, line_y), ImVec2(splitter.Max.x, line_y + 2.0f),
-                                                ImGui::GetColorU32(splitter_active ? ImGuiCol_SeparatorActive : splitter_hovered ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator));
+                                                ImGui::GetColorU32(splitter_active ? ImGuiCol_SeparatorActive : splitter_hovered ? ImGuiCol_SeparatorHovered : ImGuiCol_Border));
       // the chart list scrolls in its own child, the container itself never scrolls
       ImGui::BeginChild("charts", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
       help_overlay_.add(charts_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());

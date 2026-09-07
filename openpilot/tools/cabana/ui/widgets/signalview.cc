@@ -496,7 +496,7 @@ SignalView::SignalView(ChartsWidget *charts) : charts_(charts) {
 
   // seed the size of the [plot][remove] widget (two 22px tool buttons plus the spacing) so the first
   // updateState() calls already leave room for the sparklines
-  button_size_ = ImVec2(26 * 2 + 4, 26);
+  button_size_ = ImVec2(26 * 2 + 4 * 2, 26);
   updateToolBar();
 
   connections_.push_back(model_.rowsChanged.connect([this]() { rowsChanged(); }));
@@ -874,7 +874,8 @@ bool SignalView::drawItem(SignalModel::Item *item, int depth, DrawContext &ctx) 
 void SignalView::drawIndexWidget(SignalModel::Item *item, const ImRect &rect) {
   // plot_btn + remove_btn, right aligned in the value column
   const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
-  const ImVec2 size(iconButtonWidth() * 2 + spacing, iconButtonWidth());
+  // the same spacing between the two buttons and between the last one and the edge (the scrollbar)
+  const ImVec2 size(iconButtonWidth() * 2 + spacing * 2, iconButtonWidth());
   ImGui::SetCursorScreenPos(ImVec2(rect.Max.x - size.x, rect.Min.y + (rect.GetHeight() - size.y) * 0.5f));
 
   const auto sig = item->sig;
