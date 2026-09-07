@@ -211,6 +211,7 @@ void VideoWidget::drawPlaybackController() {
                      "Loop playback", [this]() { loopPlaybackClicked(); }, true, true, true});
   }
   items.push_back({speed_width, [&]() { drawSpeedDropdown(speed_width); }});
+  items.back().tight = true;  // with the loop button, like the playback buttons
   if (!can->liveStreaming()) {
     items.push_back(separator());
     items.push_back({iconButtonWidth(),
