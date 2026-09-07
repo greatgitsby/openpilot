@@ -616,7 +616,9 @@ void ChartsWidget::draw() {
 void ChartsContainer::draw() {
   ImGuiWindow *window = ImGui::GetCurrentWindow();
   const ImVec2 start = ImGui::GetCursorScreenPos();
-  geometry_ = ImRect(start, start + ImVec2(window->InnerRect.GetWidth(), 0));
+  // the charts keep clear of the scrollbar by the inner spacing, like the buttons of a group
+  const float width_avail = window->InnerRect.GetWidth() - (window->ScrollbarY ? ImGui::GetStyle().ItemInnerSpacing.x : 0.0f);
+  geometry_ = ImRect(start, start + ImVec2(width_avail, 0));
   charts_widget_->updateLayout();
 
   const int n = std::max(charts_widget_->current_column_count_, 1);

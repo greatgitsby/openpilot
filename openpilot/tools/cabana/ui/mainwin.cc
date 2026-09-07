@@ -924,11 +924,13 @@ void MainWindow::drawVideoPanel() {
                                                 ImGui::GetColorU32(splitter_active ? ImGuiCol_SeparatorActive : splitter_hovered ? ImGuiCol_SeparatorHovered : ImGuiCol_Border));
       // the chart list scrolls in its own child, the container itself never scrolls
       ImGui::BeginChild("charts", ImVec2(0, 0), ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+      ImGui::PopStyleVar();  // the stacking spacing ends here: the charts widget lays out with the normal spacing
       help_overlay_.add(charts_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
       charts_widget_->draw();
       ImGui::EndChild();
+    } else {
+      ImGui::PopStyleVar();
     }
-    ImGui::PopStyleVar();
   }
   ImGui::End();
   if (!video_visible_ && floating) video_visible_ = reset_layout_ = true;

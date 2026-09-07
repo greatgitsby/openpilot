@@ -20,6 +20,7 @@ const int X_TICK_COUNT = 5;
 const double MIN_ZOOM_SECONDS = 0.01;  // 10ms
 const double EPSILON = 1e-6;
 constexpr ImVec4 LAYOUT_MARGINS{0, 6, 0, 6};  // left, top, right, bottom: the content lines up with the tool bar
+constexpr int LEGEND_SPACING = 5;  // grip | marker | name: the same gap between each
 static inline bool xLessThan(const ImPlotPoint &p, double x) { return p.x < (x - EPSILON); }
 static inline bool isNull(const ImPlotPoint &p) { return p.x == 0 && p.y == 0; }
 
@@ -147,14 +148,14 @@ void ChartView::updateLayout() {
   const float fm_height = ImGui::GetTextLineHeight();
   const int marker_size = markerSize();
   const int row_height = std::max<int>(marker_size, fm_height) + fm_height + 3;  // + the signal value line
-  const int legend_left = layout_.move_icon_rect.Max.x + LAYOUT_MARGINS.x;
+  const int legend_left = layout_.move_icon_rect.Max.x + LEGEND_SPACING;
   const int legend_right = std::max<int>(layout_.manage_btn_rect.Min.x - LAYOUT_MARGINS.z, legend_left + 10);
 
   // layout legend entries left-to-right, wrapping between the move icon and the buttons
   layout_.legend_rects.clear();
   int x = legend_left, y = top_left.y;
   for (auto &s : sigs_) {
-    int w = marker_size + 5 + bold->CalcTextSizeA(font_size, FLT_MAX, 0.0f, s.sig->name.c_str()).x +
+    int w = marker_size + LEGEND_SPACING + bold->CalcTextSizeA(font_size, FLT_MAX, 0.0f, s.sig->name.c_str()).x +
             ImGui::CalcTextSize(msgLabel(s.msg_id).c_str()).x;
     w = std::min(w, legend_right - legend_left);  // keep oversized entries clear of the header buttons
     if (x + w > legend_right && x > legend_left) {
@@ -619,7 +620,7 @@ void ChartView::drawLegend() {
       drawColorMarker(painter, r.Min, toImU32(s.color));
     }
 
-    float x = r.Min.x + marker_size + 5;
+    float x = r.Min.x + marker_size + LEGEND_SPACING;
     const float text_y = r.GetCenter().y - font_size / 2.0f;
     addTextEllipsis(painter, bold, title_color, ImVec2(x, text_y), r.Max.x, s.sig->name);
     float name_w = std::min(bold->CalcTextSizeA(font_size, FLT_MAX, 0.0f, s.sig->name.c_str()).x, r.Max.x - x);
@@ -628,7 +629,7 @@ void ChartView::drawLegend() {
     addTextEllipsis(painter, normal, msg_color, ImVec2(x, text_y), r.Max.x, msg);
     if (!s.visible) {  // strike out
       const float y = r.GetCenter().y;
-      painter->AddLine(ImVec2(r.Min.x + marker_size + 5, y), ImVec2(std::min(x + ImGui::CalcTextSize(msg.c_str()).x, r.Max.x), y), title_color);
+      painter->AddLine(ImVec2(r.Min.x + marker_size + LEGEND_SPACING, y), ImVec2(std::min(x + ImGui::CalcTextSize(msg.c_str()).x, r.Max.x), y), title_color);
     }
   }
 }
