@@ -8,7 +8,6 @@
 #include <sstream>
 
 #include "common/tests/native_test.h"
-#include "tools/cabana/commands.h"
 #include "tools/cabana/dbc/dbcfile.h"
 #include "tools/cabana/dbc/dbcmanager.h"
 #include "tools/cabana/routes.h"
@@ -499,61 +498,7 @@ void test_layout_equations() {
   }
 }
 
-void test_mixed_undo_history() {
-  struct Change : UndoCommand {
-    Change(int &value, int next, bool document) : value(value), before(value), after(next) {
-      changes_document = document;
-    }
-    void undo() override { value = before; }
-    void redo() override { value = after; }
-    int &value;
-    int before, after;
-  };
-  UndoStack stack;
-  int dbc_value = 0, charts = 2, range = 60;
-  stack.push(new Change(dbc_value, 1, true));
-  REQUIRE(!stack.isClean());
-  stack.setClean();
-  stack.push(new Change(charts, 1, false));  // merge
-  stack.push(new Change(range, 10, false));  // select a loop
-  REQUIRE(stack.isClean());
-  stack.undo();
-  REQUIRE(range == 60);
-  REQUIRE(charts == 1);
-  stack.undo();
-  REQUIRE(charts == 2);
-  REQUIRE(stack.isClean());
-  stack.undo();
-  REQUIRE(dbc_value == 0);
-  REQUIRE(!stack.isClean());
-  stack.redo();
-  stack.redo();
-  stack.redo();
-  REQUIRE(dbc_value == 1);
-  REQUIRE(charts == 1);
-  REQUIRE(range == 10);
-  REQUIRE(stack.isClean());
-  stack.undo();
-  stack.push(new Change(charts, 3, false));
-  REQUIRE(!stack.canRedo());
-  REQUIRE(stack.isClean());
-
-  // A saved DBC state survives branching through chart-only history.
-  stack.clear();
-  stack.push(new Change(charts, 4, false));
-  stack.setClean();
-  stack.undo();
-  stack.push(new Change(range, 20, false));
-  REQUIRE(stack.isClean());
-  stack.push(new Change(dbc_value, 2, true));
-  stack.setClean();
-  stack.undo();
-  stack.push(new Change(charts, 5, false));
-  REQUIRE(!stack.isClean());
-}
-
 void test_cabana_core() {
-  test_mixed_undo_history();
   test_cereal_telemetry();
   test_layout_equations();
   test_chart_analysis();

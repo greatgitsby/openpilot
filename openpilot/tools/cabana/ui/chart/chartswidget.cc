@@ -47,11 +47,10 @@ ChartsWidget::ChartsWidget() {
   connections_.push_back(can->timeRangeChanged.connect([this](const auto &) { updateState(); }));
   connections_.push_back(settings.changed.connect([this]() { settingChanged(); }));
   connections_.push_back(seriesChanged.connect([this]() { updateTabBar(); }));
-  connections_.push_back(tabbar_.tabCloseRequested.connect([this](int index) { auto edit = this->edit("close chart tab"); removeTab(index); }));
+  connections_.push_back(tabbar_.tabCloseRequested.connect([this](int index) { removeTab(index); }));
   connections_.push_back(tabbar_.tabContextMenu.connect([this](int index) {
     if (ImGui::BeginPopupContextItem()) {
       if (ImGui::MenuItem("Close Other Tabs")) {
-        auto edit = this->edit("close other chart tabs");
         tabbar_.moveTab(index, 0);
         tabbar_.setCurrentIndex(0);
         while (tabbar_.count() > 1) removeTab(1);
@@ -97,7 +96,6 @@ void ChartsWidget::removeTab(int index) {
   }
   tab_charts_.erase(id);
   tabbar_.removeTab(index);
-  if (!tabbar_.count()) newTab();
   updateTabBar();
 }
 
@@ -117,7 +115,8 @@ void ChartsWidget::eventsMerged(const MessageEventsMap &new_events) {
 }
 
 void ChartsWidget::zoomReset() {
-  if (can->timeRange()) UndoStack::instance()->push(new ZoomCommand(std::nullopt));
+  can->setTimeRange(std::nullopt);
+  zoom_undo_stack_.clear();
 }
 
 ImRect ChartsWidget::chartVisibleRect(ChartView *chart) {
@@ -178,7 +177,7 @@ void ChartsWidget::drawToolBar() {
     if (iconButton("new_plot_btn", icon::PLUS_LG, "New Chart")) newChart();
   }});
   items.push_back({iconButtonWidth(), [this]() {
-    if (iconButton("new_tab_btn", icon::WINDOW_PLUS, "New Tab")) { auto edit = this->edit("add chart tab"); newTab(); }
+    if (iconButton("new_tab_btn", icon::WINDOW_PLUS, "New Tab")) newTab();
   }});
   items.back().tight = true;
   const std::string title_label = "Charts: " + std::to_string(charts_.size());
@@ -192,7 +191,6 @@ void ChartsWidget::drawToolBar() {
   auto chart_type_items = [this]() {
     for (int i = 0; i < type_count; ++i) {
       if (ImGui::MenuItem(SERIES_TYPE_NAMES[i], nullptr, settings.chart_series_type == i)) {
-        auto edit = this->edit("change chart style");
         settings.chart_series_type = i;
         settingChanged();
       }
@@ -204,10 +202,7 @@ void ChartsWidget::drawToolBar() {
   if (columns_action_visible_) {
     auto column_items = [this]() {
       for (int i = 0; i < MAX_COLUMN_COUNT; ++i) {
-        if (ImGui::MenuItem(std::to_string(i + 1).c_str(), nullptr, column_count_ == i + 1)) {
-          auto edit = this->edit("change chart columns");
-          setColumnCount(i + 1);
-        }
+        if (ImGui::MenuItem(std::to_string(i + 1).c_str(), nullptr, column_count_ == i + 1)) setColumnCount(i + 1);
       }
     };
     items.push_back(toolbarMenu("columns", columns_action_text, "Columns", column_items));
@@ -224,10 +219,7 @@ void ChartsWidget::drawToolBar() {
         if (entry.path().extension() == ".xml") presets.push_back(entry.path());
       }
       std::sort(presets.begin(), presets.end());
-      for (const auto &path : presets) if (ImGui::MenuItem(path.stem().c_str())) {
-        auto edit = this->edit("open chart preset");
-        openLayout(path.string());
-      }
+      for (const auto &path : presets) if (ImGui::MenuItem(path.stem().c_str())) openLayout(path.string());
       ImGui::EndMenu();
     }
     ImGui::Separator();
@@ -263,12 +255,22 @@ void ChartsWidget::drawToolBar() {
     char buf[64];
     snprintf(buf, sizeof(buf), "%.2f-%.2f", can->timeRange()->first, can->timeRange()->second);
     reset_zoom_text = buf;
+    items.push_back({iconButtonWidth(), [this]() {
+      ImGui::BeginDisabled(!zoom_undo_stack_.canUndo());
+      if (iconButton("undo_zoom", icon::ARROW_COUNTERCLOCKWISE, "Undo Zoom")) zoom_undo_stack_.undo();
+      ImGui::EndDisabled();
+    }});
+    items.push_back({iconButtonWidth(), [this]() {
+      ImGui::BeginDisabled(!zoom_undo_stack_.canRedo());
+      if (iconButton("redo_zoom", icon::ARROW_CLOCKWISE, "Redo Zoom")) zoom_undo_stack_.redo();
+      ImGui::EndDisabled();
+    }});
     items.push_back({toolbarButtonWidth(std::string(icon::ZOOM_OUT) + " " + reset_zoom_text), [this, &reset_zoom_text]() {
       if (ImGui::Button((std::string(icon::ZOOM_OUT) + " " + reset_zoom_text + "###reset_zoom_btn").c_str())) zoomReset();
       ImGui::SetItemTooltip("Reset Zoom");
     }});
   }
-  items.push_back(toolbarAction("remove_all_btn", icon::TRASH, "Remove all charts", [this]() { auto edit = this->edit("remove all charts"); removeAll(false); }, !charts_.empty()));
+  items.push_back(toolbarAction("remove_all_btn", icon::TRASH, "Remove all charts", [this]() { removeAll(); }, !charts_.empty()));
   const char *dock_btn_icon = is_docked_ ? icon::BOX_ARROW_UP_RIGHT : icon::BOX_ARROW_IN_DOWN_LEFT;
   const char *dock_label = is_docked_ ? "Float the charts window" : "Dock the charts window";
   items.push_back(toolbarAction("dock_btn", dock_btn_icon, dock_label, [this]() { toggleChartsDocking(); }, true, true));
@@ -311,7 +313,6 @@ ChartView *ChartsWidget::createChart(int pos) {
 }
 
 void ChartsWidget::showChart(const MessageId &id, const cabana::Signal *sig, bool show, bool merge) {
-  auto edit = this->edit(show ? "add chart signal" : "remove chart signal");
   ChartView *chart = findChart(id, sig);
   if (show && !chart) {
     chart = merge && currentCharts().size() > 0 ? currentCharts().front() : createChart();
@@ -323,7 +324,6 @@ void ChartsWidget::showChart(const MessageId &id, const cabana::Signal *sig, boo
 }
 
 void ChartsWidget::splitChart(ChartView *src_chart) {
-  auto edit = this->edit("split chart");
   if (src_chart->signals().size() > 1) {
     auto &current = currentCharts();
     const int pos = std::find(current.begin(), current.end(), src_chart) - current.begin() + 1;
@@ -343,7 +343,6 @@ void ChartsWidget::restoreChartsFromIds(const std::vector<std::string> &chart_id
     restoreLayout(chart_ids.front().substr(8));
     return;
   }
-  const bool was_restoring = std::exchange(restoring_, true);
   for (const auto &chart_id : chart_ids) {
     int index = 0;
     for (const auto &part : utils::split(chart_id, ',')) {
@@ -355,7 +354,6 @@ void ChartsWidget::restoreChartsFromIds(const std::vector<std::string> &chart_id
           showChart(msg_id, sig, true, index++ > 0);
     }
   }
-  restoring_ = was_restoring;
 }
 
 void ChartsWidget::setColumnCount(int n) {
@@ -382,7 +380,7 @@ void ChartsWidget::updateLayout() {
 
 void ChartsWidget::startChartDrag(ChartView *chart, const ImVec2 &global_pos) {
   stopAutoScroll();
-  drag_ = {.source = chart, .press_pos = global_pos, .source_tab = tabbar_.currentIndex()};
+  drag_ = {.source = chart, .press_pos = global_pos};
   showValueTip(-1);  // no value tip while a drag is in progress
   // the drag preview re-renders the tile at CHART_MIN_WIDTH
   drag_preview_size_ = ImVec2(CHART_MIN_WIDTH, (float)settings.chart_height);
@@ -433,11 +431,9 @@ void ChartsWidget::cancelChartDrag() {
 void ChartsWidget::dragChartRelease(const ImVec2 &global_pos) {
   ChartView *source = drag_.source;
   bool active = drag_.active;
-  const int source_tab = drag_.source_tab;
   ChartView *target = drop_target_;
   cancelChartDrag();
   if (!active) return;
-  auto edit = this->edit(target ? "merge charts" : "move chart", source_tab);
 
   bool in_viewport = charts_scroll_viewport_.Contains(global_pos);
   if (target) {
@@ -518,7 +514,6 @@ void ChartsWidget::doAutoScroll() {
 
 void ChartsWidget::newChart() {
   execSignalSelector(std::make_unique<SignalSelector>("New Chart"), nullptr, [this](SignalSelector &dlg) {
-    auto edit = this->edit("add chart");
     const auto &items = dlg.selectedItems();
     if (!items.empty()) {
       auto c = createChart();
@@ -557,7 +552,7 @@ void ChartsWidget::removeChart(ChartView *chart) {
   seriesChanged();
 }
 
-void ChartsWidget::removeAll(bool reset_zoom) {
+void ChartsWidget::removeAll() {
   while (tabbar_.count() > 1) {
     tabbar_.removeTab(1);
   }
@@ -569,13 +564,13 @@ void ChartsWidget::removeAll(bool reset_zoom) {
   equations_.clear();
   calculated_.clear();
   equation_errors_.clear();
-  if (reset_zoom) can->setTimeRange(std::nullopt);
+  zoomReset();
 }
 
 void ChartsWidget::handleEvents() {
-  // The mouse back button uses the same edit history as Ctrl+Z.
+  // the mouse back button undoes a zoom; there is no swipe-back gesture
   if (ImGui::IsMouseClicked(3) && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
-    UndoStack::instance()->undo();
+    zoom_undo_stack_.undo();
   }
   if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow)) {
     if (chartDragActive()) cancelChartDrag();

@@ -71,20 +71,7 @@ public:
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
   const std::vector<cabana::Sample> *telemetrySeries(const std::string &path) const;
   std::string serializeLayout() const;
-  bool restoreLayout(const std::string &contents, bool preserve_view = false);
-  class Edit {
-  public:
-    Edit(ChartsWidget *owner, const std::string &text, int tab);
-    ~Edit();
-    Edit(const Edit &) = delete;
-    Edit &operator=(const Edit &) = delete;
-  private:
-    ChartsWidget *owner_;
-    std::string before_, text_;
-    int tab_;
-    int style_;
-  };
-  Edit edit(const std::string &text, int tab = -1) { return Edit(this, text, tab); }
+  bool restoreLayout(const std::string &contents);
   bool openLayout(const std::string &path);
   void draw();  // content only; MainWindow wraps it in a child region or the floating window
   void showChart(const MessageId &id, const cabana::Signal *sig, bool show, bool merge);
@@ -94,7 +81,7 @@ public:
   std::string whatsThis() const;
 
   void setColumnCount(int n);
-  void removeAll(bool reset_zoom = true);
+  void removeAll();
   void setIsDocked(bool dock);
 
   void drawSignalBrowser();
@@ -144,9 +131,7 @@ private:
   bool is_docked_ = true;
   bool float_window_init_ = false;  // the floating window geometry is set once, right after undocking
 
-  int edit_depth_ = 0;
-  bool restoring_ = false;
-  std::shared_ptr<bool> history_lifetime_ = std::make_shared<bool>(true);
+  UndoStack zoom_undo_stack_;
 
   std::vector<std::unique_ptr<ChartView>> charts_;
   std::unordered_map<int, std::vector<ChartView *>> tab_charts_;
@@ -169,7 +154,6 @@ private:
     ChartView *source = nullptr;
     ImVec2 press_pos;  // global
     bool active = false;
-    int source_tab = 0;
   } drag_;
   // the drag preview is a 50% alpha copy of the whole chart tile, drawn in a window that takes no input
   ImVec2 drag_preview_pos_;
@@ -195,10 +179,7 @@ class ZoomCommand : public UndoCommand {
 public:
   ZoomCommand(std::pair<double, double> range) : ZoomCommand(range, can->timeRange()) {}
   ZoomCommand(std::pair<double, double> range, std::optional<std::pair<double, double>> previous)
-      : prev_range(previous), range(range) { text = "select time range"; changes_document = false; }
-  explicit ZoomCommand(std::nullopt_t) : prev_range(can->timeRange()) {
-    text = "follow playback"; changes_document = false;
-  }
+      : prev_range(previous), range(range) {}
   void undo() override { can->setTimeRange(prev_range); }
   void redo() override { can->setTimeRange(range); }
   std::optional<std::pair<double, double>> prev_range, range;

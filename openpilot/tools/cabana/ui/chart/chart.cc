@@ -58,7 +58,6 @@ void ChartView::drawMenuActions() {
   for (const char *type : SERIES_TYPE_NAMES) label_width = std::max(label_width, ImGui::CalcTextSize(type).x);
   for (int i = 0; i < (int)std::size(SERIES_TYPE_NAMES); ++i) {
     if (radioMenuItem(SERIES_TYPE_NAMES[i], i == (int)series_type_, indent + label_width + indent)) {
-      auto edit = charts_widget_->edit("change chart style");
       setSeriesType((SeriesType)i);
     }
   }
@@ -92,10 +91,7 @@ void ChartView::createToolButtons() {
     ImGui::EndPopup();
   }
 
-  if (close_clicked) {
-    auto edit = charts_widget_->edit("remove chart");
-    charts_widget_->removeChart(this);
-  }
+  if (close_clicked) charts_widget_->removeChart(this);
 }
 
 void ChartView::addSignal(const MessageId &msg_id, const cabana::Signal *sig) {
@@ -111,7 +107,7 @@ void ChartView::addTelemetry(const std::string &path, CabanaColor color) {
   sigs_.push_back({.path = path, .color = color});
   updateTelemetry();
   charts_widget_->seriesChanged();
-  if (!charts_widget_->restoring_) charts_widget_->analysisRequested();
+  charts_widget_->analysisRequested();
 }
 
 void ChartView::updateTelemetry() {
@@ -162,7 +158,6 @@ void ChartView::manageSignals() {
   }
   // runs once the dialog is accepted, dropped if the chart is removed first
   charts_widget_->execSignalSelector(std::move(dlg), this, [this](SignalSelector &selector) {
-    auto edit = charts_widget_->edit("edit chart signals");
     const auto &items = selector.selectedItems();
     for (const auto &s : items) {
       if (s.path.empty()) addSignal(s.msg_id, s.sig);
@@ -318,7 +313,6 @@ void ChartView::drawSignalAnalysis(SigItem &s) {
   ImGui::TextDisabled("Scale and offset apply before the transform.");
   if (ImGui::Button("Reset to original")) { transform = {}; changed = true; }
   if (changed && std::isfinite(transform.scale) && std::isfinite(transform.offset)) {
-    auto edit = charts_widget_->edit("transform chart signal");
     configureSignal(&s - sigs_.data(), transform, s.visible);
   }
   ImGui::Separator();
@@ -445,15 +439,15 @@ void ChartView::drawContextMenu() {
     const float indent = ImGui::GetFontSize();
     ImGui::Indent(indent);
     ImGui::Separator();
-    const std::string undo_text = std::string(icon::ARROW_COUNTERCLOCKWISE) + " Undo " + UndoStack::instance()->undoText();
-    const std::string redo_text = std::string(icon::ARROW_CLOCKWISE) + " Redo " + UndoStack::instance()->redoText();
-    if (ImGui::MenuItem(undo_text.c_str(), nullptr, false, UndoStack::instance()->canUndo())) UndoStack::instance()->undo();
-    if (ImGui::MenuItem(redo_text.c_str(), nullptr, false, UndoStack::instance()->canRedo())) UndoStack::instance()->redo();
-    ImGui::Separator();
-    if (ImGui::MenuItem("Close")) {
-      auto edit = charts_widget_->edit("remove chart");
-      charts_widget_->removeChart(this);
+    // the zoom entries come from the toolbar, where they are only visible while zoomed
+    if (can->timeRange().has_value()) {
+      const std::string undo_text = std::string(icon::ARROW_COUNTERCLOCKWISE) + " Undo Zoom";
+      const std::string redo_text = std::string(icon::ARROW_CLOCKWISE) + " Redo Zoom";
+      if (ImGui::MenuItem(undo_text.c_str(), nullptr, false, charts_widget_->zoom_undo_stack_.canUndo())) charts_widget_->zoom_undo_stack_.undo();
+      if (ImGui::MenuItem(redo_text.c_str(), nullptr, false, charts_widget_->zoom_undo_stack_.canRedo())) charts_widget_->zoom_undo_stack_.redo();
+      ImGui::Separator();
     }
+    if (ImGui::MenuItem("Close")) charts_widget_->removeChart(this);
     ImGui::Unindent(indent);
     ImGui::EndPopup();
   }
@@ -535,7 +529,7 @@ void ChartView::handleMouseRelease() {
   if (left_released && mouse_mode_ == MouseMode::Pan) {
     mouse_mode_ = MouseMode::None;
     const auto range = can->timeRange();
-    if (range && range != pan_previous_) UndoStack::instance()->push(new ZoomCommand(*range, pan_previous_));
+    if (range && range != pan_previous_) charts_widget_->zoom_undo_stack_.push(new ZoomCommand(*range, pan_previous_));
   } else if (left_released && mouse_mode_ == MouseMode::Rubber) {
     mouse_mode_ = MouseMode::None;
     // Prevent zooming/seeking past the end of the route
@@ -545,9 +539,11 @@ void ChartView::handleMouseRelease() {
       // no rubber dragged, seek to mouse position
       can->seekTo(std::clamp(secondsAtPoint(press_pos_), can->minSeconds(), can->maxSeconds()));
     } else if (rubber_rect_.GetWidth() > 10 && (max - min) > MIN_ZOOM_SECONDS) {
-      UndoStack::instance()->push(new ZoomCommand({min, max}));
+      charts_widget_->zoom_undo_stack_.push(new ZoomCommand({min, max}));
     }
     rubber_rect_ = ImRect();
+  } else if (right_released && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+    charts_widget_->zoom_undo_stack_.undo();
   }
 
   if (mouse_mode_ == MouseMode::Scrub) {
@@ -726,7 +722,7 @@ void ChartView::drawAxes() {
         const double fraction = (anchor - x_min_) / (x_max_ - x_min_);
         const double width = std::clamp((x_max_ - x_min_) * std::pow(0.8, ImGui::GetIO().MouseWheel), MIN_ZOOM_SECONDS, duration);
         const double left = std::clamp(anchor - fraction * width, can->minSeconds(), can->maxSeconds() - width);
-        UndoStack::instance()->push(new ZoomCommand({left, left + width}));
+        charts_widget_->zoom_undo_stack_.push(new ZoomCommand({left, left + width}));
       }
     }
     handleMousePress();
@@ -737,7 +733,6 @@ void ChartView::drawAxes() {
   }
   if (!drawing_ghost_ && ImGui::BeginDragDropTargetCustom(layout_.rect, ImGui::GetID("signal_drop"))) {
     if (const auto *payload = ImGui::AcceptDragDropPayload("CABANA_TELEMETRY")) {
-      auto edit = charts_widget_->edit("add chart signal");
       addTelemetry(static_cast<const char *>(payload->Data));
       charts_widget_->updateState();
     }
@@ -765,7 +760,6 @@ void ChartView::drawLegend() {
     ImGui::SetCursorScreenPos(r.Min);
     if (ImGui::InvisibleButton("legend", ImVec2(std::max(r.GetWidth(), 1.0f), std::max(r.GetHeight(), 1.0f))) &&
         mouse_mode_ == MouseMode::None && sigs_.size() > 1) {
-      auto edit = charts_widget_->edit("toggle chart signal");
       sigs_[i].visible = !sigs_[i].visible;
       updateAxisY();
     }

@@ -21,46 +21,6 @@
 
 using json11::Json;
 
-namespace {
-class ChartLayoutCommand : public UndoCommand {
-public:
-  ChartLayoutCommand(std::string text, std::function<void(bool)> restore) : restore_(std::move(restore)) {
-    this->text = std::move(text);
-    changes_document = false;
-  }
-  void undo() override { restore_(false); }
-  void redo() override {
-    // The edit has already happened, potentially during a chart's draw call.
-    if (!std::exchange(first_redo_, false)) restore_(true);
-  }
-private:
-  std::function<void(bool)> restore_;
-  bool first_redo_ = true;
-};
-}  // namespace
-
-ChartsWidget::Edit::Edit(ChartsWidget *owner, const std::string &text, int tab)
-    : owner_(owner), text_(text), tab_(tab < 0 ? owner->tabbar_.currentIndex() : tab), style_(settings.chart_series_type) {
-  if (owner_->edit_depth_++ == 0 && !owner_->restoring_) before_ = owner_->serializeLayout();
-}
-
-ChartsWidget::Edit::~Edit() {
-  --owner_->edit_depth_;
-  if (before_.empty()) return;
-  const auto after = owner_->serializeLayout();
-  if (before_ == after) return;
-  auto *owner = owner_;
-  const int after_tab = owner->tabbar_.currentIndex();
-  UndoStack::instance()->push(new ChartLayoutCommand(text_,
-    [owner, lifetime = std::weak_ptr<bool>(owner->history_lifetime_), before = before_, after, before_tab = tab_, after_tab, before_style = style_, after_style = settings.chart_series_type](bool redo) {
-      if (lifetime.expired()) return;
-      settings.chart_series_type = redo ? after_style : before_style;
-      if (owner->restoreLayout(redo ? after : before, true)) {
-        owner->tabbar_.setCurrentIndex(std::clamp(redo ? after_tab : before_tab, 0, owner->tabbar_.count() - 1));
-      }
-    }));
-}
-
 void ChartsWidget::fitTimeRange() {
   double min = std::numeric_limits<double>::max(), max = std::numeric_limits<double>::lowest();
   for (auto *c : currentCharts()) for (const auto &s : c->signals()) {
@@ -68,7 +28,7 @@ void ChartsWidget::fitTimeRange() {
     min = std::min(min, s.vals.front().x);
     max = std::max(max, s.vals.back().x);
   }
-  if (max > min) UndoStack::instance()->push(new ZoomCommand({min, max}));
+  if (max > min) zoom_undo_stack_.push(new ZoomCommand({min, max}));
 }
 
 std::string ChartsWidget::serializeLayout() const {
@@ -120,9 +80,7 @@ void ChartsWidget::saveLayout() {
 
 void ChartsWidget::loadLayout() {
   FileDialog::getOpenFileName("Open Cabana or PlotJuggler Layout", settings.last_dir, "",
-    [this](const std::string &path) {
-      if (!path.empty()) { auto edit = this->edit("open chart layout"); openLayout(path); }
-    });
+    [this](const std::string &path) { if (!path.empty()) openLayout(path); });
 }
 
 bool ChartsWidget::openLayout(const std::string &name) {
@@ -160,14 +118,14 @@ bool ChartsWidget::openLayout(const std::string &name) {
       if (!in) throw std::runtime_error("Could not read the chart layout");
       contents.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
     }
-    return restoreLayout(contents, edit_depth_ > 0);
+    return restoreLayout(contents);
   } catch (const std::exception &e) {
     MessageBox::warning("Open Layout", e.what());
     return false;
   }
 }
 
-bool ChartsWidget::restoreLayout(const std::string &contents, bool preserve_view) {
+bool ChartsWidget::restoreLayout(const std::string &contents) {
   auto layout = chart::parseLayout(contents);
   if (!layout) { MessageBox::warning("Open Layout", "This is not a supported Cabana chart layout."); return false; }
   // Resolve CAN definitions before replacing charts. Cereal paths may arrive in later segments.
@@ -179,14 +137,13 @@ bool ChartsWidget::restoreLayout(const std::string &contents, bool preserve_view
       return false;
     }
   }
-  const bool was_restoring = std::exchange(restoring_, true);
-  removeAll(!preserve_view);
+  removeAll();
   equations_ = layout->equations;
-  if (!preserve_view && (!equations_.empty() || std::any_of(layout->tabs.begin(), layout->tabs.end(), [](const auto &tab) {
+  if (!equations_.empty() || std::any_of(layout->tabs.begin(), layout->tabs.end(), [](const auto &tab) {
     return std::any_of(tab.begin(), tab.end(), [](const auto &chart) {
       return std::any_of(chart.signals.begin(), chart.signals.end(), [](const auto &s) { return !s.path.empty(); });
     });
-  }))) analysisRequested();
+  })) analysisRequested();
   for (size_t i = 0; i < layout->tabs.size(); ++i) {
     if (i) newTab();
     if (i < layout->tab_names.size()) tab_names_[tabbar_.tabData(tabbar_.currentIndex())] = layout->tab_names[i];
@@ -212,7 +169,6 @@ bool ChartsWidget::restoreLayout(const std::string &contents, bool preserve_view
   telemetryChanged();
   updateTabBar();
   updateState();
-  restoring_ = was_restoring;
   return true;
 }
 
@@ -301,7 +257,6 @@ void ChartsWidget::drawSignalBrowser() {
       const auto &path = *matches[i];
       ImGui::PushID(path.c_str());
       if (ImGui::Selectable(path.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) && ImGui::IsMouseDoubleClicked(0)) {
-        auto edit = this->edit("add chart");
         auto *c = createChart();
         c->addTelemetry(path);
         updateState();

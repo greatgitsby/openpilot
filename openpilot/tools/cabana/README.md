@@ -125,9 +125,7 @@ add a signal from its message's signal view. Drag chart grips to reorder or merg
 - **Click** a chart to seek; **drag** to zoom all charts to a time range.
 - **Shift-drag** scrubs playback; **Ctrl-drag** pans; **Ctrl-wheel** zooms around the pointer.
 - **View → Fit Loaded Data** fits the visible signals in the current tab.
-- **View → Follow Playback** restores the rolling time window.
-- **Ctrl+Z / Ctrl+Shift+Z** undo/redo chart edits and time selections in order, including merges,
-  splits, moves, signal changes, zoom, pan, and returning to playback. Chart edits do not mark the DBC as modified.
+- **View → Follow Playback** restores the rolling time window. Zoom and pan support undo/redo.
 - Click a legend entry to hide/show a signal. Right-click it for **transforms and statistics**,
   also available through the chart's three-dot menu.
 
