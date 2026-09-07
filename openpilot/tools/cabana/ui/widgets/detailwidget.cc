@@ -75,40 +75,52 @@ DetailWidget::DetailWidget(ChartsWidget *charts) : charts_(charts) {
 void DetailWidget::drawToolBar() {
   const ImGuiStyle &style = ImGui::GetStyle();
   auto radio_width = [&](const char *label) { return ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(label).x; };
-  // "Heatmap:" [Live] [All] | [edit][remove]: item spacing around each item and the 1 px separator, the two
-  // buttons are one group
-  const float right_width = ImGui::CalcTextSize("Heatmap:").x + style.ItemSpacing.x + radio_width("Live") + style.ItemSpacing.x +
-                            radio_width(heatmap_all_text_.c_str()) + style.ItemSpacing.x + 1.0f + style.ItemSpacing.x +
-                            iconButtonWidth() * 2 + style.ItemInnerSpacing.x;
-  const float avail = ImGui::GetContentRegionAvail().x;
+  // name ... "Heatmap:" [Live] [All] | [edit][remove]: the name takes what the rest leaves, and what does
+  // not fit in a narrow panel goes into the ">>" menu
+  std::vector<ToolbarItem> items;
+  items.push_back({0.0f, [this]() {
+    ImGui::AlignTextToFramePadding();
+    pushBoldFont();
+    name_label_.draw(name_width_);
+    popBoldFont();
+  }});
+  items.back().in_menu = false;
+  const size_t spacer_index = items.size();
+  items.push_back({ImGui::CalcTextSize("Heatmap:").x, []() {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Heatmap:");
+  }});
+  items.back().in_menu = false;
+  items.push_back({radio_width("Live"), [this]() {
+    if (ImGui::RadioButton("Live##heatmap_live_", heatmap_live_) && !heatmap_live_) {
+      heatmap_live_ = true;
+      binary_view_->setHeatmapLiveMode(true);
+    }
+  }, "Heatmap: live", [this]() { heatmap_live_ = true; binary_view_->setHeatmapLiveMode(true); }});
+  items.push_back({radio_width(heatmap_all_text_.c_str()), [this]() {
+    if (ImGui::RadioButton((heatmap_all_text_ + "##heatmap_all").c_str(), !heatmap_live_) && heatmap_live_) {
+      heatmap_live_ = false;
+      binary_view_->setHeatmapLiveMode(false);
+    }
+  }, "Heatmap: " + heatmap_all_text_, [this]() { heatmap_live_ = false; binary_view_->setHeatmapLiveMode(false); }});
+  items.push_back({1.0f, []() { ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical); }});
+  items.back().in_menu = false;
+  items.push_back({iconButtonWidth(), [this]() {
+    if (iconButton("edit_msg", icon::PENCIL, "Edit Message")) editMsg();
+  }, "Edit Message", [this]() { editMsg(); }});
+  items.push_back({iconButtonWidth(), [this]() {
+    ImGui::BeginDisabled(!action_remove_msg_enabled_);
+    if (iconButton("remove_msg", icon::TRASH)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
+    ImGui::EndDisabled();
+    disabledItemTooltip("Remove Message");
+  }, "Remove Message", [this]() { UndoStack::instance()->push(new RemoveMsgCommand(msg_id_)); }, action_remove_msg_enabled_});
+  items.back().tight = true;
 
-  ImGui::AlignTextToFramePadding();
-  pushBoldFont();
-  name_label_.draw(std::max(1.0f, avail - right_width - style.ItemSpacing.x));
-  popBoldFont();
-
-  alignRight(right_width);
-  ImGui::TextUnformatted("Heatmap:");
-  ImGui::SameLine();
-  if (ImGui::RadioButton("Live##heatmap_live_", heatmap_live_) && !heatmap_live_) {
-    heatmap_live_ = true;
-    binary_view_->setHeatmapLiveMode(true);
-  }
-  ImGui::SameLine();
-  if (ImGui::RadioButton((heatmap_all_text_ + "##heatmap_all").c_str(), !heatmap_live_) && heatmap_live_) {
-    heatmap_live_ = false;
-    binary_view_->setHeatmapLiveMode(false);
-  }
-
-  ImGui::SameLine();
-  ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
-  ImGui::SameLine();
-  if (iconButton("edit_msg", icon::PENCIL, "Edit Message")) editMsg();
-  ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-  ImGui::BeginDisabled(!action_remove_msg_enabled_);
-  if (iconButton("remove_msg", icon::TRASH)) UndoStack::instance()->push(new RemoveMsgCommand(msg_id_));
-  ImGui::EndDisabled();
-  disabledItemTooltip("Remove Message");
+  // the name gets what is left next to the right group, at least a few characters
+  const float right_width = toolbarWidth(items, spacer_index) - style.ItemSpacing.x;
+  name_width_ = std::max(ImGui::CalcTextSize("MMMMMM").x, ImGui::GetContentRegionAvail().x - right_width - style.ItemSpacing.x);
+  items[0].width = name_width_;
+  drawToolbar(items, spacer_index);
 }
 
 void DetailWidget::showTabBarContextMenu(int index) {
@@ -226,7 +238,7 @@ void DetailWidget::drawTabWidget() {
     const float avail = ImGui::GetContentRegionAvail().y;
     const float max_height = std::max(avail - 6.0f - ImGui::GetStyle().ItemSpacing.y * 2 - 1.0f, 1.0f);
     const float height = std::clamp(min_height, 1.0f, max_height);
-    ImGui::BeginChild("binary_view", ImVec2(0, height));
+    ImGui::BeginChild("binary_view", ImVec2(0, height), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
     binary_view_rect_ = ImGui::GetCurrentWindow()->Rect();
     binary_view_->draw();
     ImGui::EndChild();
@@ -241,9 +253,18 @@ void DetailWidget::drawTabWidget() {
   ImGui::EndChild();
 
   // two standard buttons in a card, centered in the strip below the page
-  const std::string labels[] = {std::string(icon::FILE_EARMARK_RULED) + " Messages", std::string(icon::STOPWATCH) + " Logs"};
-  float width = pad;
-  for (const auto &label : labels) width += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2 + pad;
+  std::string labels[] = {std::string(icon::FILE_EARMARK_RULED) + " Messages", std::string(icon::STOPWATCH) + " Logs"};
+  auto pill_width = [&]() {
+    float w = pad;
+    for (const auto &label : labels) w += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2 + pad;
+    return w;
+  };
+  float width = pill_width();
+  if (width > page_rect.GetWidth()) {  // too narrow for the labels: icons only
+    labels[0] = icon::FILE_EARMARK_RULED;
+    labels[1] = icon::STOPWATCH;
+    width = pill_width();
+  }
   const ImVec2 size(width, pill_height);
   const ImVec2 min(std::round(page_rect.GetCenter().x - width * 0.5f), page_rect.Max.y - size.y);
   ImGui::SetNextWindowPos(min);

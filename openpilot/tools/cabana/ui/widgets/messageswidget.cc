@@ -240,24 +240,37 @@ std::string MessagesWidget::whatsThis() const {
 }
 
 void MessagesWidget::drawToolBar() {
-  if (ImGui::Button("Suppress Highlighted")) suppressHighlighted(true);
-  ImGui::SameLine();
-  ImGui::BeginDisabled(!suppress_clear_enabled_);
-  const std::string clear_label = suppress_clear_text_ + "##suppress_clear";
-  if (ImGui::Button(clear_label.c_str())) suppressHighlighted(false);
-  ImGui::EndDisabled();
-  disabledItemTooltip("Clear suppressed");
-
   const ImGuiStyle &style = ImGui::GetStyle();
-  const float checkbox_width = ImGui::CalcTextSize("Suppress Signals").x + CHECKBOX_SIZE + style.ItemInnerSpacing.x;
-  const float view_button_width = iconButtonWidth();
-  alignRight(checkbox_width + style.ItemSpacing.x + view_button_width);
+  // [Suppress Highlighted][Clear] ... [Suppress Signals] [...]: what does not fit goes into the ">>" menu,
+  // the view button always stays at the right edge
+  const std::string clear_label = suppress_clear_text_ + "##suppress_clear";
+  std::vector<ToolbarItem> items;
+  items.push_back({toolbarButtonWidth("Suppress Highlighted"), [this]() {
+    if (ImGui::Button("Suppress Highlighted")) suppressHighlighted(true);
+  }, "Suppress Highlighted", [this]() { suppressHighlighted(true); }});
+  items.push_back({toolbarButtonWidth(suppress_clear_text_), [this, &clear_label]() {
+    ImGui::BeginDisabled(!suppress_clear_enabled_);
+    if (ImGui::Button(clear_label.c_str())) suppressHighlighted(false);
+    ImGui::EndDisabled();
+    disabledItemTooltip("Clear suppressed");
+  }, suppress_clear_text_, [this]() { suppressHighlighted(false); }, suppress_clear_enabled_});
+  const size_t spacer_index = items.size();
+  items.push_back({ImGui::CalcTextSize("Suppress Signals").x + CHECKBOX_SIZE + style.ItemInnerSpacing.x, []() {
+    bool suppress_defined_signals = settings.suppress_defined_signals;
+    if (checkBox("Suppress Signals", &suppress_defined_signals)) can->suppressDefinedSignals(suppress_defined_signals);
+    ImGui::SetItemTooltip("Suppress defined signals");
+  }});
 
-  bool suppress_defined_signals = settings.suppress_defined_signals;
-  if (checkBox("Suppress Signals", &suppress_defined_signals)) can->suppressDefinedSignals(suppress_defined_signals);
-  ImGui::SetItemTooltip("Suppress defined signals");
+  // the tool bar lays out in the region left of the view button (GetContentRegionAvail reads ContentRegionRect)
+  ImGuiWindow *window = ImGui::GetCurrentWindow();
+  const float reserved = iconButtonWidth() + style.ItemSpacing.x;
+  const float backup_content_max_x = window->ContentRegionRect.Max.x, backup_work_max_x = window->WorkRect.Max.x;
+  window->ContentRegionRect.Max.x -= reserved;
+  window->WorkRect.Max.x -= reserved;
+  drawToolbar(items, spacer_index);
+  window->ContentRegionRect.Max.x = backup_content_max_x;
+  window->WorkRect.Max.x = backup_work_max_x;
   ImGui::SameLine();
-
   if (toolButton("view_btn", icon::THREE_DOTS, "View...")) ImGui::OpenPopup("menu");
 }
 
