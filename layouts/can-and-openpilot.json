@@ -1,0 +1,206 @@
+{
+  "cabana_layout": 3,
+  "columns": 1,
+  "range": 60,
+  "tabs": [
+    [
+      {
+        "type": 0,
+        "title": "Wheel speeds from CAN [rad/s]",
+        "signals": [
+          {
+            "message": "0:217",
+            "signal": "WhlFl_W_Meas",
+            "color": "#0072b2"
+          },
+          {
+            "message": "0:217",
+            "signal": "WhlFr_W_Meas",
+            "color": "#e69f00"
+          },
+          {
+            "message": "0:217",
+            "signal": "WhlRl_W_Meas",
+            "color": "#009e73"
+          },
+          {
+            "message": "0:217",
+            "signal": "WhlRr_W_Meas",
+            "color": "#a75fc0"
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Vehicle speed: CAN and openpilot [km/h]",
+        "signals": [
+          {
+            "message": "0:415",
+            "signal": "Veh_V_ActlBrk",
+            "color": "#e69f00"
+          },
+          {
+            "path": "/carState/vEgo",
+            "color": "#0072b2",
+            "scale": 3.6
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Steering angle: CAN and openpilot [deg]",
+        "signals": [
+          {
+            "message": "0:7E",
+            "signal": "StePinComp_An_Est",
+            "color": "#e69f00"
+          },
+          {
+            "path": "/carState/steeringAngleDeg",
+            "color": "#0072b2"
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "type": 0,
+        "title": "Vehicle speed [m/s]",
+        "signals": [
+          {
+            "path": "/carState/vEgo",
+            "color": "#0072b2"
+          },
+          {
+            "path": "/carState/vEgoRaw",
+            "color": "#e69f00"
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Acceleration [m/s\u00b2]",
+        "signals": [
+          {
+            "path": "/carState/aEgo",
+            "color": "#009e73"
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Steering angle [deg]",
+        "signals": [
+          {
+            "path": "/carState/steeringAngleDeg",
+            "color": "#a75fc0"
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Steering torque [Nm]",
+        "signals": [
+          {
+            "message": "0:82",
+            "signal": "SteeringColumnTorque",
+            "color": "#e69f00"
+          },
+          {
+            "path": "/carState/steeringTorque",
+            "color": "#0072b2"
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Driver inputs",
+        "signals": [
+          {
+            "path": "/carState/gasPressed",
+            "color": "#009e73"
+          },
+          {
+            "path": "/carState/brakePressed",
+            "color": "#d55e00"
+          }
+        ],
+        "y_min": -0.1,
+        "y_max": 1.2
+      },
+      {
+        "type": 0,
+        "title": "Yaw rate [rad/s]",
+        "signals": [
+          {
+            "path": "/carState/yawRate",
+            "color": "#a75fc0"
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "type": 0,
+        "title": "Acceleration: 30-sample moving average [m/s\u00b2]",
+        "signals": [
+          {
+            "path": "/carState/aEgo",
+            "color": "#0072b2",
+            "transform": 3,
+            "window": 30
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Steering angular velocity [deg/s]",
+        "signals": [
+          {
+            "path": "/carState/steeringAngleDeg",
+            "color": "#a75fc0",
+            "transform": 1
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Speed filter residual [m/s]",
+        "signals": [
+          {
+            "path": "speed_filter_residual",
+            "color": "#d55e00"
+          }
+        ]
+      },
+      {
+        "type": 0,
+        "title": "Distance traveled [m]",
+        "signals": [
+          {
+            "path": "/carState/vEgo",
+            "color": "#009e73",
+            "transform": 2
+          }
+        ]
+      }
+    ]
+  ],
+  "tab_names": [
+    "CAN correlation",
+    "Drive overview",
+    "Derived signals"
+  ],
+  "equations": [
+    {
+      "name": "speed_filter_residual",
+      "language": "python",
+      "source": "/carState/vEgo",
+      "additional": [
+        "/carState/vEgoRaw"
+      ],
+      "globals": "",
+      "function": "return value - v1"
+    }
+  ]
+}
