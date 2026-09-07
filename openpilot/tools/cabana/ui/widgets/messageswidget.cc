@@ -240,7 +240,6 @@ std::string MessagesWidget::whatsThis() const {
 }
 
 void MessagesWidget::drawToolBar() {
-  ImGui::Dummy(ImVec2(0, std::max(0.0f, 9 - ImGui::GetStyle().ItemSpacing.y)));
   if (ImGui::Button("Suppress Highlighted")) suppressHighlighted(true);
   ImGui::SameLine();
   ImGui::BeginDisabled(!suppress_clear_enabled_);

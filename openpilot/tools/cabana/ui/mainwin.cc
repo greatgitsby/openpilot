@@ -133,27 +133,22 @@ void MainWindow::drawFileMenu() {
 }
 
 namespace {
-// the x range of the open top level menu's dropdown; the menu bar leaves its separator out there so the
-// dropdown continues the bar
-ImVec2 g_open_menu_range(0.0f, 0.0f);
-
 // a top level menu keeps one highlight whether the mouse is on its title or inside its popup
 bool beginTopMenu(const char *label, bool enabled = true) {
   ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::GetColorU32(ImGuiCol_Header));
   const bool open = ImGui::BeginMenu(label, enabled);
   ImGui::PopStyleColor();
   if (open) {
-    // the dropdown hangs off the menu bar: its top corners are squared and its top border removed so it
-    // continues the bar
+    // the dropdown hangs off the menu bar: its top corners are squared and the bar's bottom line is its top
+    // border, so the two share one 1 px line
     const ImGuiStyle &style = ImGui::GetStyle();
     const ImGuiWindow *w = ImGui::GetCurrentWindow();
     const float r = style.PopupRounding, b = style.PopupBorderSize;
     const ImVec2 min = w->Pos, max(w->Pos.x + w->Size.x, w->Pos.y + w->Size.y);
     const ImU32 bg = ImGui::GetColorU32(ImGuiCol_PopupBg), border = ImGui::GetColorU32(ImGuiCol_Border);
     ImDrawList *dl = w->DrawList;
-    g_open_menu_range = ImVec2(min.x + b, max.x - b);
     dl->PushClipRect(min, max, false);  // the window's own clip rect excludes its border
-    dl->AddRectFilled(min, ImVec2(max.x, min.y + r), bg);  // the corners and the top edge
+    dl->AddRectFilled(min, ImVec2(max.x, min.y + r), bg);  // the corners and the top edge: the bar's line is the top border
     dl->AddRectFilled(ImVec2(min.x, min.y), ImVec2(min.x + b, min.y + r), border);  // the left edge
     dl->AddRectFilled(ImVec2(max.x - b, min.y), ImVec2(max.x, min.y + r), border);  // the right edge
     dl->PopClipRect();
@@ -169,20 +164,10 @@ void MainWindow::drawMenuBar() {
   ImGui::PopStyleVar();
   if (!open) return;
   {
-    // a separator along the bottom edge towards the panels, like the footer's, interrupted under an open
-    // dropdown (its range is the one of the last frame; the menus below update it)
+    // a border line along the bottom edge towards the panels, like the footer's and the dropdowns'
     const ImVec2 min = ImGui::GetWindowPos();
     const ImVec2 max(min.x + ImGui::GetWindowWidth(), min.y + ImGui::GetWindowHeight());
-    const ImU32 col = ImGui::GetColorU32(ImGuiCol_Separator);
-    ImDrawList *dl = ImGui::GetWindowDrawList();
-    const ImVec2 gap = g_open_menu_range;
-    g_open_menu_range = ImVec2(0.0f, 0.0f);
-    if (gap.y > gap.x) {
-      dl->AddRectFilled(ImVec2(min.x, max.y - 1.0f), ImVec2(gap.x, max.y), col);
-      dl->AddRectFilled(ImVec2(gap.y, max.y - 1.0f), max, col);
-    } else {
-      dl->AddRectFilled(ImVec2(min.x, max.y - 1.0f), max, col);
-    }
+    ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(min.x, max.y - 1.0f), max, ImGui::GetColorU32(ImGuiCol_Border));
   }
   if (beginTopMenu("File")) {
     drawFileMenu();
@@ -758,11 +743,11 @@ void MainWindow::handleShortcuts() {
 }
 
 void MainWindow::drawStatusBar() {
-  // the footer mirrors the menu bar: the same strip in the surface color with a separator towards the panels
+  // the footer mirrors the menu bar: the same strip in the surface color with a border line towards the panels
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyle().Colors[ImGuiCol_MenuBarBg]);
   ImGui::BeginChild("status_bar", ImVec2(0, ImGui::GetFrameHeight()), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
   const ImVec2 min = ImGui::GetWindowPos();
-  ImGui::GetWindowDrawList()->AddRectFilled(min, ImVec2(min.x + ImGui::GetWindowWidth(), min.y + 1.0f), ImGui::GetColorU32(ImGuiCol_Separator));
+  ImGui::GetWindowDrawList()->AddRectFilled(min, ImVec2(min.x + ImGui::GetWindowWidth(), min.y + 1.0f), ImGui::GetColorU32(ImGuiCol_Border));
   // a borderless child gets no WindowPadding, so both ends sit flush against the edge and clip. Inset by
   // WindowPadding.x, which lines the text up with the content of the docked panels above (the messages table).
   const float width = ImGui::GetContentRegionAvail().x;
