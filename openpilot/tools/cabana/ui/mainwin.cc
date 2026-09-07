@@ -808,9 +808,9 @@ void MainWindow::drawDockspace() {
 
   // the status bar sits below the dockspace: reserve its height plus the item spacing between the two,
   // otherwise the host window is a few pixels taller than the viewport and scrolls
-  const float status_height = full_screen_ ? 0.0f : ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
+  const float status_height = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
   // a little air between the menu bar and the panel tabs
-  const float top_gap = full_screen_ ? 0.0f : ImGui::GetStyle().ItemSpacing.y;
+  const float top_gap = ImGui::GetStyle().ItemSpacing.y;
   ImGui::SetCursorPosY(ImGui::GetCursorPosY() + top_gap);
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
   const ImGuiID dock_id = ImGui::GetID("cabana_dockspace");
@@ -834,7 +834,7 @@ void MainWindow::drawDockspace() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(min_panel_width, ImGui::GetStyle().WindowMinSize.y));
   ImGui::DockSpace(dock_id, dock_size);
   ImGui::PopStyleVar();
-  if (!full_screen_) drawStatusBar();
+  drawStatusBar();
   ImGui::End();
 }
 
@@ -962,7 +962,7 @@ void MainWindow::draw() {
   } else {
     takeKeyEvents();  // modal dialogs swallow the shortcuts
   }
-  if (!full_screen_) drawMenuBar();
+  drawMenuBar();  // the header and the footer stay in full screen
   drawDockspace();
 
   // the central widget has no scrollbars of its own (the views inside scroll)
