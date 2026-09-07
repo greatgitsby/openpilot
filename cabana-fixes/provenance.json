@@ -1,0 +1,9 @@
+{
+  "base": "9c02eebb72800d0707deddd404c2ba9d812ef77d",
+  "branches": {
+    "runtime": "a5923454fc0d61ac73e76f66345548ebbbd03635",
+    "charts": "6523fe7159d952a977264e8f7654e47f22c86348",
+    "desktop": "8820d6eca8f3f8fd28955e775f427f179e124dda",
+    "can": "5faee0e24ebd933d6967b895103497e53179d149"
+  }
+}
