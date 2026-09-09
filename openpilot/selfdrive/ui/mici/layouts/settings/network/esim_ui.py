@@ -16,7 +16,8 @@ from openpilot.system.ui.widgets.nav_widget import NavWidget
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, LABEL_COLOR
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigInputDialog, BigConfirmationDialog
 from openpilot.common.esim.base import Profile
-from openpilot.system.ui.lib.application import DEFAULT_TEXT_COLOR, FontWeight, MousePos, TextAlignment, gui_app
+from openpilot.system.ui.lib.application import DEFAULT_TEXT_COLOR, FontWeight, MouseEvent, MousePos, TextAlignment, gui_app
+from openpilot.system.ui.lib.scroll_panel2 import ScrollState
 from openpilot.system.ui.lib.cellular_manager import CellularManager
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.label import gui_label
@@ -294,6 +295,8 @@ class EsimProfileButton(BigButton):
 
 
 class EsimUI(NavScroller):
+  ADD_SWIPE_DISTANCE = 140
+
   def __init__(self, cellular_manager: CellularManager, profiles_enabled: Callable[[], bool]):
     super().__init__()
 
@@ -305,14 +308,62 @@ class EsimUI(NavScroller):
     self._scroller.add_widget(self._add_profile_btn)
     self._installing_dialog: InstallingProfileDialog | None = None
     self._installing: bool = False
+    self._add_swipe_start: MousePos | None = None
+    self._add_swipe_distance = 0.0
 
     self._cellular_manager.on_profiles_updated = self._on_profiles_updated
     self._cellular_manager.on_operation_error = self._on_error
 
   def show_event(self):
     super().show_event()
+    self._reset_add_swipe()
     self._update_buttons(re_sort=True)
     self._cellular_manager.refresh_profiles()
+
+  def _reset_add_swipe(self):
+    self._add_swipe_start = None
+    self._add_swipe_distance = 0.0
+
+  def _can_swipe_to_add(self) -> bool:
+    return self.enabled and not self.is_dismissing and not self._cellular_manager.busy and self._profiles_enabled()
+
+  def _handle_mouse_event(self, event: MouseEvent):
+    super()._handle_mouse_event(event)
+    if not self._can_swipe_to_add():
+      self._reset_add_swipe()
+      return
+
+    if event.left_pressed:
+      self._reset_add_swipe()
+      panel = self._scroller.scroll_panel
+      if (panel.get_offset() >= -8 and panel.state in (ScrollState.STEADY, ScrollState.PRESSED) and
+          not self._scroller.moving_items and rl.check_collision_point_rec(event.pos, self._rect)):
+        self._add_swipe_start = event.pos
+    elif self._add_swipe_start is not None:
+      dx = event.pos.x - self._add_swipe_start.x
+      dy = event.pos.y - self._add_swipe_start.y
+      if abs(dy) > 40 or dx < -12:
+        self._reset_add_swipe()
+        return
+      self._add_swipe_distance = max(0.0, dx)
+      if event.left_released:
+        activate = dx >= self.ADD_SWIPE_DISTANCE
+        self._reset_add_swipe()
+        if activate:
+          self._on_add_profile()
+
+  def _render(self, rect):
+    super()._render(rect)
+    if not self._can_swipe_to_add() or self._scroller.scroll_panel.get_offset() < -8:
+      return
+    progress = min(self._add_swipe_distance / self.ADD_SWIPE_DISTANCE, 1.0)
+    label = "release to scan QR code" if progress >= 1 else "swipe right to add profile"
+    hint = rl.Rectangle(rect.x + (rect.width - 290) / 2, rect.y + rect.height - 46, 290, 30)
+    rl.draw_rectangle_rounded(hint, 0.5, 8, rl.Color(0, 0, 0, 210))
+    gui_label(hint, label, font_size=20, alignment=TextAlignment.CENTER,
+              color=rl.Color(255, 255, 255, int(160 + 95 * progress)))
+    if progress > 0:
+      rl.draw_rectangle(int(hint.x + 12), int(hint.y + hint.height - 2), int((hint.width - 24) * progress), 2, rl.WHITE)
 
   def _on_profiles_updated(self):
     if self._installing_dialog and self._installing:
@@ -358,6 +409,8 @@ class EsimUI(NavScroller):
   def _update_state(self):
     super()._update_state()
 
+    if not self._can_swipe_to_add():
+      self._reset_add_swipe()
     self._add_profile_btn.set_enabled(not self._cellular_manager.busy and self._profiles_enabled())
     active = self._cellular_manager.active_profile
     self._move_profile_to_front(active.iccid if active else None)
