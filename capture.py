@@ -77,18 +77,16 @@ class Camera:
 qrtex=qrcode.make_texture('LPA:1$example.invalid$DEMO-NOT-A-REAL-ACTIVATION-CODE')
 e.CameraView=lambda *args:Camera()
 e.ui_state=SimpleNamespace(params=SimpleNamespace(put_bool=lambda *args:None))
-# Drive both connectivity outcomes through the actual add-profile handler.
-workers=[];callbacks=[];captured=[]
-manager._enqueue=callbacks.append
-with patch.object(e.threading, 'Thread', side_effect=lambda target,daemon:SimpleNamespace(start=lambda:workers.append(target))), patch.object(gui_app, 'push_widget', side_effect=captured.append), patch.object(e.urllib.request, 'urlopen', side_effect=OSError('offline')):
+# Drive both network-state outcomes through the actual add-profile handler.
+captured=[]
+e.ui_state.sm={'deviceState':SimpleNamespace(networkType=e.log.DeviceState.NetworkType.none)}
+with patch.object(gui_app, 'push_widget', side_effect=captured.append):
  ui._on_add_profile()
- draw(ui,15);save('03b-checking-internet')
- assert not captured
- workers.pop()();callbacks.pop()()
  assert len(captured)==1 and isinstance(captured[0],e.BigDialog)
 show(captured.pop(),'16-no-internet')
-with patch.object(e.threading, 'Thread', side_effect=lambda target,daemon:SimpleNamespace(start=lambda:workers.append(target))), patch.object(gui_app, 'push_widget', side_effect=captured.append), patch.object(e.urllib.request, 'urlopen', return_value=MagicMock()):
- ui._on_add_profile();workers.pop()();callbacks.pop()()
+e.ui_state.sm['deviceState'].networkType=e.log.DeviceState.NetworkType.wifi
+with patch.object(gui_app, 'push_widget', side_effect=captured.append):
+ ui._on_add_profile()
  assert len(captured)==1 and isinstance(captured[0],e.QRScannerDialog)
 scanner=captured.pop()
 show(scanner,'04-camera-starting')
