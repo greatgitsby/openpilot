@@ -106,7 +106,7 @@ manager.busy=False;draw(ui,60);save('13-travel-active')
 show(BigInputDialog('nickname',default_text='Travel',minimum_length=0),'14-rename')
 icon=gui_app.texture('icons_mici/settings/network/new/trash.png',54,64)
 show(BigConfirmationDialog('slide to delete',icon,lambda:None,red=True),'15-delete-confirmation')
-for name,error in [('16-no-internet','no internet connection\nconnect to wifi or\ncellular to install'),('17-download-error','AuthenticateClient failed: activation code has already been used. Please contact your eSIM provider.'),('18-download-timeout','Profile download timed out. Please try again.')]:
+for name,error in [('16-no-internet','no internet connection. connect to wifi or cellular to install'),('17-download-error','AuthenticateClient failed: activation code has already been used. Please contact your eSIM provider.'),('18-download-timeout','Profile download timed out. Please try again.')]:
  captured=[]
  original=gui_app.push_widget;gui_app.push_widget=captured.append
  ui._on_error(error)

@@ -1,7 +1,7 @@
 # eSIM download UI screenshot suite
 
 PR: https://github.com/commaai/openpilot/pull/38813
-Source commit: 9a76b7ba972a1b2e92af015316d1bc57cd02dc77
+Source commit: 1d37a8c84 (connectivity text update)
 
 26 screenshots at native mici resolution (536 × 240), plus 3 animated GIFs.
 Rendered from the production widgets using demo profile data, mocked modem operations, and a synthetic camera surface. These are UI previews, not evidence of a real carrier download or device camera quality. No live activation codes or personal camera captures are included. The swipe-to-add experiment is excluded.
