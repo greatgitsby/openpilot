@@ -7,6 +7,7 @@ from collections.abc import Callable
 from openpilot.cereal.visionipc import VisionStreamType
 
 from openpilot.common import qrcode
+from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.ui.mici.onroad.cameraview import CameraView
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -310,6 +311,8 @@ class EsimUI(NavScroller):
     self._installing: bool = False
     self._add_swipe_start: MousePos | None = None
     self._add_swipe_distance = 0.0
+    self._add_swipe_progress = FirstOrderFilter(0.0, 0.05, 1 / gui_app.target_fps)
+    self._add_swipe_texture = gui_app.texture("icons_mici/settings/horizontal_scroll_indicator.png", 96, 48)
 
     self._cellular_manager.on_profiles_updated = self._on_profiles_updated
     self._cellular_manager.on_operation_error = self._on_error
@@ -354,16 +357,25 @@ class EsimUI(NavScroller):
 
   def _render(self, rect):
     super()._render(rect)
+    progress = self._add_swipe_progress.update(min(self._add_swipe_distance / self.ADD_SWIPE_DISTANCE, 1.0))
     if not self._can_swipe_to_add() or self._scroller.scroll_panel.get_offset() < -8:
       return
-    progress = min(self._add_swipe_distance / self.ADD_SWIPE_DISTANCE, 1.0)
-    label = "release to scan QR code" if progress >= 1 else "swipe right to add profile"
-    hint = rl.Rectangle(rect.x + (rect.width - 290) / 2, rect.y + rect.height - 46, 290, 30)
-    rl.draw_rectangle_rounded(hint, 0.5, 8, rl.Color(0, 0, 0, 210))
-    gui_label(hint, label, font_size=20, alignment=TextAlignment.CENTER,
-              color=rl.Color(255, 255, 255, int(160 + 95 * progress)))
-    if progress > 0:
-      rl.draw_rectangle(int(hint.x + 12), int(hint.y + hint.height - 2), int((hint.width - 24) * progress), 2, rl.WHITE)
+    # Rotate the bottom scroller indicator into a soft tab tucked into the left edge.
+    length, width = 100 + 32 * progress, 32 + 112 * progress
+    center_y = rect.y + rect.height / 2
+    texture = self._add_swipe_texture
+    rl.begin_scissor_mode(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+    rl.draw_texture_pro(texture, rl.Rectangle(0, 0, texture.width, texture.height),
+                        rl.Rectangle(rect.x - 8, center_y, length, width), rl.Vector2(length / 2, width / 2), 90,
+                        rl.Color(255, 255, 255, int(115 + 65 * progress)))
+    center = rl.Vector2(rect.x + 14 + 18 * progress, center_y)
+    size = 5 + 3 * progress
+    color = rl.Color(255, 255, 255, int(140 + 115 * progress))
+    rl.draw_line_ex(rl.Vector2(center.x - size, center.y), rl.Vector2(center.x + size, center.y), 2, color)
+    rl.draw_line_ex(rl.Vector2(center.x, center.y - size), rl.Vector2(center.x, center.y + size), 2, color)
+    if progress > 0.02:
+      rl.draw_ring(center, 16, 18, -90, -90 + 360 * progress, 48, color)
+    rl.end_scissor_mode()
 
   def _on_profiles_updated(self):
     if self._installing_dialog and self._installing:
