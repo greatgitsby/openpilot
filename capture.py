@@ -9,6 +9,7 @@ import pyray as rl
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.esim.base import Profile
 from openpilot.common import qrcode
+from unittest.mock import patch, MagicMock
 from types import ModuleType
 state=ModuleType('openpilot.selfdrive.ui.ui_state')
 state.ui_state=SimpleNamespace(params=SimpleNamespace(put_bool=lambda *args:None))
@@ -76,7 +77,20 @@ class Camera:
 qrtex=qrcode.make_texture('LPA:1$example.invalid$DEMO-NOT-A-REAL-ACTIVATION-CODE')
 e.CameraView=lambda *args:Camera()
 e.ui_state=SimpleNamespace(params=SimpleNamespace(put_bool=lambda *args:None))
-scanner=e.QRScannerDialog(lambda data:None)
+# Drive both connectivity outcomes through the actual add-profile handler.
+workers=[];callbacks=[];captured=[]
+manager._enqueue=callbacks.append
+with patch.object(e.threading, 'Thread', side_effect=lambda target,daemon:SimpleNamespace(start=lambda:workers.append(target))), patch.object(gui_app, 'push_widget', side_effect=captured.append), patch.object(e.urllib.request, 'urlopen', side_effect=OSError('offline')):
+ ui._on_add_profile()
+ draw(ui,15);save('03b-checking-internet')
+ assert not captured
+ workers.pop()();callbacks.pop()()
+ assert len(captured)==1 and isinstance(captured[0],e.BigDialog)
+show(captured.pop(),'16-no-internet')
+with patch.object(e.threading, 'Thread', side_effect=lambda target,daemon:SimpleNamespace(start=lambda:workers.append(target))), patch.object(gui_app, 'push_widget', side_effect=captured.append), patch.object(e.urllib.request, 'urlopen', return_value=MagicMock()):
+ ui._on_add_profile();workers.pop()();callbacks.pop()()
+ assert len(captured)==1 and isinstance(captured[0],e.QRScannerDialog)
+scanner=captured.pop()
 show(scanner,'04-camera-starting')
 scanner._camera_view.frame=True
 scanner._last_scan_time=float('inf')
@@ -106,7 +120,7 @@ manager.busy=False;draw(ui,60);save('13-travel-active')
 show(BigInputDialog('nickname',default_text='Travel',minimum_length=0),'14-rename')
 icon=gui_app.texture('icons_mici/settings/network/new/trash.png',54,64)
 show(BigConfirmationDialog('slide to delete',icon,lambda:None,red=True),'15-delete-confirmation')
-for name,error in [('16-no-internet','no internet connection. connect to wifi or cellular to install'),('17-download-error','AuthenticateClient failed: activation code has already been used. Please contact your eSIM provider.'),('18-download-timeout','Profile download timed out. Please try again.')]:
+for name,error in [('17-download-error','AuthenticateClient failed: activation code has already been used. Please contact your eSIM provider.'),('18-download-timeout','Profile download timed out. Please try again.')]:
  captured=[]
  original=gui_app.push_widget;gui_app.push_widget=captured.append
  ui._on_error(error)
