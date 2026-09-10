@@ -730,10 +730,14 @@ def decode(gray: np.ndarray) -> str | None:
   d = (np.linalg.norm(tr - tl) + np.linalg.norm(bl - tl)) / 2
   dim = int(round((d / module + 7 - 17) / 4)) * 4 + 17
   dims = [cand for cand in (dim, dim - 4, dim + 4) if 21 <= cand <= 177]
-  for cand, use_alignment, transpose in itertools.product(dims, (True, False), (False, True)):
+  for cand, use_alignment in itertools.product(dims, (True, False)):
     try:
       m = _sample(binary, tl, tr, bl, module, cand, use_alignment)
-      return decode_matrix(m.T if transpose else m)
     except QRError:
-      pass
+      continue
+    for mat in (m, m.T):  # sampling includes the alignment search, so try both orientations of one sample
+      try:
+        return decode_matrix(mat)
+      except QRError:
+        pass
   return None
