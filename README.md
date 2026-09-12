@@ -1,0 +1,1 @@
+Cabana dropdown comparisons: each GIF loops BEFORE (1000 ms) then AFTER (1000 ms). Both frames use the same crop at original pixel scale from verified screenshots with identical settings. Labels are added above the screenshots.
