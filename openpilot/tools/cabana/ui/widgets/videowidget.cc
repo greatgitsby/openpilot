@@ -278,9 +278,9 @@ void VideoWidget::drawCameraWidget() {
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
   camera_tab_->draw();
 
-  // cam_widget_: minimum height MIN_VIDEO_HEIGHT, takes the space left by the slider and the toolbar
+  // Reserve the timeline and playback controls even when the native dock is short.
   const ImVec2 avail = ImGui::GetContentRegionAvail();
-  const float cam_height = std::max((float)MIN_VIDEO_HEIGHT, avail.y - SLIDER_HEIGHT - toolbar_height);
+  const float cam_height = std::max(1.0f, avail.y - SLIDER_HEIGHT - toolbar_height);
   cam_widget_->draw(ImVec2(avail.x, cam_height), thumbnail_display_time_);
 
   if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());

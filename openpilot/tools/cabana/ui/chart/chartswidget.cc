@@ -155,7 +155,6 @@ void ChartsWidget::setMaxChartRange(int value) {
 
 void ChartsWidget::setIsDocked(bool docked) {
   is_docked_ = docked;
-  if (!docked) float_window_init_ = true;
 }
 
 void ChartsWidget::drawToolBar() {
@@ -169,11 +168,6 @@ void ChartsWidget::drawToolBar() {
   }});
   items.push_back({iconButtonWidth(), [this]() {
     if (iconButton("new_tab_btn", icon::WINDOW_PLUS, "New Tab")) newTab();
-  }});
-  const std::string title_label = "Charts: " + std::to_string(charts_.size());
-  items.push_back({ImGui::CalcTextSize(title_label.c_str()).x, [&title_label]() {
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(title_label.c_str());
   }});
 
   const int type_count = (int)std::size(SERIES_TYPE_NAMES);
@@ -575,15 +569,6 @@ void ChartsWidget::handleEvents() {
 
 void ChartsWidget::draw() {
   deleted_charts_.clear();
-  // the floating window is a top level window sized to its contents: keep it inside the main viewport so its
-  // toolbar stays reachable, then let the user resize it
-  if (float_window_init_ && !is_docked_) {
-    float_window_init_ = false;
-    const ImGuiViewport *viewport = ImGui::GetMainViewport();
-    const ImVec2 size(viewport->WorkSize.x * 0.6f, viewport->WorkSize.y * 0.6f);
-    ImGui::SetWindowSize(size);
-    ImGui::SetWindowPos(viewport->WorkPos + (viewport->WorkSize - size) * 0.5f);
-  }
   ImGui::PushID(this);
   if (auto_scroll_timer_active_ && ImGui::GetTime() >= auto_scroll_timer_next_) {
     auto_scroll_timer_next_ = ImGui::GetTime() + 0.05;
