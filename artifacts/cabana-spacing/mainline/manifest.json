@@ -1,6 +1,6 @@
 {
   "base": "7e84a6166832f1297217dd494247d30b30525862",
-  "head": "9d9828b9a3c1ea5d173c4e34b9bcdb878224a998",
+  "head": "ed50a0c21df834e73926c67db93e20987511f923",
   "route": "5beb9b58bd12b691/0000010a--a51155e496",
   "dbc": "ford_lincoln_base_pt.dbc",
   "window": [
@@ -366,6 +366,43 @@
         543
       ],
       "scale": 1
+    },
+    {
+      "name": "charts-stacked",
+      "title": "Stacked charts: uniform content margins",
+      "description": "Every chart uses the same content inset on all four sides; the drag handle and legend use the shared control gap.",
+      "before_crop": [
+        1006,
+        354,
+        1392,
+        820
+      ],
+      "after_crop": [
+        1006,
+        354,
+        1392,
+        820
+      ],
+      "scale": 1
+    },
+    {
+      "name": "charts-grid",
+      "title": "Two columns: uniform content margins",
+      "description": "Every chart uses the same content inset on all four sides; the drag handle and legend use the shared control gap.",
+      "before_crop": [
+        279,
+        199,
+        1119,
+        480
+      ],
+      "after_crop": [
+        279,
+        199,
+        1119,
+        480
+      ],
+      "scale": 1
     }
-  ]
+  ],
+  "capture_notes": "Unchanged control crops retain the previous capture; all chart-related comparisons were refreshed for this head. Real demo playback timestamps and road video frames differ between captures."
 }
