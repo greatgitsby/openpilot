@@ -1,0 +1,371 @@
+{
+  "base": "7e84a6166832f1297217dd494247d30b30525862",
+  "head": "9d9828b9a3c1ea5d173c4e34b9bcdb878224a998",
+  "route": "5beb9b58bd12b691/0000010a--a51155e496",
+  "dbc": "ford_lincoln_base_pt.dbc",
+  "window": [
+    1400,
+    900
+  ],
+  "scenes": [
+    {
+      "name": "find-signal",
+      "title": "Find Signal: readable numeric controls",
+      "description": "70px fields left almost no space for the value beside the step buttons. Field widths now include two readable digits, padding, and two equally spaced buttons. Options move to their own row; the two form panels have equal height.",
+      "files": "tools/findsignal.cc; util.cc",
+      "before_crop": [
+        60,
+        60,
+        960,
+        345
+      ],
+      "after_crop": [
+        60,
+        60,
+        960,
+        345
+      ],
+      "scale": 1
+    },
+    {
+      "name": "find-similar",
+      "title": "Find Similar Bits: no clipped buttons",
+      "description": "The final bit-index button ran beyond the default dialog width and the message count was truncated. Index controls now have their own row, measured value widths, and an 8px gap between every field and button.",
+      "files": "tools/findsimilarbits.cc; util.cc",
+      "before_crop": [
+        60,
+        60,
+        760,
+        223
+      ],
+      "after_crop": [
+        60,
+        60,
+        760,
+        223
+      ],
+      "scale": 1
+    },
+    {
+      "name": "settings",
+      "title": "Settings: aligned fields and actions",
+      "description": "Numeric step buttons used 4px gaps while other controls used 10px. All external gaps are now 8px. Browse reserves its measured width and ends on the same right edge as the other controls.",
+      "files": "dialogs/settingsdialog.cc; theme.cc; util.cc",
+      "before_crop": [
+        500,
+        263,
+        900,
+        637
+      ],
+      "after_crop": [
+        500,
+        273,
+        900,
+        627
+      ],
+      "scale": 1
+    },
+    {
+      "name": "replay",
+      "title": "Open Stream: Replay and DBC actions",
+      "description": "The route field reserved a hard-coded 250px for its two buttons and left unused trailing space. Each button is measured with the shared padding; DBC Browse and the footer share the content edge.",
+      "files": "dialogs/streamselector.cc; theme.cc; util.cc",
+      "before_crop": [
+        316,
+        307,
+        1084,
+        593
+      ],
+      "after_crop": [
+        316,
+        313,
+        1084,
+        587
+      ],
+      "scale": 1
+    },
+    {
+      "name": "panda",
+      "title": "Open Stream: Panda Refresh",
+      "description": "The serial selector reserved a fixed 100px, leaving an uneven gap after Refresh. The selector now fills the row while reserving the measured button and the standard gap.",
+      "files": "dialogs/streamselector.cc",
+      "before_crop": [
+        316,
+        307,
+        1084,
+        593
+      ],
+      "after_crop": [
+        316,
+        313,
+        1084,
+        587
+      ],
+      "scale": 1
+    },
+    {
+      "name": "socketcan",
+      "title": "Open Stream: SocketCAN Refresh",
+      "description": "The selector was fixed at 300px and Refresh at 100px. The selector now uses the available row width, with the same content-sized Refresh and 8px gap as Panda.",
+      "files": "dialogs/streamselector.cc",
+      "before_crop": [
+        316,
+        307,
+        1084,
+        593
+      ],
+      "after_crop": [
+        316,
+        313,
+        1084,
+        587
+      ],
+      "scale": 1
+    },
+    {
+      "name": "device",
+      "title": "Open Stream: device controls",
+      "description": "The shared theme brings the radio rows, content margins, DBC Browse row, and footer onto the same vertical spacing and padding scale.",
+      "files": "theme.cc; dialogs/streamselector.cc",
+      "before_crop": [
+        316,
+        307,
+        1084,
+        593
+      ],
+      "after_crop": [
+        316,
+        313,
+        1084,
+        587
+      ],
+      "scale": 1
+    },
+    {
+      "name": "file-picker",
+      "title": "File picker: filename and footer alignment",
+      "description": "The filename field reserved an arbitrary 90px for the extension text. It now measures that text, keeps an 8px gap, and aligns its baseline with the input. Footer buttons and Up use the shared padding.",
+      "files": "dialogs/filedialog.cc; util.cc",
+      "before_crop": [
+        380,
+        210,
+        1020,
+        690
+      ],
+      "after_crop": [
+        380,
+        210,
+        1020,
+        690
+      ],
+      "scale": 1
+    },
+    {
+      "name": "edit-message",
+      "title": "Edit Message: consistent step buttons",
+      "description": "Size input buttons now use the same 8px gaps as Settings. Label columns are positioned from their actual text width and a shared gap, rather than a doubled spacing offset.",
+      "files": "widgets/detailwidget.cc; util.cc",
+      "before_crop": [
+        400,
+        270,
+        1000,
+        630
+      ],
+      "after_crop": [
+        400,
+        270,
+        1000,
+        630
+      ],
+      "scale": 1
+    },
+    {
+      "name": "message",
+      "title": "Message details: toolbar and signal actions",
+      "description": "Edit/Delete and Plot/Remove now have equal 8px gaps. Removing the extra 6px dummy plus its implicit spacing brings the signal toolbar closer to the bytes view. Row actions align with the content edge.",
+      "files": "widgets/detailwidget.cc; widgets/signalview.cc; util.cc",
+      "before_crop": [
+        400,
+        40,
+        988,
+        675
+      ],
+      "after_crop": [
+        400,
+        40,
+        988,
+        675
+      ],
+      "scale": 1
+    },
+    {
+      "name": "logs-filter",
+      "title": "Logs: filter clear button",
+      "description": "The clear button formerly used a tighter 4px gap. It now uses the same 8px gap as the surrounding filters, while preserving the input group\u2019s total width.",
+      "files": "util.cc; theme.cc",
+      "before_crop": [
+        400,
+        40,
+        988,
+        178
+      ],
+      "after_crop": [
+        400,
+        40,
+        988,
+        178
+      ],
+      "scale": 1
+    },
+    {
+      "name": "value-table",
+      "title": "Signal value table: Add/Remove",
+      "description": "Add and Remove used a 4px gap. They now match the 8px gap to the table and the footer\u2019s standard button spacing.",
+      "files": "widgets/signalview.cc; util.cc",
+      "before_crop": [
+        450,
+        243,
+        950,
+        657
+      ],
+      "after_crop": [
+        450,
+        248,
+        950,
+        652
+      ],
+      "scale": 1
+    },
+    {
+      "name": "signal-selector",
+      "title": "Manage Chart: aligned lists and buttons",
+      "description": "The headings and list bottoms were offset by the button-column text baseline. Both headings now reserve the same frame height, aligning the lists and keeping equal gaps around the transfer buttons and footer.",
+      "files": "chart/signalselector.cc; theme.cc",
+      "before_crop": [
+        350,
+        225,
+        1050,
+        675
+      ],
+      "after_crop": [
+        350,
+        225,
+        1050,
+        675
+      ],
+      "scale": 1
+    },
+    {
+      "name": "chart",
+      "title": "Playback and chart controls",
+      "description": "Playback, toolbar, and chart actions use shared gaps. Chart headers and plots use consistent content padding.",
+      "files": "mainwin.cc; widgets/videowidget.cc; chart/chart.cc; chart/chartswidget.cc",
+      "before_crop": [
+        1006,
+        282,
+        1392,
+        610
+      ],
+      "after_crop": [
+        1006,
+        282,
+        1392,
+        610
+      ],
+      "scale": 1
+    },
+    {
+      "name": "floating-initial",
+      "title": "Floating chart: zoom and header actions",
+      "description": "Floating toolbar actions use equal gaps, and the chart content uses shared padding around its header, buttons, and plot.",
+      "files": "chart/chart.cc; chart/chartswidget.cc; util.cc",
+      "before_crop": [
+        279,
+        199,
+        1119,
+        475
+      ],
+      "after_crop": [
+        279,
+        199,
+        1119,
+        475
+      ],
+      "scale": 1
+    },
+    {
+      "name": "tab-scroll",
+      "title": "Overflowing tabs: navigation buttons",
+      "description": "The two scroll arrows now have the same 8px gap as the gap from the tab strip. The reserved width uses the same measurement as the drawn buttons.",
+      "files": "widgets/scrollabletabbar.cc",
+      "before_crop": [
+        1006,
+        354,
+        1392,
+        445
+      ],
+      "after_crop": [
+        1006,
+        354,
+        1392,
+        445
+      ],
+      "scale": 1
+    },
+    {
+      "name": "chart-overflow",
+      "title": "Narrow chart: overflow still works",
+      "description": "The toolbar measures and renders the same standard gaps. Actions that do not fit remain available through More; zoom reset and docking are still reachable.",
+      "files": "util.cc; chart/chartswidget.cc",
+      "before_crop": [
+        1006,
+        354,
+        1392,
+        610
+      ],
+      "after_crop": [
+        1006,
+        354,
+        1392,
+        610
+      ],
+      "scale": 1
+    },
+    {
+      "name": "playback",
+      "title": "Playback icons: centered glyphs",
+      "description": "Shared icon rendering keeps visible glyphs centered, including half-pixel positions. Shown at 4\u00d7 using native pixels.",
+      "before_crop": [
+        1006,
+        294,
+        1109,
+        337
+      ],
+      "after_crop": [
+        1006,
+        294,
+        1109,
+        337
+      ],
+      "scale": 4
+    },
+    {
+      "name": "signal-size",
+      "title": "Inline signal size: shared step buttons",
+      "description": "The inline editor uses the same centered plus/minus component and standard gaps as other numeric fields and the value table.",
+      "before_crop": [
+        429,
+        529,
+        947,
+        575
+      ],
+      "after_crop": [
+        417,
+        497,
+        958,
+        543
+      ],
+      "scale": 1
+    }
+  ]
+}
