@@ -1,0 +1,6 @@
+increment changed=1 value=9
+decrement changed=1 value=8
+typed value=42 active=1145124254
+PASS: keyboard entry, Enter commit, Escape restoration.
+PASS: numeric increment/decrement, Ctrl fast step, hold repeat, read-only, overflow saturation.
+PASS: equal toolbar gaps, overflow reservation, clearable input width, numeric width/style restoration, long dialog labels; light/dark at 1x, 1.5x, 2x.

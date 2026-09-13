@@ -1,0 +1,98 @@
+[
+  {
+    "source": "playback-docked",
+    "name": "playback-centering",
+    "title": "Playback icons: exact visible center",
+    "box": [
+      1006,
+      296,
+      1106,
+      336
+    ],
+    "scale": 4
+  },
+  {
+    "source": "find-signal",
+    "name": "numeric-find-signal",
+    "title": "Find Signal: shared plus/minus component",
+    "box": [
+      60,
+      60,
+      960,
+      260
+    ],
+    "scale": 1
+  },
+  {
+    "source": "find-similar",
+    "name": "numeric-find-similar",
+    "title": "Find Similar Bits: shared plus/minus component",
+    "box": [
+      60,
+      60,
+      760,
+      185
+    ],
+    "scale": 1
+  },
+  {
+    "source": "settings",
+    "name": "numeric-settings",
+    "title": "Settings: shared plus/minus component",
+    "box": [
+      500,
+      273,
+      900,
+      628
+    ],
+    "scale": 1
+  },
+  {
+    "source": "edit-message",
+    "name": "numeric-edit-message",
+    "title": "Edit Message: shared plus/minus component",
+    "box": [
+      400,
+      270,
+      1000,
+      630
+    ],
+    "scale": 1
+  },
+  {
+    "source": "signal-size",
+    "name": "numeric-signal-size",
+    "title": "Inline signal size: shared plus/minus component",
+    "box": [
+      417,
+      520,
+      958,
+      576
+    ],
+    "scale": 2
+  },
+  {
+    "source": "demo-chart",
+    "name": "chart-inset",
+    "title": "Docked chart: consistent content padding",
+    "box": [
+      1006,
+      354,
+      1392,
+      590
+    ],
+    "scale": 1
+  },
+  {
+    "source": "floating-chart",
+    "name": "floating-inset",
+    "title": "Floating chart: consistent content padding",
+    "box": [
+      279,
+      199,
+      1119,
+      463
+    ],
+    "scale": 1
+  }
+]
