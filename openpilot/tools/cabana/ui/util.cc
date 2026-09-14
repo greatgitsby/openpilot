@@ -511,6 +511,16 @@ bool beginDialog(const char *id, PopupOwner *owner, const ImVec2 &size, ImGuiWin
 
 // tool bar
 
+ToolbarItem toolbarTextAction(const char *id, const char *label, std::function<void()> trigger, bool enabled) {
+  return {toolbarButtonWidth(label), [=]() {
+    ImGui::PushID(id);
+    ImGui::BeginDisabled(!enabled);
+    if (ImGui::Button(label)) trigger();
+    ImGui::EndDisabled();
+    ImGui::PopID();
+  }, label, trigger, enabled, true};
+}
+
 ToolbarItem toolbarAction(const char *id, const char *icon, const char *label, std::function<void()> trigger, bool enabled) {
   return {iconButtonWidth(), [=]() {
     ImGui::BeginDisabled(!enabled);
@@ -558,7 +568,7 @@ void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index, flo
   const float start_x = ImGui::GetCursorPosX();
   const float avail = width < 0.0f ? ImGui::GetContentRegionAvail().x : width;
   const float right_edge = start_x + avail;
-  const float extension_width = iconButtonWidth();
+  const float extension_width = toolbarButtonWidth("More");
 
   // when everything fits the spacer takes the slack, otherwise the extension button is reserved at the
   // right edge and the items are packed from the left until the next one does not fit
@@ -587,7 +597,7 @@ void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index, flo
     const float extension_x = std::max(start_x, right_edge - extension_width);
     visible == 0 ? ImGui::SetCursorPosX(extension_x) : ImGui::SameLine(extension_x);
     const bool extension_open = ImGui::IsPopupOpen("toolbar_extension_menu");
-    const bool extension_clicked = iconButton("toolbar_extension", icon::CHEVRON_DOUBLE_RIGHT, "More");
+    const bool extension_clicked = ImGui::Button("More##toolbar_extension");
     if (!extension_open && (extension_clicked ||
         (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))) {
       ImGui::OpenPopup("toolbar_extension_menu");

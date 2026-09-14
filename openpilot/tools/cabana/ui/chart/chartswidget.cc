@@ -147,15 +147,11 @@ void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
   const bool is_zoomed = can->timeRange().has_value();
 
   // the labels are captured by reference, they outlive the draw calls below
-  items.push_back({iconButtonWidth(), [this]() {
-    if (stepButton("new_plot_btn", true, "New Chart")) newChart();
-  }});
-  items.push_back({iconButtonWidth(), [this]() {
-    if (iconButton("new_tab_btn", icon::WINDOW_PLUS, "New blank page")) newTab();
-  }});
+  items.push_back(toolbarTextAction("new_plot_btn", "Add Plot", [this]() { newChart(); }));
+  items.push_back(toolbarTextAction("new_tab_btn", "Add Page", [this]() { newTab(); }));
 
   const int type_count = (int)std::size(SERIES_TYPE_NAMES);
-  const std::string chart_type_text = std::string("Type:  ") + SERIES_TYPE_NAMES[std::clamp(settings.chart_series_type, 0, type_count - 1)];
+  const std::string chart_type_text = std::string("Plot style: ") + SERIES_TYPE_NAMES[std::clamp(settings.chart_series_type, 0, type_count - 1)];
   auto chart_type_items = [this]() {
     for (int i = 0; i < type_count; ++i) {
       if (dropdown::Item(SERIES_TYPE_NAMES[i], nullptr, settings.chart_series_type == i)) {
@@ -164,9 +160,9 @@ void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
       }
     }
   };
-  items.push_back(toolbarMenu("chart_type", chart_type_text, "Type", chart_type_items));
+  items.push_back(toolbarMenu("chart_type", chart_type_text, "Plot style", chart_type_items));
 
-  items.push_back(toolbarMenu("page", "Page", "Page", [this]() {
+  items.push_back(toolbarMenu("page", "Page Options", "Page Options", [this]() {
     if (dropdown::Item("Duplicate page")) {
       auto document = workspace().object_items();
       auto pages = document["pages"].array_items();
@@ -215,7 +211,7 @@ void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
   // the spacer right aligns the rest
   const size_t spacer_index = items.size();
   size_t slider_index = (size_t)-1;
-  const std::string range_lb = is_zoomed ? std::string() : utils::formatSeconds(max_chart_range_);
+  const std::string range_lb = is_zoomed ? std::string() : "Plot range: " + utils::formatSeconds(max_chart_range_);
   std::string reset_zoom_text;
   if (!is_zoomed) {
     // the range label and the slider are one unit: drawn inline and moved to the overflow menu together
@@ -235,23 +231,16 @@ void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
     const auto &range = *can->timeRange();
     char buf[64];
     snprintf(buf, sizeof(buf), "%.2f-%.2f", range.first, range.second);
-    reset_zoom_text = buf;
+    reset_zoom_text = std::string("Reset zoom: ") + buf;
     // The undo/redo/reset buttons form one group. The reset button has a fixed width in the mono font,
     // sized for the longest range the stream can show, so its neighbors do not shift as the range changes.
     const int digits = std::max({1, (int)std::to_string((long long)can->maxSeconds()).size(), (int)std::to_string((long long)range.second).size()});
     const std::string widest = std::string(digits, '0') + ".00";
     pushMonoFont(ImGui::GetFontSize());
-    const float reset_zoom_width = iconTextButtonWidth(icon::ZOOM_OUT, widest + "-" + widest);
+    const float reset_zoom_width = iconTextButtonWidth(icon::ZOOM_OUT, "Reset zoom: " + widest + "-" + widest);
     popMonoFont();
-    items.push_back({iconButtonWidth() * 2 + ImGui::GetStyle().ItemSpacing.x, [this]() {
-      ImGui::BeginDisabled(!zoom_undo_stack_.canUndo());
-      if (iconButton("undo_zoom", icon::ARROW_COUNTERCLOCKWISE, "Undo Zoom")) zoom_undo_stack_.undo();
-      ImGui::EndDisabled();
-      ImGui::SameLine();
-      ImGui::BeginDisabled(!zoom_undo_stack_.canRedo());
-      if (iconButton("redo_zoom", icon::ARROW_CLOCKWISE, "Redo Zoom")) zoom_undo_stack_.redo();
-      ImGui::EndDisabled();
-    }});
+    items.push_back(toolbarTextAction("undo_zoom", "Undo Zoom", [this]() { zoom_undo_stack_.undo(); }, zoom_undo_stack_.canUndo()));
+    items.push_back(toolbarTextAction("redo_zoom", "Redo Zoom", [this]() { zoom_undo_stack_.redo(); }, zoom_undo_stack_.canRedo()));
     items.push_back({reset_zoom_width, [this, &reset_zoom_text, reset_zoom_width]() {
       pushMonoFont(ImGui::GetFontSize());
       const bool clicked = iconTextButton("reset_zoom_btn", icon::ZOOM_OUT, reset_zoom_text, reset_zoom_width);
@@ -260,7 +249,7 @@ void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
       ImGui::SetItemTooltip("Reset Zoom");
     }});
   }
-  items.push_back(toolbarAction("remove_all_btn", icon::TRASH, "Remove all charts", [this]() { removeAll(); }, !charts_.empty()));
+  items.push_back(toolbarTextAction("remove_all_btn", "Clear Plots", [this]() { removeAll(); }, !charts_.empty()));
 
   // the slider shrinks first, the buttons stay pinned to the right edge
   if (slider_index != (size_t)-1) {

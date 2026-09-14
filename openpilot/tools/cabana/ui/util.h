@@ -179,7 +179,7 @@ bool beginDialog(const char *id, PopupOwner *owner, const ImVec2 &size, ImGuiWin
 const float SLIDER_LENGTH = 13.0f;
 const float SLIDER_THICKNESS = 13.0f;
 
-// a tool bar item: `draw` submits it. Items that do not fit go into a ">>" menu, where an item with a
+// a tool bar item: `draw` submits it. Items that do not fit go into a "More" menu, where an item with a
 // menu_label becomes a MenuItem that runs `trigger`, and an item without one draws itself.
 struct ToolbarItem {
   float width;
@@ -187,9 +187,10 @@ struct ToolbarItem {
   std::string menu_label;
   std::function<void()> trigger;
   bool enabled = true;
-  bool in_menu = true;  // false: left out of the ">>" menu (a separator)
-  std::function<void()> submenu;  // set: the ">>" entry is a submenu with these items instead of an action
+  bool in_menu = true;  // false: left out of the "More" menu (a separator)
+  std::function<void()> submenu;  // set: the "More" entry is a submenu with these items instead of an action
 };
+ToolbarItem toolbarTextAction(const char *id, const char *label, std::function<void()> trigger, bool enabled = true);
 ToolbarItem toolbarAction(const char *id, const char *icon, const char *label, std::function<void()> trigger,
                           bool enabled = true);
 // A drop-down button that opens `items` in a popup; in the overflow menu they become a submenu.
@@ -199,7 +200,7 @@ ToolbarItem toolbarMenu(const char *id, const std::string &text, const char *lab
 float toolbarButtonWidth(const std::string &label);
 // the width of every item plus the spacing between neighbors and the two groups
 float toolbarWidth(const std::vector<ToolbarItem> &items, size_t spacer_index);
-// items before spacer_index sit at the left, the rest are right aligned; the overflow goes into the ">>" menu
+// items before spacer_index sit at the left, the rest are right aligned; the overflow goes into the "More" menu
 // width < 0 uses the available content width.
 void drawToolbar(const std::vector<ToolbarItem> &items, size_t spacer_index, float width = -1.0f);
 

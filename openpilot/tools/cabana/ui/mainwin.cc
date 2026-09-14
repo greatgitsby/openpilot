@@ -990,10 +990,10 @@ void MainWindow::drawWorkspaceBar() {
   if (!charts_widget_) return;
   ImGui::PushID("workspace_toolbar");
   std::vector<ToolbarItem> items;
-  items.push_back({180, [this]() {
-    ImGui::SetNextItemWidth(180);
+  items.push_back({220, [this]() {
+    ImGui::SetNextItemWidth(220);
     std::vector<std::string> names;
-    for (const auto &workspace : workspaces_) names.push_back(workspace["name"].string_value());
+    for (const auto &workspace : workspaces_) names.push_back("Workspace: " + workspace["name"].string_value());
     int selected = active_workspace_;
     if (comboBox("##workspace", &selected, names)) nextFrame([this, selected]() { switchWorkspace(selected); });
     ImGui::SetItemTooltip("Workspace");
@@ -1015,7 +1015,7 @@ void MainWindow::drawWorkspaceBar() {
     }
     if (dropdown::Item("Plot")) docking_.addWindow(charts_widget_->addPlot());
   }));
-  items.push_back(toolbarMenu("workspace_actions", "Workspace", "Workspace", [this, create_blank]() {
+  items.push_back(toolbarMenu("workspace_actions", "Manage Workspace", "Manage Workspace", [this, create_blank]() {
     if (dropdown::Item("New blank workspace")) create_blank();
     std::string name = workspaces_[active_workspace_]["name"].string_value();
     if (inputText("Name", &name) && !name.empty()) {
