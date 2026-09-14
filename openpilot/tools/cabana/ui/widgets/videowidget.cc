@@ -283,18 +283,27 @@ void PlaybackController::updateSliderThumbnail() {
 }
 
 float PlaybackController::sizeHintHeight() const {
-  // Timeline, playback buttons, and their spacing.
-  return SLIDER_HEIGHT + toolbarHeight() + ImGui::GetStyle().ItemSpacing.y;
+  // Include the footer padding so controls stay clear of the window edges.
+  return SLIDER_HEIGHT + toolbarHeight() + ImGui::GetStyle().ItemSpacing.y + 2 * ImGui::GetStyle().WindowPadding.y;
 }
 
 void PlaybackController::drawPlayback() {
-  if (slider_) {
-    timeRangeChanged();
-    if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());
-    slider_->draw(thumbnail_display_time_);
-    updateSliderThumbnail();
+  const auto padding = ImGui::GetStyle().WindowPadding;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2 * padding.x, padding.y));
+  const bool visible = ImGui::BeginChild("##playback_footer", ImVec2(0, sizeHintHeight()),
+                                       ImGuiChildFlags_AlwaysUseWindowPadding,
+                                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  ImGui::PopStyleVar();
+  if (visible) {
+    if (slider_) {
+      timeRangeChanged();
+      if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());
+      slider_->draw(thumbnail_display_time_);
+      updateSliderThumbnail();
+    }
+    drawPlaybackController();
   }
-  drawPlaybackController();
+  ImGui::EndChild();
 
   for (auto it = route_info_dlgs_.begin(); it != route_info_dlgs_.end();) {
     it = (*it)->draw() ? it + 1 : route_info_dlgs_.erase(it);
