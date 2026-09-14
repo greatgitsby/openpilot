@@ -162,6 +162,7 @@ int main(int argc, char *argv[]) {
     if (error.empty()) error = cabana::validateWorkspace(doc);
     if (!error.empty()) { fprintf(stderr, "Workspace: %s\n", error.c_str()); return 1; }
     settings.analysis_workspace = doc.dump();
+    settings.startup_workspace = doc.dump();
   }
   std::unique_ptr<AbstractStream> stream;
   StreamLoader stream_loader;

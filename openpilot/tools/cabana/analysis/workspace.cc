@@ -17,7 +17,13 @@ std::string validateWorkspace(const json11::Json &doc) {
     if (e["id"].string_value().empty() || !equations.insert(e["id"].string_value()).second) return "Missing or duplicate equation ID";
   }
   for (const auto &page : doc["pages"].array_items()) {
-    std::set<std::string> allowed{"###MessagesPanel", "###CenterWidget", "###VideoPanel", "###ChartsWindow"};
+    std::set<std::string> allowed{"###MessagesPanel", "###CenterWidget", "###VideoPanel", "###ChartsWindow", "###WideCameraPanel", "###CabinCameraPanel"};
+    if (!page["widgets"].is_null()) {
+      if (!page["widgets"].is_array()) return "Invalid widget list";
+      std::set<std::string> widgets;
+      for (const auto &id : page["widgets"].array_items())
+        if (!allowed.count(id.string_value()) || !widgets.insert(id.string_value()).second) return "Unknown or duplicate widget";
+    }
     for (const auto &pane : page["panes"].array_items()) allowed.insert("###Chart/" + pane["id"].string_value());
     std::set<std::string> placed;
     std::function<bool(const json11::Json &, int)> validTree = [&](const json11::Json &tree, int depth) {
@@ -129,4 +135,23 @@ json11::Json migrateWorkspace(const json11::Json &doc) {
   }
   return J::object{{"cabana_workspace", 1}, {"pages", pages}, {"equations", equations}, {"active_page", 0}, {"relative_time", true}};
 }
+}
+
+json11::Json cabana::blankWorkspace() {
+  using J = json11::Json;
+  return J::object{{"cabana_workspace", 1}, {"active_page", 0}, {"equations", J::array{}},
+    {"pages", J::array{J::object{{"id", "page-1"}, {"name", "Page 1"}, {"panes", J::array{}},
+                               {"widgets", J::array{}}, {"dock", J::object{{"panes", J::array{}}}}}}}};
+}
+
+json11::Json cabana::defaultWorkspace() {
+  auto doc = blankWorkspace().object_items();
+  auto pages = doc["pages"].array_items();
+  auto page = pages[0].object_items();
+  page["name"] = "CAN";
+  page["widgets"] = json11::Json::array{"###MessagesPanel", "###CenterWidget", "###VideoPanel", "###ChartsWindow"};
+  page["dock"] = json11::Json();
+  pages[0] = page;
+  doc["pages"] = pages;
+  return doc;
 }

@@ -57,9 +57,13 @@ public:
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
   void draw();  // workspace controls
   void drawPanes();
+  void drawPageControls();
+  std::string addPlot();
+  bool widgetVisible(const std::string &id) const;
+  void setWidgetVisible(const std::string &id, bool visible);
   json11::Json workspace() const;
   uint64_t documentRevision() const { return document_revision_; }
-  bool restoreWorkspace(const json11::Json &doc);
+  bool restoreWorkspace(const json11::Json &doc, bool restore_range = true);
   std::string activePageId() const { return page_ids_.at(tabbar_.tabData(tabbar_.currentIndex())); }
   std::vector<std::string> pageIds() const;
   json11::Json pageLayout(const std::string &id) const;
@@ -72,7 +76,7 @@ public:
   void restoreChartsFromIds(const std::vector<std::string> &chart_ids);
   std::string whatsThis() const;
 
-  void removeAll();
+  void removeAll(bool reset_range = true);
 
   Observable<> seriesChanged;
   Observable<double> showTip;
@@ -111,6 +115,7 @@ private:
   TabBar tabbar_;
   std::unordered_map<int, std::string> page_ids_;
   std::unordered_map<std::string, json11::Json> page_layouts_;
+  std::unordered_map<std::string, std::set<std::string>> page_widgets_;
   int max_chart_range_ = 0;
   std::pair<double, double> display_range_;
   bool value_tip_visible_ = false;

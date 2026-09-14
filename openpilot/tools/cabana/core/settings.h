@@ -33,4 +33,6 @@ struct CabanaSettingsState {
   std::vector<std::string> selected_msg_ids;
   std::vector<std::string> active_charts;
   std::string analysis_workspace;
+  std::string analysis_workspaces;
+  std::string startup_workspace;
 };

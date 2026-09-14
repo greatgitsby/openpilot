@@ -120,7 +120,12 @@ void CameraWidget::paint() {
   p->AddRectFilled(rect_.Min, rect_.Max, bg_, ImGui::GetStyle().ChildRounding);
 
   std::lock_guard lk(frame_lock_);
-  if (rgb_frame_.isNull()) return;
+  if (rgb_frame_.isNull()) {
+    const char *text = "No camera frames available";
+    const auto size = ImGui::CalcTextSize(text);
+    p->AddText(ImVec2(rect_.GetCenter().x - size.x / 2, rect_.GetCenter().y - size.y / 2), IM_COL32(180, 180, 180, 255), text);
+    return;
+  }
   if (frame_updated_) {
     frame_texture_.upload(rgb_frame_);
     frame_updated_ = false;

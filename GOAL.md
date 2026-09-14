@@ -15,6 +15,13 @@ This document defines the implementation target and sequence. The source audit i
 - Support Python equations only. Do not add a Lua runtime or general Lua-to-Python translator.
 - Preserve the useful analysis features from the previous Cabana PR: field browsing, custom function editing, scaling, derivatives, integration, moving averages, presets, and visible-data CSV export.
 
+## Workspace baseline refinement
+
+- Keep a single top-level workspace selector. Default is the built-in CAN reverse-engineering workspace; named pages and dock splits live inside each workspace.
+- New workspaces and pages may start blank. Add Widget offers CAN Messages, Signal Details, Series Browser, Plot, Road Camera, Wide Camera, and Cabin Camera.
+- Persist widget visibility per page alongside dock arrangements. Camera panes are independently dockable and share one playback controller.
+- Keep the timeline and playback controls at the bottom of Cabana across every workspace. Switching workspaces preserves the loaded stream, playback position, speed, and linked range.
+
 ## Required UI implementation approach
 
 New feature UI must use or extend Cabana's existing UI components instead of calling ImGui directly to build equivalent controls or panels.

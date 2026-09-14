@@ -50,11 +50,7 @@ Replace "5beb9b58bd12b691/0000010a--a51155e496" with your desired route identifi
 
 
 ### Running Cabana with multiple cameras
-To run Cabana with multiple cameras, use the following command:
-
-```shell
-cabana "5beb9b58bd12b691/0000010a--a51155e496" --cabin --wide-road
-```
+Use **Add Widget → Road Camera**, **Wide Camera**, or **Cabin Camera** to place camera views in the current page. Cabana loads all available recorded cameras; a route without the selected camera shows “No camera frames available.” The legacy `--cabin` and `--wide-road` options remain accepted.
 
 ### Streaming CAN Messages from a comma Device
 
@@ -96,3 +92,13 @@ cabana
 ## Additional Information
 
 For more information, see the [openpilot wiki](https://github.com/commaai/openpilot/wiki/Cabana)
+
+## Workspaces
+
+The top workspace selector switches complete workspaces without changing the loaded route, playback position, speed, or linked time range. **Default** starts with Cabana's CAN reverse-engineering tools. **New blank** creates an empty workspace; **Add Widget** adds CAN Messages, Signal Details, Series Browser, Road/Wide/Cabin Camera, or a Plot. Each built-in widget appears once per page; plots can be added repeatedly.
+
+Pages belong to the selected workspace. Use the new-page button or **Page** menu to organize, duplicate, and rename them. Drag widget tabs to split the page, group widgets as tabs, or float them into separate windows. Closing a widget removes it from that page. Closing the Series Browser leaves plots running.
+
+**Workspace → Presets** and **Open** add workspaces to the selector; **Save As** exports the selected workspace. Workspaces, page contents, and docking arrangements persist across restarts. Existing single-workspace settings are retained as an Imported workspace.
+
+The timeline and playback controls stay at the bottom of the main window across every workspace and page. Camera widgets share that controller and contain no separate playback controls.

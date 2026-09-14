@@ -494,6 +494,7 @@ void settingsOp(Store &s, SettingOperation op) {
   op(s, "selected_msg_ids", settings.selected_msg_ids);
   op(s, "active_charts", settings.active_charts);
   op(s, "analysis_workspace", settings.analysis_workspace);
+  op(s, "analysis_workspaces", settings.analysis_workspaces);
 }
 
 }  // namespace

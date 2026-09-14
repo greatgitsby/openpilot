@@ -94,6 +94,7 @@ public:
   void draw(const ImVec2 &size);
   const ImRect &rect() const { return rect_; }
   float frameAspectRatio() const;
+  bool hasFrame() const { return frame_texture_.id != 0; }
   float width() const { return rect_.GetWidth(); }
   float height() const { return rect_.GetHeight(); }
 

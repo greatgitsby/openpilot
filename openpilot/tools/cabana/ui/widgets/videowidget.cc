@@ -113,9 +113,10 @@ static bool decodeJpeg(const uint8_t *data, size_t size, RgbImage *out) {
   return ok;
 }
 
-VideoWidget::VideoWidget() {
-  if (!can->liveStreaming())
-    createCameraWidget();
+PlaybackController::PlaybackController() {
+  slider_ = std::make_unique<Slider>();
+  slider_->setTimeRange(can->minSeconds(), can->maxSeconds());
+  connections_.push_back(slider_->sliderReleased.connect([this]() { can->seekTo(slider_->currentSecond()); }));
 
   createSpeedDropdown();
 
@@ -123,9 +124,9 @@ VideoWidget::VideoWidget() {
   connections_.push_back(can->msgsReceived.connect([this](const std::set<MessageId> *, bool) { msgs_received_ = true; }));
 }
 
-std::string VideoWidget::whatsThis() const {
+std::string PlaybackController::whatsThis() const {
   // one <br /> separated line per legend row, with the same entries and colors
-  return "<b>Video</b><br />\n"
+  return "<b>Playback</b><br />\n"
          "<span style=\"color:gray\">Timeline color</span><br />\n" +
          colorName(timeline_colors[(int)TimelineType::None]) + " Disengaged&nbsp;&nbsp;&nbsp;" +
          colorName(timeline_colors[(int)TimelineType::Engaged]) + " Engaged<br />\n" +
@@ -139,7 +140,7 @@ std::string VideoWidget::whatsThis() const {
 
 static float toolbarHeight() { return ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeight(); }
 
-void VideoWidget::drawPlaybackController() {
+void PlaybackController::drawPlaybackController() {
   if (!can->liveStreaming())
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().ItemSpacing.y);
   const float speed_width = menuButtonWidth("0.05x", true);
@@ -197,9 +198,8 @@ void VideoWidget::drawPlaybackController() {
     item.in_menu = false;
     return item;
   };
-  const char *aspect_ratio_icon = settings.crop_video ? icon::ASPECT_RATIO_FILL : icon::ASPECT_RATIO;
+
   if (!can->liveStreaming()) {
-    items.push_back(toolbarAction("crop_video", aspect_ratio_icon, "Crop to fill", [this]() { cropVideoClicked(); }));
     items.push_back(separator());
     items.push_back(toolbarAction("loop", loop_icon, "Loop playback", [this]() { loopPlaybackClicked(); }));
     items.push_back(toolbarMenu("speed_btn", speed_text_, "Speed", [this]() { drawSpeedMenuItems(); }, true, speed_width));
@@ -210,14 +210,14 @@ void VideoWidget::drawPlaybackController() {
   drawToolbar(items, spacer_index);
 }
 
-void VideoWidget::skipToEnd() {
+void PlaybackController::skipToEnd() {
   // set speed to 1.0; this only checks the menu entry, the speed and the button text are unchanged
   speed_index_ = NORMAL_SPEED_INDEX;
   can->pause(false);
   can->seekTo(can->maxSeconds() + 1);
 }
 
-void VideoWidget::toggleTimeDisplay() {
+void PlaybackController::toggleTimeDisplay() {
   settings.absolute_time = !settings.absolute_time;
 }
 
@@ -227,13 +227,13 @@ static std::string speedText(float speed) {
   return buf;
 }
 
-void VideoWidget::createSpeedDropdown() {
+void PlaybackController::createSpeedDropdown() {
   speed_index_ = NORMAL_SPEED_INDEX;
   can->setSpeed(speeds[speed_index_]);
   speed_text_ = speedText(speeds[speed_index_]);
 }
 
-void VideoWidget::drawSpeedMenuItems() {
+void PlaybackController::drawSpeedMenuItems() {
   for (int i = 0; i < (int)std::size(speeds); ++i) {
     const float speed = speeds[i];
     if (dropdown::Item(speedText(speed).c_str(), nullptr, speed_index_ == i)) {
@@ -244,106 +244,36 @@ void VideoWidget::drawSpeedMenuItems() {
   }
 }
 
-void VideoWidget::createCameraWidget() {
-  camera_tab_ = std::make_unique<TabBar>();
-  camera_tab_->setAutoHide(true);
-
-  cam_widget_ = std::make_unique<StreamCameraView>("camerad", VISION_STREAM_NARROW_ROAD);
-
-  slider_ = std::make_unique<Slider>();
-  slider_->setTimeRange(can->minSeconds(), can->maxSeconds());
-
-  connections_.push_back(slider_->sliderReleased.connect([this]() { can->seekTo(slider_->currentSecond()); }));
-  connections_.push_back(cam_widget_->clicked.connect([]() { can->pause(!can->isPaused()); }));
-  connections_.push_back(cam_widget_->availableStreamsUpdated.connect([this](std::set<VisionStreamType> streams) { vipcAvailableStreamsUpdated(streams); }));
-  connections_.push_back(camera_tab_->currentChanged.connect([this](int index) {
-    if (index != -1) cam_widget_->setStreamType((VisionStreamType)camera_tab_->tabData(index));
-  }));
-  connections_.push_back(static_cast<ReplayStream *>(can)->qLogLoaded.connect([this](std::shared_ptr<LogReader> qlog) { cam_widget_->parseQLog(qlog); }));
-
-  if (auto *replay = getReplay(); replay && !replay->hasFlag(REPLAY_FLAG_NO_VIPC)) {
-    std::set<VisionStreamType> streams;
-    for (const auto &[num, segment] : replay->route().segments()) {
-      if (!segment.narrow_road_cam.empty() || !segment.qcamera.empty()) streams.insert(VISION_STREAM_NARROW_ROAD);
-      if (replay->hasFlag(REPLAY_FLAG_CABIN_CAMERA) && !segment.cabin_cam.empty()) streams.insert(VISION_STREAM_CABIN);
-      if (replay->hasFlag(REPLAY_FLAG_WIDE_ROAD) && !segment.wide_road_cam.empty()) streams.insert(VISION_STREAM_WIDE_ROAD);
-    }
-    vipcAvailableStreamsUpdated(streams);
-  }
-}
-
-void VideoWidget::drawCameraWidget() {
-  const float toolbar_height = toolbarHeight();
-  // Camera tabs, video and timeline touch; restore the normal gap for the controls.
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
-  camera_tab_->draw();
-
-  // Reserve the timeline and playback controls even when the native dock is short.
-  const ImVec2 avail = ImGui::GetContentRegionAvail();
-  const float cam_height = std::max(1.0f, avail.y - SLIDER_HEIGHT - toolbar_height);
-  cam_widget_->draw(ImVec2(avail.x, cam_height), thumbnail_display_time_);
-
-  if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());
-  slider_->draw(thumbnail_display_time_);
-  updateSliderThumbnail();
-  ImGui::PopStyleVar();
-}
-
-void VideoWidget::vipcAvailableStreamsUpdated(std::set<VisionStreamType> streams) {
-  static const std::string stream_names[] = {"Road camera", "Driver camera", "Wide road camera"};
-  for (int i = 0; i < streams.size(); ++i) {
-    if (camera_tab_->count() <= i) {
-      camera_tab_->addTab(std::string());
-    }
-    int type = *std::next(streams.begin(), i);
-    camera_tab_->setTabText(i, stream_names[type]);
-    camera_tab_->setTabData(i, type);
-  }
-  while (camera_tab_->count() > streams.size()) {
-    camera_tab_->removeTab(camera_tab_->count() - 1);
-  }
-}
-
-void VideoWidget::loopPlaybackClicked() {
+void PlaybackController::loopPlaybackClicked() {
   getReplay()->setLoop(!getReplay()->loop());
 }
 
-void VideoWidget::cropVideoClicked() {
-  settings.crop_video = !settings.crop_video;
-  settings.changed();
-}
-
-void VideoWidget::timeRangeChanged() {
+void PlaybackController::timeRangeChanged() {
   const auto time_range = can->timeRange();
   if (can->liveStreaming()) {
     skip_to_end_enabled_ = !time_range.has_value();
-    return;
   }
   time_range ? slider_->setTimeRange(time_range->first, time_range->second)
              : slider_->setTimeRange(can->minSeconds(), can->maxSeconds());
 }
 
-std::string VideoWidget::formatTime(double sec, bool include_milliseconds) {
+std::string PlaybackController::formatTime(double sec, bool include_milliseconds) {
   if (settings.absolute_time)
     sec += std::chrono::duration<double>(can->beginDateTime().time_since_epoch()).count();
   return utils::formatSeconds(sec, include_milliseconds, settings.absolute_time);
 }
 
-void VideoWidget::setVisible(bool visible) {
-  if (cam_widget_) cam_widget_->setVisible(visible);
-}
-
-void VideoWidget::showThumbnail(double seconds) {
+void PlaybackController::showThumbnail(double seconds) {
   if (can->liveStreaming()) return;
   thumbnail_display_time_ = seconds;
 }
 
-void VideoWidget::showRouteInfo() {
+void PlaybackController::showRouteInfo() {
   // dropped from route_info_dlgs_ once draw() returns false
   route_info_dlgs_.push_back(std::make_unique<RouteInfoDlg>());
 }
 
-void VideoWidget::updateSliderThumbnail() {
+void PlaybackController::updateSliderThumbnail() {
   if (slider_->underMouse()) {
     auto [min_sec, max_sec] = displayedTimeRange();
     showThumbnail(min_sec + (ImGui::GetMousePos().x - slider_->rect().Min.x) * (max_sec - min_sec) / slider_->width());
@@ -352,23 +282,18 @@ void VideoWidget::updateSliderThumbnail() {
   }
 }
 
-float VideoWidget::sizeHintHeight() const {
-  // the camera minimum height plus the slider and the toolbar
-  return MIN_VIDEO_HEIGHT + SLIDER_HEIGHT + toolbarHeight();
+float PlaybackController::sizeHintHeight() const {
+  // Timeline, playback buttons, and their spacing.
+  return SLIDER_HEIGHT + toolbarHeight() + ImGui::GetStyle().ItemSpacing.y;
 }
 
-// Keep the pane's default proportions stable as frames arrive or cameras change.
-float VideoWidget::defaultHeight(float width) const {
-  if (!cam_widget_) return ImGui::GetFrameHeight();  // live streams have no camera or slider
-  const float cam_height = std::max((float)MIN_VIDEO_HEIGHT, width / DEFAULT_CAMERA_ASPECT_RATIO);
-  const float tab_height = camera_tab_->count() >= 2 ? ImGui::GetFrameHeight() : 0.0f;
-  return cam_height + tab_height + SLIDER_HEIGHT + toolbarHeight();
-}
-
-void VideoWidget::draw() {
-  if (!can->liveStreaming())
-    drawCameraWidget();
-
+void PlaybackController::drawPlayback() {
+  if (slider_) {
+    timeRangeChanged();
+    if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());
+    slider_->draw(thumbnail_display_time_);
+    updateSliderThumbnail();
+  }
   drawPlaybackController();
 
   for (auto it = route_info_dlgs_.begin(); it != route_info_dlgs_.end();) {
@@ -522,11 +447,11 @@ void StreamCameraView::draw(const ImVec2 &size, double thumbnail_time) {
     scrubbing = can->isPaused();
     scrubbing ? drawScrubThumbnail(p, thumbnail_time) : drawThumbnail(p, thumbnail_time);
   }
-  if (auto alert = getReplay()->findAlertAtTime(scrubbing ? thumbnail_time : can->currentSec())) {
+  if (auto replay = getReplay()) if (auto alert = replay->findAlertAtTime(scrubbing ? thumbnail_time : can->currentSec())) {
     drawAlert(p, rect(), *alert, ImGui::GetFontSize(), ImGui::GetStyle().ChildRounding);
   }
 
-  if (can->isPaused()) {
+  if (can->isPaused() && hasFrame()) {
     ImFont *font = boldFont();
     const char *text = "PAUSED";
     const ImVec2 text_size = font->CalcTextSizeA(POINT_16_FONT_SIZE, FLT_MAX, 0.0f, text);

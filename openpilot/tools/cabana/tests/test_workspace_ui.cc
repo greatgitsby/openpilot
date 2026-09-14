@@ -99,6 +99,10 @@ void test_docking() {
   REQUIRE(std::abs(layouts["one"]["floating"][0]["x"].number_value() - floating["x"].number_value()) < .02);
   io.DisplaySize = ImVec2(1400, 900); for (int i = 0; i < 4; ++i) frame();
   REQUIRE(b->DockNode == c->DockNode);
+  docking.addWindow("###Chart/a");
+  for (int i = 0; i < 5; ++i) frame();
+  REQUIRE(a->DockNode == b->DockNode);
+  REQUIRE(a->DockNode->SelectedTabId == a->TabId);
   ImGui::DestroyContext();
 }
 
@@ -172,6 +176,39 @@ void test_workspace_ui() {
   REQUIRE(session.display("can/0:123|SPEED", {}) == session.display("can/0:123|SPEED", {}));
   REQUIRE(session.transformed("can/0:123|SPEED", {.scale = 2}) == session.transformed("can/0:123|SPEED", {.scale = 2}));
   ChartsWidget charts(session);
+  REQUIRE(cabana::validateWorkspace(cabana::defaultWorkspace()).empty());
+  REQUIRE(charts.restoreWorkspace(cabana::defaultWorkspace()));
+  REQUIRE(charts.widgetVisible("###MessagesPanel"));
+  REQUIRE(charts.widgetVisible("###VideoPanel"));
+  REQUIRE(charts.workspace()["pages"][0]["name"] == J("CAN"));
+  const auto default_document = charts.workspace();
+  can->setTimeRange(std::make_pair(1.2, 1.8));
+  const auto global_range = can->timeRange();
+  int range_changes = 0;
+  auto range_connection = can->timeRangeChanged.connect([&](const auto &) { ++range_changes; });
+  REQUIRE(charts.restoreWorkspace(cabana::blankWorkspace(), false));
+  REQUIRE(can->timeRange() == global_range);
+  REQUIRE(range_changes == 0);
+  REQUIRE(charts.chartCount() == 0);
+  REQUIRE(charts.workspace()["pages"][0]["widgets"].array_items().empty());
+  charts.setWidgetVisible("###WideCameraPanel", true);
+  charts.setWidgetVisible("###CabinCameraPanel", true);
+  charts.addPlot();
+  const auto custom_document = charts.workspace();
+  REQUIRE(cabana::validateWorkspace(custom_document).empty());
+  REQUIRE(charts.restoreWorkspace(default_document, false));
+  REQUIRE(!charts.widgetVisible("###WideCameraPanel"));
+  REQUIRE(charts.widgetVisible("###MessagesPanel"));
+  REQUIRE(charts.restoreWorkspace(custom_document, false));
+  REQUIRE(charts.widgetVisible("###WideCameraPanel"));
+  REQUIRE(charts.widgetVisible("###CabinCameraPanel"));
+  REQUIRE(charts.chartCount() == 1);
+  REQUIRE(can->timeRange() == global_range);
+  charts.setWidgetVisible("###WideCameraPanel", false);
+  REQUIRE(charts.restoreWorkspace(charts.workspace(), false));
+  REQUIRE(!charts.widgetVisible("###WideCameraPanel"));
+  REQUIRE(range_changes == 0);
+  range_connection.disconnect();
   const auto directory = std::filesystem::path(__FILE__).parent_path().parent_path() / "layouts";
   int count = 0;
   for (const auto &entry : std::filesystem::directory_iterator(directory)) {

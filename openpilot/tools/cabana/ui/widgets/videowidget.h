@@ -80,16 +80,13 @@ private:
   std::vector<PendingThumbnails> pending_thumbnails_;
 };
 
-class VideoWidget {
+class PlaybackController {
 public:
-  VideoWidget();
+  PlaybackController();
   void inspect(double seconds) { showThumbnail(seconds); }
-  void draw();  // content only; MainWindow puts it in a child region above the charts
+  void drawPlayback();
+  double inspectionTime() const { return thumbnail_display_time_; }
   float sizeHintHeight() const;
-  float defaultHeight(float width) const;
-  // MainWindow calls this every frame with the video dock visibility, so the camera widget gets its
-  // vipc thread started and stopped
-  void setVisible(bool visible);
   std::string whatsThis() const;
 
 private:
@@ -97,26 +94,20 @@ private:
   void updateSliderThumbnail();  // the thumbnail follows the mouse over the slider
   std::string formatTime(double sec, bool include_milliseconds = false);
   void timeRangeChanged();
-  void createCameraWidget();
-  void drawCameraWidget();
   void drawPlaybackController();
   void skipToEnd();
   void toggleTimeDisplay();
   void createSpeedDropdown();
   void drawSpeedMenuItems();
   void loopPlaybackClicked();
-  void cropVideoClicked();
-  void vipcAvailableStreamsUpdated(std::set<VisionStreamType> streams);
   void showRouteInfo();
 
-  std::unique_ptr<StreamCameraView> cam_widget_;
   std::string speed_text_;
   int speed_index_ = -1;  // checked entry of the speed menu
   bool skip_to_end_enabled_ = true;
   bool msgs_received_ = false;  // live-stream timestamps resolve when the first messages arrive
   double thumbnail_display_time_ = -1;
   std::unique_ptr<Slider> slider_;
-  std::unique_ptr<TabBar> camera_tab_;
   std::vector<std::unique_ptr<RouteInfoDlg>> route_info_dlgs_;
   Connections connections_;  // last: disconnected before the widgets its handlers dereference are destroyed
 };

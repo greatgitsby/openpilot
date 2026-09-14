@@ -149,6 +149,17 @@ void Workspace::draw(const std::string &page, const std::vector<std::string> &pa
     active_page_ = page;
     revision_ = revision;
   }
+  if (!pending_windows_.empty()) {
+    auto *target = ImGui::DockBuilderGetCentralNode(root);
+    if (!target) target = ImGui::DockBuilderGetNode(root);
+    while (target && target->IsSplitNode()) target = target->ChildNodes[1];
+    if (target) for (const auto &name : pending_windows_) {
+      ImGui::DockBuilderDockWindow(name.c_str(), target->ID);
+      pending_tab_focus[ImHashStr(name.c_str())] = 3;
+    }
+    ImGui::DockBuilderFinish(root);
+    pending_windows_.clear();
+  }
   active_windows_.clear();
   std::function<void(const json11::Json &)> collect = [&](const json11::Json &tree) {
     for (const auto &name : tree["panes"].array_items()) active_windows_.push_back(identity(name.string_value().c_str()));

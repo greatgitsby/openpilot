@@ -86,6 +86,8 @@ void ReplayStream::indexFields() {
 }
 
 bool ReplayStream::loadRoute(const std::string &route, const std::string &data_dir, uint32_t replay_flags, bool auto_source) {
+  // Cabana exposes each recorded camera as an independent workspace widget.
+  replay_flags |= REPLAY_FLAG_WIDE_ROAD | REPLAY_FLAG_CABIN_CAMERA;
   replay.reset(new Replay(route, {},
                           {}, nullptr, replay_flags, data_dir, auto_source));
   replay->setSegmentCacheLimit(settings.max_cached_minutes);

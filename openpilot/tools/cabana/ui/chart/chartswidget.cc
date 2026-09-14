@@ -28,7 +28,7 @@ bool LogSlider::draw(const char *label, float width) {
 ChartsWidget::ChartsWidget(cabana::AnalysisSession &session) : session(session) {
   range_slider_.setRange(1, settings.max_cached_minutes * 60);
 
-  tabbar_.setAutoHide(true);
+  tabbar_.setAutoHide(false);
   tabbar_.setUsesScrollButtons(true);
   tabbar_.setTabsClosable(true);
 
@@ -79,6 +79,7 @@ void ChartsWidget::newTab() {
   tabbar_.setTabData(idx, id);
   std::random_device random;
   page_ids_[id] = std::to_string(random()) + "-" + std::to_string(random());
+  page_layouts_[page_ids_[id]] = json11::Json::object{{"panes", json11::Json::array{}}};
   tabbar_.setCurrentIndex(idx);
 }
 
@@ -151,7 +152,7 @@ void ChartsWidget::drawToolBar() {
     if (stepButton("new_plot_btn", true, "New Chart")) newChart();
   }});
   items.push_back({iconButtonWidth(), [this]() {
-    if (iconButton("new_tab_btn", icon::WINDOW_PLUS, "New Tab")) newTab();
+    if (iconButton("new_tab_btn", icon::WINDOW_PLUS, "New blank page")) newTab();
   }});
 
   const int type_count = (int)std::size(SERIES_TYPE_NAMES);
@@ -166,21 +167,7 @@ void ChartsWidget::drawToolBar() {
   };
   items.push_back(toolbarMenu("chart_type", chart_type_text, "Type", chart_type_items));
 
-  items.push_back(toolbarMenu("workspace", "Workspace", "Workspace", [this]() {
-    if (dropdown::Item("Open...")) FileDialog::getOpenFileName("Open Workspace", settings.last_dir, ".json", [this](const auto &path) { if (!path.empty()) openWorkspace(path); });
-    if (dropdown::Item("Save As...")) FileDialog::getSaveFileName("Save Workspace", settings.last_dir + "/workspace.json", ".json", [this](const auto &path) {
-      if (path.empty()) return;
-      std::ofstream output(path);
-      output << workspace().dump() << '\n';
-      if (!output) MessageBox::warning("Save Workspace", "Could not write " + path);
-    });
-    if (dropdown::BeginMenu("Presets")) {
-      std::error_code error;
-      for (const auto &entry : std::filesystem::directory_iterator(executableDir() / "layouts", error)) {
-        if (entry.path().extension() == ".json" && dropdown::Item(entry.path().stem().c_str())) openWorkspace(entry.path().string());
-      }
-      dropdown::EndMenu();
-    }
+  items.push_back(toolbarMenu("page", "Page", "Page", [this]() {
     if (dropdown::Item("Duplicate page")) {
       auto document = workspace().object_items();
       auto pages = document["pages"].array_items();
@@ -395,7 +382,7 @@ void ChartsWidget::removeChart(ChartView *chart) {
   seriesChanged();
 }
 
-void ChartsWidget::removeAll() {
+void ChartsWidget::removeAll(bool reset_range) {
   while (tabbar_.count() > 1) {
     tabbar_.removeTab(1);
   }
@@ -403,25 +390,28 @@ void ChartsWidget::removeAll() {
   for (auto &c : charts_) all.push_back(c.get());
   for (auto c : all) removeChart(c);
   tab_charts_.clear();
-  zoomReset();
+  if (reset_range) zoomReset();
 }
 
-void ChartsWidget::draw() {
+void ChartsWidget::drawPageControls() {
   deleted_charts_.clear();
   function_editor_.draw();
   drawToolBar();
   tabbar_.draw();
-  browser_.draw(session, [this](const std::string &source, bool merge) {
-    auto *chart = merge && !currentCharts().empty() ? currentCharts().front() : createChart();
-    chart->addSource(source);
-    updateState();
-  });
   if (signal_selector_ && !signal_selector_->draw()) {
     auto dlg = std::move(signal_selector_);
     auto accepted = std::move(signal_selector_accepted_);
     signal_selector_owner_ = nullptr;
     if (dlg->accepted() && accepted) accepted(*dlg);
   }
+}
+
+void ChartsWidget::draw() {
+  browser_.draw(session, [this](const std::string &source, bool merge) {
+    auto *chart = merge && !currentCharts().empty() ? currentCharts().front() : createChart();
+    chart->addSource(source);
+    updateState();
+  });
 }
 
 void ChartsWidget::drawPanes() {
@@ -448,7 +438,7 @@ json11::Json ChartsWidget::workspace() const {
     J::array panes;
     auto it = tab_charts_.find(tabbar_.tabData(i));
     if (it != tab_charts_.end()) for (const auto *chart : it->second) panes.push_back(chart->definition());
-    std::set<std::string> windows{"###MessagesPanel", "###CenterWidget", "###VideoPanel", "###ChartsWindow"};
+    std::set<std::string> windows{"###MessagesPanel", "###CenterWidget", "###VideoPanel", "###ChartsWindow", "###WideCameraPanel", "###CabinCameraPanel"};
     for (const auto &pane : panes) windows.insert("###Chart/" + pane["id"].string_value());
     // A pane may close after this frame's dock capture. Never persist its stale tab.
     std::function<J(const J &)> prune = [&](const J &node) -> J {
@@ -468,8 +458,11 @@ json11::Json ChartsWidget::workspace() const {
       if (!node["tree"].is_null()) copy["tree"] = prune(node["tree"]);
       return copy;
     };
+    J::array widgets;
+    auto enabled = page_widgets_.find(page_ids_.at(tabbar_.tabData(i)));
+    if (enabled != page_widgets_.end()) for (const auto &id : enabled->second) widgets.push_back(id);
     pages.push_back(J::object{{"id", page_ids_.at(tabbar_.tabData(i))}, {"name", tabbar_.tabText(i)}, {"panes", panes},
-                              {"dock", prune(pageLayout(page_ids_.at(tabbar_.tabData(i))))}});
+                              {"widgets", widgets}, {"dock", prune(pageLayout(page_ids_.at(tabbar_.tabData(i))))}});
   }
   J::array equations;
   for (const auto &[id, e] : equations_) {
@@ -483,7 +476,7 @@ json11::Json ChartsWidget::workspace() const {
   return J::object{{"view_range", view_range}, {"relative_time", true}, {"equations", equations}, {"cabana_workspace", 1}, {"pages", pages}, {"active_page", tabbar_.currentIndex()}};
 }
 
-bool ChartsWidget::restoreWorkspace(const json11::Json &doc) {
+bool ChartsWidget::restoreWorkspace(const json11::Json &doc, bool restore_range) {
   if (!cabana::validateWorkspace(doc).empty()) return false;
   ++document_revision_;
   equations_.clear();
@@ -494,12 +487,19 @@ bool ChartsWidget::restoreWorkspace(const json11::Json &doc) {
     equations_[item["id"].string_value()] = std::move(equation);
   }
   session.setEquations(equations_);
-  removeAll();
+  removeAll(restore_range);
   for (int i = 0; i < doc["pages"].array_items().size(); ++i) {
     if (i) newTab();
     const auto &page = doc["pages"][i];
     if (!page["id"].string_value().empty()) page_ids_[tabbar_.tabData(i)] = page["id"].string_value();
     page_layouts_[activePageId()] = page["dock"];
+    auto &widgets = page_widgets_[activePageId()];
+    widgets.clear();
+    if (page["widgets"].is_array()) {
+      for (const auto &id : page["widgets"].array_items()) widgets.insert(id.string_value());
+    } else {
+      widgets = {"###MessagesPanel", "###CenterWidget", "###VideoPanel", "###ChartsWindow"};
+    }
     for (const auto &pane : page["panes"].array_items()) createChart(charts_.size())->restoreDefinition(pane);
     tabbar_.setTabText(i, page["name"].string_value());
   }
@@ -509,7 +509,7 @@ bool ChartsWidget::restoreWorkspace(const json11::Json &doc) {
     const auto &saved = doc["pages"][tabbar_.currentIndex()]["panes"][0]["range"];
     if (saved["left"].is_number() && saved["right"].is_number()) range = json11::Json::array{saved["left"], saved["right"]};
   }
-  if (range.array_items().size() == 2 && range[1].number_value() > range[0].number_value()) {
+  if (restore_range && range.array_items().size() == 2 && range[1].number_value() > range[0].number_value()) {
     can->setTimeRange(std::make_pair(range[0].number_value(), range[1].number_value()));
   }
   updateState();
@@ -553,3 +553,15 @@ void ChartsWidget::openWorkspace(const std::string &path) {
   if (!error.empty()) MessageBox::warning("Open Workspace", error);
   else restoreWorkspace(doc);
 }
+
+bool ChartsWidget::widgetVisible(const std::string &id) const {
+  auto it = page_widgets_.find(activePageId());
+  return it != page_widgets_.end() && it->second.count(id);
+}
+
+void ChartsWidget::setWidgetVisible(const std::string &id, bool visible) {
+  auto &widgets = page_widgets_[activePageId()];
+  if (visible) widgets.insert(id); else widgets.erase(id);
+}
+
+std::string ChartsWidget::addPlot() { return createChart()->windowName(); }

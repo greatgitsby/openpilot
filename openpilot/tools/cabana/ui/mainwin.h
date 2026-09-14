@@ -83,8 +83,12 @@ private:
   void drawManageDBCsMenu();
   void drawRecentFilesMenu();
   void drawDockspace();
+  void drawWorkspaceBar();
+  void saveWorkspace();
+  void switchWorkspace(int index);
+  void importWorkspace(const std::string &path);
+  void drawCamera(int index);
   void drawMessagesPanel();
-  void drawVideoPanel();
   void drawStatusBar();
   void drawWaitDialog();
 
@@ -95,7 +99,12 @@ private:
   DummyStream dummy_;
   std::unique_ptr<MessagesWidget> messages_widget_;
   CenterWidget center_widget_;
-  std::unique_ptr<VideoWidget> video_widget_;
+  bool center_visible_ = true;
+  std::vector<json11::Json> workspaces_;
+  int active_workspace_ = 0;
+  std::unique_ptr<StreamCameraView> cameras_[3];
+  std::shared_ptr<LogReader> camera_qlog_;
+  std::unique_ptr<PlaybackController> playback_;
   std::unique_ptr<cabana::AnalysisSession> analysis_session_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;

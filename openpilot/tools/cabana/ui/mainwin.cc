@@ -14,6 +14,7 @@
 
 #include "json11/json11.hpp"
 #include "tools/cabana/commands.h"
+#include "tools/cabana/analysis/workspace.h"
 #include "tools/cabana/settings.h"
 #include "tools/cabana/ui/app.h"
 #include "tools/cabana/ui/dialogs/filedialog.h"
@@ -156,14 +157,8 @@ void MainWindow::drawMenuBar() {
   if (dropdown::BeginMenu("View")) {
     if (dropdown::Item("Full Screen", shortcut("F11").c_str())) toggleFullScreen();
     ImGui::Separator();
-    dropdown::Item(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &messages_visible_);
-    dropdown::Item(videoPanelTitle(), nullptr, &video_visible_);
-    dropdown::Item("Charts", nullptr, &charts_visible_);
-    ImGui::Separator();
-    if (dropdown::Item("Reset Window Layout")) {
-      messages_visible_ = video_visible_ = charts_visible_ = true;
-      reset_layout_ = true;
-    }
+    if (dropdown::Item("Reset page arrangement")) reset_layout_ = true;
+    dropdown::Item("Crop cameras to fill", nullptr, &settings.crop_video);
     dropdown::EndMenu();
   }
 
@@ -191,10 +186,37 @@ void MainWindow::createDockWidgets() {
   analysis_session_ = std::make_unique<cabana::AnalysisSession>(*can);
   charts_widget_ = std::make_unique<ChartsWidget>(*analysis_session_);
   std::string workspace_error;
-  charts_widget_->restoreWorkspace(json11::Json::parse(settings.analysis_workspace, workspace_error));
+  if (workspaces_.empty()) {
+    const auto library = json11::Json::parse(settings.analysis_workspaces, workspace_error);
+    for (const auto &item : library["workspaces"].array_items())
+      if (cabana::validateWorkspace(item["document"]).empty()) workspaces_.push_back(item);
+    active_workspace_ = std::clamp(library["active"].int_value(), 0, std::max(0, (int)workspaces_.size() - 1));
+    if (workspaces_.empty()) {
+      workspaces_.push_back(json11::Json::object{{"name", "Default"}, {"document", cabana::defaultWorkspace()}});
+      auto legacy = json11::Json::parse(settings.analysis_workspace, workspace_error);
+      if (settings.startup_workspace.empty() && cabana::validateWorkspace(legacy).empty()) {
+        workspaces_.push_back(json11::Json::object{{"name", "Imported"}, {"document", legacy}});
+        active_workspace_ = 1;
+      }
+    }
+    if (!settings.startup_workspace.empty()) {
+      auto document = json11::Json::parse(settings.startup_workspace, workspace_error);
+      if (cabana::validateWorkspace(document).empty()) {
+        workspaces_.push_back(json11::Json::object{{"name", "Imported"}, {"document", document}});
+        active_workspace_ = workspaces_.size() - 1;
+      }
+      settings.startup_workspace.clear();
+    }
+  }
+  charts_widget_->restoreWorkspace(workspaces_[active_workspace_]["document"]);
   center_widget_.setChartsWidget(charts_widget_.get());
-  video_widget_ = std::make_unique<VideoWidget>();
-  widget_connections_.push_back(analysis_session_->inspectionChanged.connect([this](double time) { video_widget_->inspect(time); }));
+  playback_ = std::make_unique<PlaybackController>();
+  if (auto *replay = dynamic_cast<ReplayStream *>(can))
+    widget_connections_.push_back(replay->qLogLoaded.connect([this](std::shared_ptr<LogReader> qlog) {
+      camera_qlog_ = qlog;
+      if (cameras_[0]) cameras_[0]->parseQLog(qlog);
+    }));
+  widget_connections_.push_back(analysis_session_->inspectionChanged.connect([this](double time) { playback_->inspect(time); }));
 }
 
 void MainWindow::showStatusMessage(const std::string &msg, int timeout_ms) {
@@ -350,10 +372,12 @@ void MainWindow::releaseStream() {
   wait_dlg_.connection.disconnect();
   wait_dlg_.open = false;
   widget_connections_.clear();
-  if (charts_widget_) settings.analysis_workspace = charts_widget_->workspace().dump();
+  saveWorkspace();
   charts_widget_.reset();
   analysis_session_.reset();
-  video_widget_.reset();
+  playback_.reset();
+  for (auto &camera : cameras_) camera.reset();
+  camera_qlog_.reset();
   center_widget_.clear();
   messages_widget_.reset();
   stream_connections_.clear();
@@ -670,7 +694,7 @@ void MainWindow::saveSessionState() {
   }
   if (charts_widget_) {
     settings.active_charts = charts_widget_->serializeChartIds();
-    settings.analysis_workspace = charts_widget_->workspace().dump();
+    saveWorkspace();
   }
 }
 
@@ -810,19 +834,34 @@ void MainWindow::drawDockspace() {
 
   // the status bar sits below the dockspace: reserve its height plus the item spacing between the two,
   // otherwise the host window is a few pixels taller than the viewport and scrolls
-  const float status_height = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
+  drawWorkspaceBar();
+  if (charts_widget_) {
+    charts_widget_->drawPageControls();
+    messages_visible_ = charts_widget_->widgetVisible("###MessagesPanel");
+    center_visible_ = charts_widget_->widgetVisible("###CenterWidget");
+    video_visible_ = charts_widget_->widgetVisible("###VideoPanel");
+    charts_visible_ = charts_widget_->widgetVisible("###ChartsWindow");
+  }
+  const float status_height = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y +
+                              (playback_ ? playback_->sizeHintHeight() + ImGui::GetStyle().ItemSpacing.y : 0);
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
   const std::string page = charts_widget_ ? charts_widget_->activePageId() : "loading";
   using J = json11::Json;
   auto leaf = [](const J::array &names) { return J(J::object{{"panes", names}}); };
   auto split = [](const char *axis, double ratio, const J &first, const J &second) {
+    if (first["panes"].is_array() && first["panes"].array_items().empty()) return second;
+    if (second["panes"].is_array() && second["panes"].array_items().empty()) return first;
     return J(J::object{{"axis", axis}, {"ratio", ratio}, {"children", J::array{first, second}}});
   };
   J::array panes;
   if (charts_widget_) for (const auto &name : charts_widget_->paneWindows()) panes.push_back(name);
-  auto layout = split("x", 0.28, leaf({MESSAGES_PANEL_ID}),
-                      split("x", 0.6, leaf({CENTER_PANEL}),
-                            split("y", 0.45, leaf({VIDEO_PANEL}), split("y", 0.3, leaf({CHARTS_WINDOW}), leaf(panes)))));
+  J::array cameras;
+  if (video_visible_) cameras.push_back(VIDEO_PANEL);
+  if (charts_widget_ && charts_widget_->widgetVisible("###WideCameraPanel")) cameras.push_back("Wide Camera###WideCameraPanel");
+  if (charts_widget_ && charts_widget_->widgetVisible("###CabinCameraPanel")) cameras.push_back("Cabin Camera###CabinCameraPanel");
+  auto layout = split("x", 0.28, leaf(messages_visible_ ? J::array{MESSAGES_PANEL_ID} : J::array{}),
+                      split("x", 0.6, leaf(center_visible_ ? J::array{CENTER_PANEL} : J::array{}),
+                            split("y", 0.45, leaf(cameras), split("y", 0.3, leaf(charts_visible_ ? J::array{CHARTS_WINDOW} : J::array{}), leaf(panes)))));
   // a panel never shrinks past half the width where the signal view's tool bar squishes
   const float min_panel_width = (SignalView::minimumWidth() + (ImGui::GetStyle().WindowPadding.x + ImGui::GetStyle().WindowBorderSize) * 2) * 0.5f;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(min_panel_width, ImGui::GetStyle().WindowMinSize.y));
@@ -833,6 +872,7 @@ void MainWindow::drawDockspace() {
   reset_layout_ = false;
   ImGui::PopStyleVar();
   drawStatusBar();
+  if (playback_) playback_->drawPlayback();
   ImGui::End();
 }
 
@@ -845,24 +885,7 @@ void MainWindow::drawMessagesPanel() {
       messages_widget_->draw();
     }
   }
-  const bool floating = floatingOut();
   ImGui::End();
-  if (!messages_visible_ && floating) messages_visible_ = reset_layout_ = true;
-}
-
-void MainWindow::drawVideoPanel() {
-  const std::string name = std::string(videoPanelTitle()) + VIDEO_PANEL;
-  setNextPanelClass();
-  const bool video_open = beginPanel(name.c_str(), &video_visible_);
-  const bool floating = floatingOut();
-  if (video_widget_ && !video_open) {
-    video_widget_->setVisible(false);  // the dock is collapsed or tabbed behind another one, like hideEvent
-  } else if (video_widget_) {
-    help_overlay_.add(video_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
-    video_widget_->draw();
-  }
-  ImGui::End();
-  if (!video_visible_ && floating) video_visible_ = reset_layout_ = true;
 }
 
 void MainWindow::draw() {
@@ -883,21 +906,21 @@ void MainWindow::draw() {
   drawDockspace();
 
   // the central widget has no scrollbars of its own (the views inside scroll)
-  setNextPanelClass();
-  if (beginPanel(CENTER_PANEL, nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-    center_widget_.draw();
-    if (auto *detail = center_widget_.getDetailWidget(); detail && help_overlay_.visible()) {
-      for (const auto &[text, rect] : detail->helpRects()) help_overlay_.add(text, rect);
+  if (center_visible_) {
+    setNextPanelClass();
+    if (beginPanel(CENTER_PANEL, &center_visible_, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+      center_widget_.draw();
+      if (auto *detail = center_widget_.getDetailWidget(); detail && help_overlay_.visible()) {
+        for (const auto &[text, rect] : detail->helpRects()) help_overlay_.add(text, rect);
+      }
     }
+    ImGui::End();
   }
-  ImGui::End();
   // Submit the same dock windows while loading, so ImGui doesn't collapse their
   // nodes and then redistribute the layout when the stream's widgets arrive.
   if (messages_visible_) drawMessagesPanel();
-  if (video_widget_ && !video_visible_) video_widget_->setVisible(false);
-  if (video_visible_) drawVideoPanel();
   if (charts_visible_) {
-    const std::string charts_title = "Charts: " + std::to_string(charts_widget_ ? charts_widget_->chartCount() : 0) + "###ChartsWindow";
+    const std::string charts_title = "Series Browser###ChartsWindow";
     setNextPanelClass();
     if (beginPanel(charts_title.c_str(), &charts_visible_, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
       if (charts_widget_) {
@@ -907,7 +930,14 @@ void MainWindow::draw() {
     }
     ImGui::End();
   }
-  if (charts_visible_ && charts_widget_) charts_widget_->drawPanes();
+  if (charts_widget_) {
+    charts_widget_->setWidgetVisible("###MessagesPanel", messages_visible_);
+    charts_widget_->setWidgetVisible("###CenterWidget", center_visible_);
+    charts_widget_->setWidgetVisible("###VideoPanel", video_visible_);
+    charts_widget_->setWidgetVisible("###ChartsWindow", charts_visible_);
+    charts_widget_->drawPanes();
+    for (int i = 0; i < 3; ++i) drawCamera(i);
+  }
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
     it = (*it)->draw() ? it + 1 : tool_dialogs_.erase(it);
   }
@@ -925,4 +955,121 @@ void MainWindow::draw() {
     ImGuiWindow *top = topPopupWindow();
     if (top != nullptr && !(top->Flags & ImGuiWindowFlags_Modal)) ImGui::ClosePopupToLevel(GImGui->OpenPopupStack.Size - 1, true);
   }
+}
+
+void MainWindow::saveWorkspace() {
+  if (!charts_widget_ || workspaces_.empty()) return;
+  auto item = workspaces_[active_workspace_].object_items();
+  item["document"] = charts_widget_->workspace();
+  workspaces_[active_workspace_] = item;
+  settings.analysis_workspace = item["document"].dump();
+  settings.analysis_workspaces = json11::Json(json11::Json::object{
+    {"active", active_workspace_}, {"workspaces", workspaces_}}).dump();
+}
+
+void MainWindow::switchWorkspace(int index) {
+  saveWorkspace();
+  active_workspace_ = index;
+  charts_widget_->restoreWorkspace(workspaces_[index]["document"], false);
+  analysis_session_->inspect(-1);
+}
+
+void MainWindow::importWorkspace(const std::string &path) {
+  std::ifstream file(path);
+  std::string error;
+  auto doc = cabana::migrateWorkspace(json11::Json::parse(
+    std::string(std::istreambuf_iterator<char>(file), {}), error));
+  if (error.empty()) error = cabana::validateWorkspace(doc);
+  if (!error.empty()) { MessageBox::warning("Open Workspace", error); return; }
+  workspaces_.push_back(json11::Json::object{{"name", std::filesystem::path(path).stem().string()}, {"document", doc}});
+  switchWorkspace(workspaces_.size() - 1);
+}
+
+void MainWindow::drawWorkspaceBar() {
+  if (!charts_widget_) return;
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted("Workspace");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(220);
+  std::vector<std::string> names;
+  for (const auto &workspace : workspaces_) names.push_back(workspace["name"].string_value());
+  int selected = active_workspace_;
+  if (comboBox("##workspace", &selected, names)) nextFrame([this, selected]() { switchWorkspace(selected); });
+  ImGui::SameLine();
+  if (iconTextButton("new_workspace", icon::WINDOW_PLUS, "New blank")) nextFrame([this]() {
+    workspaces_.push_back(json11::Json::object{{"name", "Workspace " + std::to_string(workspaces_.size())},
+                                              {"document", cabana::blankWorkspace()}});
+    switchWorkspace(workspaces_.size() - 1);
+  });
+  ImGui::SameLine();
+  menuButton("add_widget_btn", "Add Widget", "add_widget");
+  if (dropdown::BeginPopup("add_widget")) {
+    for (const auto &[label, id] : std::vector<std::pair<const char *, const char *>>{
+      {"CAN Messages", "###MessagesPanel"}, {"Signal Details", "###CenterWidget"},
+      {"Series Browser", "###ChartsWindow"}, {"Road Camera", "###VideoPanel"},
+      {"Wide Camera", "###WideCameraPanel"}, {"Cabin Camera", "###CabinCameraPanel"}}) {
+      if (dropdown::Item(label, nullptr, charts_widget_->widgetVisible(id))) {
+        charts_widget_->setWidgetVisible(id, true);
+        docking_.addWindow(id);
+      }
+    }
+    if (dropdown::Item("Plot")) docking_.addWindow(charts_widget_->addPlot());
+    dropdown::EndPopup();
+  }
+  ImGui::SameLine();
+  menuButton("workspace_actions_btn", "Workspace", "workspace_actions");
+  if (dropdown::BeginPopup("workspace_actions")) {
+    std::string name = workspaces_[active_workspace_]["name"].string_value();
+    if (inputText("Name", &name) && !name.empty()) {
+      auto item = workspaces_[active_workspace_].object_items(); item["name"] = name; workspaces_[active_workspace_] = item;
+    }
+    if (dropdown::Item("Duplicate workspace")) nextFrame([this]() {
+      saveWorkspace();
+      auto copy = workspaces_[active_workspace_].object_items();
+      copy["name"] = copy["name"].string_value() + " copy";
+      workspaces_.push_back(copy);
+      switchWorkspace(workspaces_.size() - 1);
+    });
+    if (dropdown::Item("Delete workspace", nullptr, false, active_workspace_ != 0)) nextFrame([this]() {
+      const int removed = active_workspace_;
+      switchWorkspace(0);
+      workspaces_.erase(workspaces_.begin() + removed);
+      saveWorkspace();
+    });
+    if (dropdown::Item("Open...")) FileDialog::getOpenFileName("Open Workspace", settings.last_dir, ".json",
+      [this](const auto &path) { if (!path.empty()) nextFrame([this, path]() { importWorkspace(path); }); });
+    if (dropdown::Item("Save As...")) FileDialog::getSaveFileName("Save Workspace", settings.last_dir + "/workspace.json", ".json",
+      [this](const auto &path) { if (!path.empty()) { std::ofstream file(path); file << charts_widget_->workspace().dump() << '\n';
+        if (!file) MessageBox::warning("Save Workspace", "Could not write " + path); } });
+    if (dropdown::BeginMenu("Presets")) {
+      std::error_code error;
+      for (const auto &entry : std::filesystem::directory_iterator(executableDir() / "layouts", error))
+        if (entry.path().extension() == ".json" && dropdown::Item(entry.path().stem().c_str()))
+          nextFrame([this, path = entry.path().string()]() { importWorkspace(path); });
+      dropdown::EndMenu();
+    }
+    dropdown::EndPopup();
+  }
+}
+
+void MainWindow::drawCamera(int index) {
+  static const char *ids[] = {"###VideoPanel", "###WideCameraPanel", "###CabinCameraPanel"};
+  static const char *titles[] = {"Road Camera", "Wide Camera", "Cabin Camera"};
+  static const VisionStreamType types[] = {VISION_STREAM_NARROW_ROAD, VISION_STREAM_WIDE_ROAD, VISION_STREAM_CABIN};
+  const char *id = ids[index];
+  auto &camera = cameras_[index];
+  bool open = charts_widget_->widgetVisible(id);
+  if (!open) { if (camera) camera->setVisible(false); return; }
+  setNextPanelClass();
+  ImGui::SetNextWindowSize(ImVec2(600, 350), ImGuiCond_FirstUseEver);
+  const std::string title = std::string(titles[index]) + id;
+  if (beginPanel(title.c_str(), &open)) {
+    if (!camera) {
+      camera = std::make_unique<StreamCameraView>("camerad", types[index]);
+      if (index == 0 && camera_qlog_) camera->parseQLog(camera_qlog_);
+    }
+    camera->draw(ImGui::GetContentRegionAvail(), index == 0 && playback_ ? playback_->inspectionTime() : -1);
+  } else if (camera) camera->setVisible(false);
+  ImGui::End();
+  charts_widget_->setWidgetVisible(id, open);
 }
