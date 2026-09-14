@@ -102,7 +102,6 @@ private:
   void drawLegend();
   void drawSeries();
   void drawForeground();
-  void drawSignalValue();
   void drawTimeline();
   void drawRubberBandTimeRange();
   void drawMenuActions();  // the series type / manage / split entries shared by the menu button and the context menu
@@ -130,7 +129,6 @@ private:
     std::vector<ImRect> legend_rects;
     float header_bottom = 0;
     bool plot_hovered = false;
-    bool compact_header = false;
   } layout_;
   // axes
   double x_min_;

@@ -224,9 +224,7 @@ void ChartView::updateLayout() {
   const float font_size = ImGui::GetFontSize();
   const float fm_height = ImGui::GetTextLineHeight();
   const int marker_size = markerSize();
-  layout_.compact_header = layout_.content_rect.GetHeight() < 10 * fm_height;
-  const int row_height = std::max<int>(marker_size, fm_height) +
-                         (layout_.compact_header ? 0 : fm_height + style.ItemInnerSpacing.y);
+  const int row_height = std::max<int>(marker_size, fm_height) + style.ItemInnerSpacing.y;
   const int legend_left = top_left.x;
   const auto rowRight = [&](int y) {
     return std::max<int>(y < layout_.manage_btn_rect.Max.y
@@ -254,9 +252,6 @@ void ChartView::updateLayout() {
   for (auto &s : sigs_) {
     int w = std::ceil(marker_size + style.ItemInnerSpacing.x + bold->CalcTextSizeA(font_size, FLT_MAX, 0.0f, s.label().c_str()).x +
                       ImGui::CalcTextSize((s.alias.empty() && s.source.rfind("can/", 0) == 0 ? msgLabel(s.msg_id) : std::string()).c_str()).x);
-    pushMonoFont(font_size);
-    w = std::max(w, (int)std::ceil(ImGui::CalcTextSize("-0.00000e+000").x));
-    popMonoFont();
     if (x + w > legend_right && x > legend_left) {
       finishRow();
       x = legend_left;
@@ -269,9 +264,9 @@ void ChartView::updateLayout() {
   }
   finishRow();
 
-  // add top space for the legend and signal values
+  // Leave room for legend names and header controls.
   layout_.header_bottom = std::max<float>(y + row_height, layout_.manage_btn_rect.Max.y) +
-                          (layout_.compact_header ? style.ItemInnerSpacing.y : style.ItemSpacing.y);
+                          style.ItemSpacing.y;
 }
 
 void ChartView::updatePlot(double cur, double min, double max) {
@@ -611,7 +606,6 @@ void ChartView::drawStaticLayer() {
   painter->AddRectFilled(layout_.rect.Min, layout_.rect.Max, ImGui::GetColorU32(ImGuiCol_ChildBg), ImGui::GetStyle().ChildRounding);
   createToolButtons();
   drawLegend();
-  drawSignalValue();  // drawn here because implot clips the plot frame
   drawAxes();
 }
 
@@ -825,27 +819,6 @@ void ChartView::drawTimeline() {
   ImVec2 time_str_pos(x - time_str_size.x / 2.0f, layout_.plot_area.Max.y + ImGui::GetStyle().ItemInnerSpacing.y);
   painter->AddRectFilled(time_str_pos, time_str_pos + time_str_size, ImGui::GetColorU32(palette().badge), ImGui::GetStyle().FrameRounding);
   painter->AddText(time_str_pos + ImVec2(4, 1), IM_COL32_WHITE, time_str.c_str());
-}
-
-void ChartView::drawSignalValue() {
-  if (layout_.compact_header) return;  // values remain available in the shared inspection tooltip
-  pushMonoFont(ImGui::GetFontSize());
-  ImDrawList *painter = ImGui::GetWindowDrawList();
-  const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
-  for (int i = 0; i < sigs_.size() && i < layout_.legend_rects.size(); ++i) {
-    const auto &s = sigs_[i];
-    const auto *pt = lastPointBefore(s, cur_sec_);
-    std::string value = pt ? (s.usesCanFormatting() ? s.sig->formatValue(pt->y) : formatNumber(pt->y, 3)) : "--";
-    const ImVec2 value_min = layout_.legend_rects[i].GetBL() - ImVec2(0, 1);
-    ImRect value_rect(value_min, value_min + layout_.legend_rects[i].GetSize());
-    float w = ImGui::CalcTextSize(value.c_str()).x;
-    if (w <= value_rect.GetWidth()) {
-      painter->AddText(value_rect.Min, color, value.c_str());
-    } else {
-      addTextEllipsis(painter, ImGui::GetFont(), color, value_rect.Min, value_rect.Max.x, value);
-    }
-  }
-  popMonoFont();
 }
 
 CabanaColor ChartView::uniqueColor(CabanaColor color, const cabana::Signal *exclude) const {
