@@ -122,6 +122,8 @@ private:
   std::pair<double, double> display_range_;
   bool value_tip_visible_ = false;
   bool any_plot_hovered_ = false;
+  std::string dragged_chart_id_;
+  int merge_drop_frames_ = 0;
   std::vector<std::unique_ptr<ChartView>> deleted_charts_;  // freed at the start of the next draw()
   std::unique_ptr<SignalSelector> signal_selector_;
   ChartView *signal_selector_owner_ = nullptr;

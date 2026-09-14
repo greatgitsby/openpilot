@@ -283,7 +283,8 @@ void test_workspace_ui() {
   REQUIRE(can->timeRange() == global_range);
   REQUIRE(range_changes == 0);
   REQUIRE(charts.chartCount() == 0);
-  REQUIRE(charts.workspace()["pages"][0]["widgets"].array_items().empty());
+  REQUIRE(charts.widgetVisible("###ChartsWindow"));
+  REQUIRE(charts.workspace()["pages"][0]["widgets"].array_items().size() == 1);
   charts.setWidgetVisible("###WideCameraPanel", true);
   charts.setWidgetVisible("###CabinCameraPanel", true);
   charts.addPlot();

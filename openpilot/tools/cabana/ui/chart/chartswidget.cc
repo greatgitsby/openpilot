@@ -79,7 +79,8 @@ void ChartsWidget::newTab() {
   tabbar_.setTabData(idx, id);
   std::random_device random;
   page_ids_[id] = std::to_string(random()) + "-" + std::to_string(random());
-  page_layouts_[page_ids_[id]] = json11::Json::object{{"panes", json11::Json::array{}}};
+  page_widgets_[page_ids_[id]] = {"###ChartsWindow"};
+  page_layouts_[page_ids_[id]] = json11::Json::object{{"panes", json11::Json::array{"###ChartsWindow"}}};
   tabbar_.setCurrentIndex(idx);
 }
 
@@ -407,6 +408,39 @@ void ChartsWidget::draw() {
 }
 
 void ChartsWidget::drawPanes() {
+  // Let ImGui resolve the docking gesture first: center/tab drops share a node,
+  // while edge drops create separate nodes and must remain separate charts.
+  const auto *payload = ImGui::GetDragDropPayload();
+  if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    dragged_chart_id_.clear();
+    merge_drop_frames_ = 0;
+  } else if (payload && payload->IsDataType("_IMWINDOW") && payload->DataSize == sizeof(ImGuiWindow *)) {
+    auto *window = *static_cast<ImGuiWindow *const *>(payload->Data);
+    for (auto *chart : currentCharts()) {
+      if (ImGui::FindWindowByName(chart->windowName().c_str()) == window) {
+        dragged_chart_id_ = chart->paneId();
+        merge_drop_frames_ = 2;
+        break;
+      }
+    }
+  } else if (merge_drop_frames_ > 0 && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    --merge_drop_frames_;
+    ChartView *source = nullptr;
+    for (auto *chart : currentCharts()) if (chart->paneId() == dragged_chart_id_) source = chart;
+    auto *window = source ? ImGui::FindWindowByName(source->windowName().c_str()) : nullptr;
+    if (window && window->DockNode) {
+      for (auto *target : std::vector<ChartView *>(currentCharts())) {
+        auto *target_window = ImGui::FindWindowByName(target->windowName().c_str());
+        if (target != source && target_window && target_window->DockNode == window->DockNode) {
+          target->takeSignalsFrom(source);
+          updateState();
+          merge_drop_frames_ = 0;
+          break;
+        }
+      }
+    }
+    if (merge_drop_frames_ == 0) dragged_chart_id_.clear();
+  }
   any_plot_hovered_ = false;
   for (auto *chart : std::vector<ChartView *>(currentCharts())) {
     bool open = true;
