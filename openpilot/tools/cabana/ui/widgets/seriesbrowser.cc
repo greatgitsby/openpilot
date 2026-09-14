@@ -8,8 +8,16 @@ void SeriesBrowser::draw(cabana::AnalysisSession &session, const std::function<v
     auto sources = session.sources();
     if (!show_deprecated_) sources.erase(std::remove_if(sources.begin(), sources.end(), [](const auto &path) { return path.find("DEPRECATED") != std::string::npos; }), sources.end());
     sources_ = std::move(sources);
-    tree_.rebuild(sources_);
+    std::unordered_set<std::string> functions;
+    for (const auto &source : sources_) if (source.rfind("equation/", 0) == 0) functions.insert(source);
+    tree_.rebuild(sources_, functions);
     for (auto &node : tree_.nodes) if (node.path.rfind("equation/", 0) == 0) node.name = session.displayName(node.path);
+    for (auto &node : tree_.nodes) if (node.key == "equation") {
+      node.name = "Functions";
+      std::sort(node.children.begin(), node.children.end(), [&](size_t a, size_t b) {
+        return tree_.nodes[a].name < tree_.nodes[b].name;
+      });
+    }
     tree_.filter(filter_);
     revision_ = session.revision();
   }

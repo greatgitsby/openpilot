@@ -12,7 +12,7 @@ public:
 private:
   chart::SignalTree tree_;
   std::vector<std::string> sources_;
-  std::unordered_set<std::string> expanded_;
+  std::unordered_set<std::string> expanded_{"equation"};
   std::string filter_;
   uint64_t revision_ = 0;
   bool show_deprecated_ = false;
