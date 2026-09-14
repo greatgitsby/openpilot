@@ -137,11 +137,17 @@ json11::Json migrateWorkspace(const json11::Json &doc) {
 }
 }
 
+json11::Json cabana::browserPageLayout() {
+  using J = json11::Json;
+  return J::object{{"axis", "x"}, {"ratio", .18}, {"children", J::array{
+    J::object{{"panes", J::array{"###ChartsWindow"}}}, J::object{{"panes", J::array{}}}}}};
+}
+
 json11::Json cabana::blankWorkspace() {
   using J = json11::Json;
   return J::object{{"cabana_workspace", 1}, {"active_page", 0}, {"equations", J::array{}},
     {"pages", J::array{J::object{{"id", "page-1"}, {"name", "Page 1"}, {"panes", J::array{}},
-                               {"widgets", J::array{"###ChartsWindow"}}, {"dock", J::object{{"panes", J::array{"###ChartsWindow"}}}}}}}};
+                               {"widgets", J::array{"###ChartsWindow"}}, {"dock", browserPageLayout()}}}}};
 }
 
 json11::Json cabana::defaultWorkspace() {

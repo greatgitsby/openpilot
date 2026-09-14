@@ -101,7 +101,7 @@ Pages belong to the selected workspace. Use the new-page button or **Page** menu
 
 **Workspace → Presets** and **Open** add workspaces to the selector; **Save As** exports the selected workspace. Workspaces, page contents, and docking arrangements persist across restarts. Existing single-workspace settings are retained as an Imported workspace.
 
-New pages start with the Series Browser visible. Drop a chart tab into another chart to combine their signals; edge drops keep the charts separate.
+New pages start with the Series Browser pinned in a slim left sidebar and an empty main area for charts. Drop a chart tab into another chart to combine their signals; edge drops keep the charts separate.
 
 New plots open docked beside existing plots, stacking while there is room and using tabs in small areas. Add Widget stays open so multiple widgets can be selected together. Existing manual floating layouts are preserved.
 

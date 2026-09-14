@@ -80,7 +80,7 @@ void ChartsWidget::newTab() {
   std::random_device random;
   page_ids_[id] = std::to_string(random()) + "-" + std::to_string(random());
   page_widgets_[page_ids_[id]] = {"###ChartsWindow"};
-  page_layouts_[page_ids_[id]] = json11::Json::object{{"panes", json11::Json::array{"###ChartsWindow"}}};
+  page_layouts_[page_ids_[id]] = cabana::browserPageLayout();
   tabbar_.setCurrentIndex(idx);
 }
 

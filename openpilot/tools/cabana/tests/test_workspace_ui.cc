@@ -285,6 +285,7 @@ void test_workspace_ui() {
   REQUIRE(charts.chartCount() == 0);
   REQUIRE(charts.widgetVisible("###ChartsWindow"));
   REQUIRE(charts.workspace()["pages"][0]["widgets"].array_items().size() == 1);
+  REQUIRE(charts.pageLayout(charts.activePageId()) == cabana::browserPageLayout());
   charts.setWidgetVisible("###WideCameraPanel", true);
   charts.setWidgetVisible("###CabinCameraPanel", true);
   charts.addPlot();

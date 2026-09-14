@@ -1,5 +1,6 @@
 #include "tools/cabana/ui/panel.h"
 #include "tools/cabana/ui/util.h"
+#include "tools/cabana/analysis/workspace.h"
 
 #include <algorithm>
 #include <set>
@@ -13,10 +14,11 @@ bool floatingOut() { return ImGui::GetWindowViewport() != ImGui::GetMainViewport
 
 // the side panels float out like the dialogs, and their dock nodes have no window menu button: its
 // only entry hides the tab bar, and with it the title and the close button
-void setNextPanelClass() {
+void setNextPanelClass(bool pinned) {
   ImGuiWindowClass window_class;
   window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
   window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
+  if (pinned) window_class.DockNodeFlagsOverrideSet |= ImGuiDockNodeFlags_NoDockingOverMe | ImGuiDockNodeFlags_NoDockingSplit;
   ImGui::SetNextWindowClass(&window_class);
 }
 
@@ -159,6 +161,8 @@ void Workspace::draw(const std::string &page, const std::vector<std::string> &pa
   }
   if (reset || replaced || active_page_ != page || !ImGui::DockBuilderGetNode(root)) {
     auto layout = reset ? json11::Json() : read(page);
+    if (layout["panes"].array_items().size() == 1 && layout["panes"][0].string_value() == "###ChartsWindow" &&
+        layout["floating"].array_items().empty()) layout = cabana::browserPageLayout();
     restore(root, layout.is_null() ? default_layout : layout, ImGui::GetCursorScreenPos(), size);
     active_page_ = page;
     revision_ = revision;
@@ -171,7 +175,8 @@ void Workspace::draw(const std::string &page, const std::vector<std::string> &pa
       ImGuiDockNode *largest_leaf = nullptr;
       std::function<void(ImGuiDockNode *)> find_plot = [&](ImGuiDockNode *node) {
         if (!node) return;
-        if (!node->IsSplitNode() && (!largest_leaf || node->Size.x * node->Size.y > largest_leaf->Size.x * largest_leaf->Size.y)) largest_leaf = node;
+        const bool sidebar = node->Windows.Size == 1 && identity(node->Windows[0]->Name) == "###ChartsWindow";
+        if (!sidebar && !node->IsSplitNode() && (!largest_leaf || node->Size.x * node->Size.y > largest_leaf->Size.x * largest_leaf->Size.y)) largest_leaf = node;
         for (const auto *window : node->Windows) {
           if (identity(window->Name).rfind("###Chart/", 0) == 0 && (!plot_node || node->Size.y > plot_node->Size.y)) plot_node = node;
         }
@@ -190,7 +195,7 @@ void Workspace::draw(const std::string &page, const std::vector<std::string> &pa
         // Add beside the largest pane rather than repeatedly squeezing the whole page.
         auto *leaf = largest_leaf ? largest_leaf : target;
         destination = leaf->ID;
-        if (leaf->Size.x >= ImGui::GetFontSize() * 40) {
+        if (!leaf->Windows.empty() && leaf->Size.x >= ImGui::GetFontSize() * 40) {
           const float ratio = browser && leaf == target ? .25f : .5f;
           destination = ImGui::DockBuilderSplitNode(leaf->ID, browser ? ImGuiDir_Left : ImGuiDir_Right,
                                                     ratio, nullptr, nullptr);

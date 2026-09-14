@@ -924,8 +924,8 @@ void MainWindow::draw() {
   if (messages_visible_) drawMessagesPanel();
   if (charts_visible_) {
     const std::string charts_title = "Series Browser###ChartsWindow";
-    setNextPanelClass();
-    if (beginPanel(charts_title.c_str(), &charts_visible_, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    setNextPanelClass(true);
+    if (beginPanel(charts_title.c_str(), &charts_visible_, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove)) {
       if (charts_widget_) {
         help_overlay_.add(charts_widget_->whatsThis(), ImGui::GetCurrentWindow()->Rect());
         charts_widget_->draw();
