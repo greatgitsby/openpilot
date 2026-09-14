@@ -123,6 +123,7 @@ bool dialogButtons(const char *accept_label, bool *accepted, bool *rejected, boo
 // Numeric inputs keep the same external gaps as other button rows. Width includes
 // a readable value plus both step buttons; use for compact fixed-width fields.
 float inputIntWidth(int digits);
+bool inputDouble(const char *label, double *value);
 bool inputInt(const char *label, int *value, int step = 1, int step_fast = 100,
               ImGuiInputTextFlags flags = ImGuiInputTextFlags_None);
 

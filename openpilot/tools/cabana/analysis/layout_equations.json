@@ -1,0 +1,203 @@
+{
+  "CAN-bus-debug": [],
+  "camera-timings": [],
+  "can-states": [],
+  "controls_mismatch_debug": [],
+  "gps": [],
+  "gps_vs_llk": [
+    {
+      "name": "haversine distance [m]",
+      "source": "/gpsLocationExternal/latitude",
+      "globals": "R = 6378.137  # Earth radius in km",
+      "function": "lat1 = math.radians(value)\nlon1 = math.radians(v1)\nlat2 = math.radians(v2)\nlon2 = math.radians(v3)\na = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2\na = min(1.0, max(0.0, a))\nreturn R * 2000 * math.atan2(math.sqrt(a), math.sqrt(1 - a))",
+      "additional": [
+        "/gpsLocationExternal/longitude",
+        "/liveLocationKalmanDEPRECATED/positionGeodetic/value/0",
+        "/liveLocationKalmanDEPRECATED/positionGeodetic/value/1"
+      ],
+      "language": "python"
+    }
+  ],
+  "locationd_debug": [],
+  "longitudinal": [],
+  "max-torque-debug": [
+    {
+      "name": "roll compensated lateral acceleration",
+      "source": "/controlsState/curvature",
+      "globals": "",
+      "function": "if v3 == 0 and v4 == 1:\n  return value * v1 ** 2 - v2 * 9.81\nreturn 0",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll",
+        "/carState/steeringPressed",
+        "/carControl/latActive"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "Desired lateral accel (roll compensated)",
+      "source": "/controlsState/desiredCurvature",
+      "globals": "",
+      "function": "return value * v1 ** 2 - v2 * 9.81",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "Actual lateral accel (roll compensated)",
+      "source": "/controlsState/curvature",
+      "globals": "",
+      "function": "return value * v1 ** 2 - v2 * 9.81",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "language": "python"
+    }
+  ],
+  "system_lag_debug": [],
+  "thermal_debug": [],
+  "torque-controller": [
+    {
+      "name": "carState.vEgo kmh",
+      "source": "/carState/vEgo",
+      "globals": "",
+      "function": "return value * 3.6",
+      "additional": [],
+      "language": "python"
+    },
+    {
+      "name": "carState.vEgo mph",
+      "source": "/carState/vEgo",
+      "globals": "",
+      "function": "return value * 2.23694",
+      "additional": [],
+      "language": "python"
+    },
+    {
+      "name": "Desired lateral accel (roll compensated)",
+      "source": "/controlsState/desiredCurvature",
+      "globals": "",
+      "function": "return value * v1 ** 2 - v2 * 9.81",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "Actual lateral accel (roll compensated)",
+      "source": "/controlsState/curvature",
+      "globals": "",
+      "function": "return value * v1 ** 2 - v2 * 9.81",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "Zero",
+      "source": "/carState/canValid",
+      "globals": "",
+      "function": "return 0",
+      "additional": [],
+      "language": "python"
+    },
+    {
+      "name": "opendbc default steering lag",
+      "source": "/carParams/steerActuatorDelay",
+      "globals": "",
+      "function": "return value + 0.2",
+      "additional": [],
+      "language": "python"
+    }
+  ],
+  "tuning": [
+    {
+      "name": "engaged curvature yaw",
+      "source": "/carControl/angularVelocity/2",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 == 1 or v2 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value / v3 if v3 != 0 else math.nan\nreturn 0",
+      "additional": [
+        "/carState/steeringPressed",
+        "/carControl/enabled",
+        "/carState/vEgo"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "engaged curvature vehicle model",
+      "source": "/controlsState/curvature",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 == 1 or v2 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/steeringPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "engaged curvature plan",
+      "source": "/modelV2/action/desiredCurvature",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 == 1 or v2 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/steeringPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "engaged_accel_actual",
+      "source": "/carState/aEgo",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 != 0 or v2 != 0 or v3 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "engaged_accel_plan",
+      "source": "/longitudinalPlan/accels/0",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 != 0 or v2 != 0 or v3 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "engaged_accel_actuator",
+      "source": "/carControl/actuators/accel",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 != 0 or v2 != 0 or v3 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python"
+    },
+    {
+      "name": "steering rate limited",
+      "source": "/carControl/actuators/torque",
+      "globals": "",
+      "function": "return int(abs(value - v1) > 0.001 or abs(v2 - v3) > 0.05)",
+      "additional": [
+        "/carOutput/actuatorsOutput/torque",
+        "/carControl/actuators/steeringAngleDeg",
+        "/carOutput/actuatorsOutput/steeringAngleDeg"
+      ],
+      "language": "python"
+    }
+  ],
+  "ublox-debug": []
+}

@@ -83,6 +83,7 @@ private:
 class VideoWidget {
 public:
   VideoWidget();
+  void inspect(double seconds) { showThumbnail(seconds); }
   void draw();  // content only; MainWindow puts it in a child region above the charts
   float sizeHintHeight() const;
   float defaultHeight(float width) const;

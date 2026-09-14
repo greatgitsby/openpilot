@@ -1,0 +1,321 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "569db807-98ca-5dcf-8be4-befd8ffbb231",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "c7105780-db6d-5324-b8b7-62bce5421f54",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/fd97d9a7-eace-54be-b423-ebbeb2058e8a"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": 0.368228,
+            "right": 196.811937,
+            "left": 76.646983,
+            "top": 32.070386
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "338bb5f7-ef58-5469-bdf5-41c8960b66ee",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/vEgo"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/speed"
+              },
+              "alias": "",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": -0.259115,
+            "right": 196.811937,
+            "left": 76.646983,
+            "top": 12.637299
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "2f497829-1c8b-55c3-a4a1-228ab50e41fd",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/liveLocationKalmanDEPRECATED/positionGeodetic/std/0"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/liveLocationKalmanDEPRECATED/positionGeodetic/std/1"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": -0.1,
+            "right": 196.811937,
+            "left": 76.646983,
+            "top": 0.1
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "c20b5736-c7e1-5036-bc7c-f9c7fbbb2049",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/horizontalAccuracy"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/verticalAccuracy"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/speedAccuracy"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": -0.449385,
+            "right": 196.811937,
+            "left": 76.646983,
+            "top": 7.160833
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.333805,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/c7105780-db6d-5324-b8b7-62bce5421f54"
+                ],
+                "selected": "###Chart/c7105780-db6d-5324-b8b7-62bce5421f54"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.49893799863403354,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/338bb5f7-ef58-5469-bdf5-41c8960b66ee"
+                    ],
+                    "selected": "###Chart/338bb5f7-ef58-5469-bdf5-41c8960b66ee"
+                  },
+                  {
+                    "axis": "x",
+                    "ratio": 0.500516,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/2f497829-1c8b-55c3-a4a1-228ab50e41fd"
+                        ],
+                        "selected": "###Chart/2f497829-1c8b-55c3-a4a1-228ab50e41fd"
+                      },
+                      {
+                        "panes": [
+                          "###Chart/c20b5736-c7e1-5036-bc7c-f9c7fbbb2049"
+                        ],
+                        "selected": "###Chart/c20b5736-c7e1-5036-bc7c-f9c7fbbb2049"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [
+    {
+      "name": "haversine distance [m]",
+      "source": "/gpsLocationExternal/latitude",
+      "globals": "R = 6378.137  # Earth radius in km",
+      "function": "lat1 = math.radians(value)\nlon1 = math.radians(v1)\nlat2 = math.radians(v2)\nlon2 = math.radians(v3)\na = math.sin((lat2 - lat1) / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2\na = min(1.0, max(0.0, a))\nreturn R * 2000 * math.atan2(math.sqrt(a), math.sqrt(1 - a))",
+      "additional": [
+        "/gpsLocationExternal/longitude",
+        "/liveLocationKalmanDEPRECATED/positionGeodetic/value/0",
+        "/liveLocationKalmanDEPRECATED/positionGeodetic/value/1"
+      ],
+      "language": "python",
+      "id": "fd97d9a7-eace-54be-b423-ebbeb2058e8a"
+    }
+  ],
+  "active_page": 0,
+  "relative_time": true
+}

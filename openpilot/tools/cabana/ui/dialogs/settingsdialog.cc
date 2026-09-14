@@ -17,8 +17,8 @@ const int MIN_CACHE_MINUTES = 30;
 const int MAX_CACHE_MINUTES = 120;
 
 // the label sits in the left column, the field in the right one, all fields aligned
-enum FormLabel { THEME, CACHED_MINUTES, DRAG_DIRECTION, CHART_HEIGHT, FORM_LABEL_COUNT };
-const char *FORM_LABELS[FORM_LABEL_COUNT] = {"Color Theme", "Max Cached Minutes", "Drag Direction", "Chart Height"};
+enum FormLabel { THEME, CACHED_MINUTES, DRAG_DIRECTION, FORM_LABEL_COUNT };
+const char *FORM_LABELS[FORM_LABEL_COUNT] = {"Color Theme", "Max Cached Minutes", "Drag Direction"};
 
 float formLabelWidth() {
   float w = 0.0f;
@@ -44,7 +44,6 @@ void SettingsDialog::open() {
   theme_ = settings.theme;
   cached_minutes_ = settings.max_cached_minutes;
   drag_direction_ = settings.drag_direction;
-  chart_height_ = settings.chart_height;
   log_livestream_ = settings.log_livestream;
   log_path_ = settings.log_path;
   open_ = true;
@@ -70,8 +69,6 @@ void SettingsDialog::draw() {
   dropdown::Combo("##drag_direction", &drag_direction_, directions, IM_ARRAYSIZE(directions));
 
   ImGui::SeparatorText("Chart");
-  formRow(CHART_HEIGHT, label_width);
-  settingInputInt("chart_height", &chart_height_, 10, 10, 100, 500);
 
   checkBox("Enable live stream logging", &log_livestream_);
   ImGui::BeginDisabled(!log_livestream_);
@@ -103,7 +100,6 @@ void SettingsDialog::draw() {
 void SettingsDialog::save() {
   if (std::exchange(settings.theme, theme_) != settings.theme) applyTheme(settings.theme);
   settings.max_cached_minutes = cached_minutes_;
-  settings.chart_height = chart_height_;
   settings.log_livestream = log_livestream_;
   settings.log_path = log_path_;
   settings.drag_direction = (Settings::DragDirection)drag_direction_;

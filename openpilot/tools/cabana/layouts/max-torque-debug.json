@@ -1,0 +1,302 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "32f996d5-024e-5b42-9eec-29549dcaadd3",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "a5cbd52f-b58d-5138-93ec-7b1560218e36",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/339d83a8-e04d-553a-be52-16470d00e4a2"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/de09af84-6cdc-57fa-b5f8-a396f507227e"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.00045,
+            "top": 6.050533,
+            "right": 2483.624998,
+            "bottom": -7.599037
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "bc97dbfd-94aa-5e87-9950-9958e418dcc0",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/5bcc409a-6bf2-53ab-b3d9-2b980b7f3f64"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.00045,
+            "top": 5.384416,
+            "right": 2483.624998,
+            "bottom": -7.503945
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "af25d7ad-999f-59ab-9f49-3defc1c2e97b",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/steeringPressed"
+              },
+              "alias": "",
+              "color": [
+                0,
+                151,
+                255,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carOutput/actuatorsOutput/torque"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.00045,
+            "top": 1.05,
+            "right": 2483.624998,
+            "bottom": -1.05
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "3bbc9800-fe58-51ea-a560-4bc059ebfafe",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/vEgo"
+              },
+              "alias": "/carState/vEgo[Scale/Offset]",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 2.23694,
+                "offset": 0.0,
+                "time_offset": 0.0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.00045,
+            "top": 80.762969,
+            "right": 2483.624998,
+            "bottom": -2.181837
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.24972375027624968,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/a5cbd52f-b58d-5138-93ec-7b1560218e36"
+                ],
+                "selected": "###Chart/a5cbd52f-b58d-5138-93ec-7b1560218e36"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.3343151929220808,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/bc97dbfd-94aa-5e87-9950-9958e418dcc0"
+                    ],
+                    "selected": "###Chart/bc97dbfd-94aa-5e87-9950-9958e418dcc0"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.5,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/af25d7ad-999f-59ab-9f49-3defc1c2e97b"
+                        ],
+                        "selected": "###Chart/af25d7ad-999f-59ab-9f49-3defc1c2e97b"
+                      },
+                      {
+                        "panes": [
+                          "###Chart/3bbc9800-fe58-51ea-a560-4bc059ebfafe"
+                        ],
+                        "selected": "###Chart/3bbc9800-fe58-51ea-a560-4bc059ebfafe"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [
+    {
+      "name": "roll compensated lateral acceleration",
+      "source": "/controlsState/curvature",
+      "globals": "",
+      "function": "if v3 == 0 and v4 == 1:\n  return value * v1 ** 2 - v2 * 9.81\nreturn 0",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll",
+        "/carState/steeringPressed",
+        "/carControl/latActive"
+      ],
+      "language": "python",
+      "id": "5bcc409a-6bf2-53ab-b3d9-2b980b7f3f64"
+    },
+    {
+      "name": "Desired lateral accel (roll compensated)",
+      "source": "/controlsState/desiredCurvature",
+      "globals": "",
+      "function": "return value * v1 ** 2 - v2 * 9.81",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "language": "python",
+      "id": "de09af84-6cdc-57fa-b5f8-a396f507227e"
+    },
+    {
+      "name": "Actual lateral accel (roll compensated)",
+      "source": "/controlsState/curvature",
+      "globals": "",
+      "function": "return value * v1 ** 2 - v2 * 9.81",
+      "additional": [
+        "/carState/vEgo",
+        "/vehicleParameters/roll"
+      ],
+      "language": "python",
+      "id": "339d83a8-e04d-553a-be52-16470d00e4a2"
+    }
+  ],
+  "active_page": 0,
+  "relative_time": true
+}

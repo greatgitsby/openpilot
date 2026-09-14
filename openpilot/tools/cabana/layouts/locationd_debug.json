@@ -1,0 +1,537 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "9e268102-ed8b-5366-a3ee-ea241068f0e9",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "7878cba6-9ffc-5b89-8682-12e804d47b45",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceMotion/inputsOK"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 2280.128382,
+            "left": 0.0,
+            "top": 1.025,
+            "bottom": -0.025
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "d252fa33-2e91-5c8e-8da7-9a9ef6f8aa55",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/accelerometer/acceleration/v/0"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/accelerometer/acceleration/v/1"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/accelerometer/acceleration/v/2"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 2280.128382,
+            "left": 0.0,
+            "top": 14.542814,
+            "bottom": -5.586039
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "b9147597-abae-57e4-b2f2-8efb2ba26f2a",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gyroscope/gyroUncalibrated/v/0"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gyroscope/gyroUncalibrated/v/1"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gyroscope/gyroUncalibrated/v/2"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 2280.128382,
+            "left": 0.0,
+            "top": 0.988911,
+            "bottom": -0.745939
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "f55ec36f-b497-5136-9137-0e3fb4d548b0",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/accelerometer/__valid"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gyroscope/__valid"
+              },
+              "alias": "",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/__valid"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/extrinsicsCalibration/__valid"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/cameraOdometry/__valid"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 2280.128382,
+            "left": 0.0,
+            "top": 1.025,
+            "bottom": -0.025
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "a6975f6e-20f9-5e61-b99e-e492322a7e17",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gyroscope/__logMonoTime"
+              },
+              "alias": "/gyroscope/__logMonoTime[Derivative]",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/accelerometer/__logMonoTime"
+              },
+              "alias": "/accelerometer/__logMonoTime[Derivative]",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 2280.128382,
+            "left": 0.0,
+            "top": 1000000000.292252,
+            "bottom": 999999999.735447
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "387d12fd-6a31-5327-a814-058fd088cc02",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/accelerometer/timestamp"
+              },
+              "alias": "/accelerometer/timestamp[Derivative]",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gyroscope/timestamp"
+              },
+              "alias": "/gyroscope/timestamp[Derivative]",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 2280.128382,
+            "left": 0.0,
+            "top": 20790107743.93223,
+            "bottom": -529653831.495853
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.16658783341216657,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/7878cba6-9ffc-5b89-8682-12e804d47b45"
+                ],
+                "selected": "###Chart/7878cba6-9ffc-5b89-8682-12e804d47b45"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.20045523647939256,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/d252fa33-2e91-5c8e-8da7-9a9ef6f8aa55"
+                    ],
+                    "selected": "###Chart/d252fa33-2e91-5c8e-8da7-9a9ef6f8aa55"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.24928753764907685,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/b9147597-abae-57e4-b2f2-8efb2ba26f2a"
+                        ],
+                        "selected": "###Chart/b9147597-abae-57e4-b2f2-8efb2ba26f2a"
+                      },
+                      {
+                        "axis": "y",
+                        "ratio": 0.33301748367776945,
+                        "children": [
+                          {
+                            "panes": [
+                              "###Chart/f55ec36f-b497-5136-9137-0e3fb4d548b0"
+                            ],
+                            "selected": "###Chart/f55ec36f-b497-5136-9137-0e3fb4d548b0"
+                          },
+                          {
+                            "axis": "y",
+                            "ratio": 0.5007103251910684,
+                            "children": [
+                              {
+                                "panes": [
+                                  "###Chart/a6975f6e-20f9-5e61-b99e-e492322a7e17"
+                                ],
+                                "selected": "###Chart/a6975f6e-20f9-5e61-b99e-e492322a7e17"
+                              },
+                              {
+                                "panes": [
+                                  "###Chart/387d12fd-6a31-5327-a814-058fd088cc02"
+                                ],
+                                "selected": "###Chart/387d12fd-6a31-5327-a814-058fd088cc02"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

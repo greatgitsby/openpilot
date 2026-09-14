@@ -3,6 +3,11 @@
 #include <algorithm>
 #include <memory>
 #include <set>
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <thread>
 
 #include "common/prefix.h"
 #include "tools/cabana/streams/abstractstream.h"
@@ -36,6 +41,12 @@ public:
 
 private:
   void mergeSegments();
+  void indexFields();
+  std::thread fields_thread_;
+  std::mutex fields_mutex_;
+  std::condition_variable fields_cv_;
+  std::deque<std::shared_ptr<Segment>> pending_segments_;
+  std::atomic<bool> stopping_ = false;
   std::unique_ptr<Replay> replay = nullptr;
   Connection settings_connection_;
   std::set<int> processed_segments;

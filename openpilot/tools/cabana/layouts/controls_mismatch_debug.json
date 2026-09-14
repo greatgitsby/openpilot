@@ -1,0 +1,334 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "5736a58f-0a59-56f5-b202-256391fa149c",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "a6cdeca5-2bff-5019-88ce-358d1f31c9fd",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/enabled"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/controlsAllowed"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 1.025,
+            "bottom": -0.025,
+            "left": 0.018309,
+            "right": 59.674401
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "b3036749-54a6-5f9a-80ce-d08a43255d94",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/cumLagMs"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 27.087398,
+            "bottom": -0.905168,
+            "left": 0.018309,
+            "right": 59.674401
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "54d8ea07-eb09-544d-b38a-0eeb703b1f10",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/safetyRxInvalid"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/safetyRxChecksInvalid"
+              },
+              "alias": "",
+              "color": [
+                232,
+                1,
+                206,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 1.025,
+            "bottom": -0.025,
+            "left": 0.018309,
+            "right": 59.674401
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "ee0a2692-9751-56af-9420-a4f936060394",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/safetyTxBlocked"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 158.85,
+            "bottom": -2.85,
+            "left": 0.018309,
+            "right": 59.674401
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "aba976f8-814b-53dc-8f9a-fc634579441a",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/gasPressed"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/brakePressed"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 1.025,
+            "bottom": -0.025,
+            "left": 0.018309,
+            "right": 59.674401
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.2,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/a6cdeca5-2bff-5019-88ce-358d1f31c9fd"
+                ],
+                "selected": "###Chart/a6cdeca5-2bff-5019-88ce-358d1f31c9fd"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.25,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/b3036749-54a6-5f9a-80ce-d08a43255d94"
+                    ],
+                    "selected": "###Chart/b3036749-54a6-5f9a-80ce-d08a43255d94"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.3333333333333333,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/54d8ea07-eb09-544d-b38a-0eeb703b1f10"
+                        ],
+                        "selected": "###Chart/54d8ea07-eb09-544d-b38a-0eeb703b1f10"
+                      },
+                      {
+                        "axis": "y",
+                        "ratio": 0.5,
+                        "children": [
+                          {
+                            "panes": [
+                              "###Chart/ee0a2692-9751-56af-9420-a4f936060394"
+                            ],
+                            "selected": "###Chart/ee0a2692-9751-56af-9420-a4f936060394"
+                          },
+                          {
+                            "panes": [
+                              "###Chart/aba976f8-814b-53dc-8f9a-fc634579441a"
+                            ],
+                            "selected": "###Chart/aba976f8-814b-53dc-8f9a-fc634579441a"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

@@ -2,6 +2,9 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <fstream>
+#include "tools/cabana/settings.h"
+#include "tools/cabana/analysis/workspace.h"
 #include <optional>
 #include <string>
 
@@ -36,6 +39,7 @@ struct CabanaArgs {
   std::string zmq;
   std::string data_dir;
   std::string dbc;
+  std::string layout;
   std::string route;
 };
 
@@ -53,16 +57,17 @@ void printUsage(const char *argv0) {
           "  --qcam                    load qcamera\n"
           "  --wide-road               load wide road camera (alias: --ecam)\n"
           "  --cabin                   load cabin camera (alias: --dcam)\n"
-          "  --msgq                    read can messages from the msgq\n"
+          "  --msgq                    read CAN and cereal messages from msgq\n"
           "  --panda                   read can messages from panda\n"
           "  --panda-serial <serial>   read can messages from panda with given serial\n"
 #ifdef __linux__
           "  --socketcan <device>      read can messages from given SocketCAN device\n"
 #endif
-          "  --zmq <ip-address>        read can messages from zmq at the specified ip-address\n"
+          "  --zmq <ip-address>        read CAN and cereal messages from the remote bridge\n"
           "  --data_dir <dir>          local directory with routes\n"
           "  --no-vipc                 do not output video\n"
           "  --no-cache                turn off the local route file cache\n"
+          "  --layout <file>           load a native Cabana workspace\n"
           "  --dbc <file>              dbc file to open\n",
           argv0);
 }
@@ -83,6 +88,8 @@ std::optional<int> parseArgs(int argc, char *argv[], CabanaArgs &args) {
     if (std::strcmp(a, "--help") == 0 || std::strcmp(a, "-h") == 0) {
       printUsage(argv[0]);
       return 0;
+    } else if (std::strcmp(a, "--layout") == 0) {
+      if (!takeValue(argc, argv, i, args.layout)) return 1;
     } else if (std::strcmp(a, "--demo") == 0) {
       args.demo = true;
     } else if (std::strcmp(a, "--auto") == 0) {
@@ -139,6 +146,7 @@ int main(int argc, char *argv[]) {
   // arenas fragment without bound (RSS grew ~3 MB/min with charts open). macOS has a single allocator zone.
   mallopt(M_ARENA_MAX, 1);
 #endif
+  const auto launch_directory = std::filesystem::current_path();
   // ensure the current dir matches the executable's directory
   std::error_code ec;
   std::filesystem::current_path(executableDir(), ec);
@@ -146,6 +154,15 @@ int main(int argc, char *argv[]) {
   CabanaArgs args;
   if (auto code = parseArgs(argc, argv, args)) return *code;
 
+  if (!args.layout.empty()) {
+    std::ifstream input(launch_directory / args.layout);
+    std::string content{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    std::string error;
+    auto doc = cabana::migrateWorkspace(json11::Json::parse(content, error));
+    if (error.empty()) error = cabana::validateWorkspace(doc);
+    if (!error.empty()) { fprintf(stderr, "Workspace: %s\n", error.c_str()); return 1; }
+    settings.analysis_workspace = doc.dump();
+  }
   std::unique_ptr<AbstractStream> stream;
   StreamLoader stream_loader;
 

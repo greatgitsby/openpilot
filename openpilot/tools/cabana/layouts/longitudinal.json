@@ -1,0 +1,373 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "cf0e6d69-5e51-5610-96c0-58892dcd0ee4",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "a463cefc-c302-5790-8fa8-08ca37047148",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/aEgo"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/longitudinalPlan/accels/0"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/actuators/accel"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carOutput/actuatorsOutput/accel"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 126.285782,
+            "top": 1.391623,
+            "left": 104.907277,
+            "bottom": -2.563614
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "65bd79d8-3639-5c5b-ad82-7e73dd6ce339",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/upAccelCmd"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/uiAccelCmd"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/ufAccelCmd"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 126.285782,
+            "top": 1.18496,
+            "left": 104.907277,
+            "bottom": -1.811222
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "bdb11171-b548-54fd-9664-be1436383c65",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/vEgo"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/longitudinalPlan/speeds/0"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 126.285782,
+            "top": 15.862889,
+            "left": 104.907277,
+            "bottom": -0.568809
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "10f5c40c-182e-56cf-966d-35eced20f172",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/longActive"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/gasPressed"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 126.285782,
+            "top": 1.025,
+            "left": 104.907277,
+            "bottom": -0.025
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.250401,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/a463cefc-c302-5790-8fa8-08ca37047148"
+                ],
+                "selected": "###Chart/a463cefc-c302-5790-8fa8-08ca37047148"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.3329766982079752,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/65bd79d8-3639-5c5b-ad82-7e73dd6ce339"
+                    ],
+                    "selected": "###Chart/65bd79d8-3639-5c5b-ad82-7e73dd6ce339"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.500802,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/bdb11171-b548-54fd-9664-be1436383c65"
+                        ],
+                        "selected": "###Chart/bdb11171-b548-54fd-9664-be1436383c65"
+                      },
+                      {
+                        "panes": [
+                          "###Chart/10f5c40c-182e-56cf-966d-35eced20f172"
+                        ],
+                        "selected": "###Chart/10f5c40c-182e-56cf-966d-35eced20f172"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

@@ -8,8 +8,10 @@
 #include <vector>
 
 #include "tools/cabana/dbc/dbcmanager.h"
+#include "tools/cabana/analysis/session.h"
 #include "tools/cabana/streams/abstractstream.h"
 #include "tools/cabana/ui/app.h"
+#include "tools/cabana/ui/panel.h"
 #include "tools/cabana/ui/dialogs/settingsdialog.h"
 #include "tools/cabana/ui/dialogs/streamselector.h"
 #include "tools/cabana/ui/helpoverlay.h"
@@ -94,6 +96,7 @@ private:
   std::unique_ptr<MessagesWidget> messages_widget_;
   CenterWidget center_widget_;
   std::unique_ptr<VideoWidget> video_widget_;
+  std::unique_ptr<cabana::AnalysisSession> analysis_session_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;
   SettingsDialog settings_dialog_;
@@ -106,6 +109,7 @@ private:
   bool video_visible_ = true;
   bool charts_visible_ = true;
   bool reset_layout_ = false;
+  docking::Workspace docking_;
   bool full_screen_ = false;
 #ifndef __APPLE__
   int windowed_rect_[4] = {0, 0, 1600, 900};

@@ -19,6 +19,7 @@
 #include "tools/cabana/ui/dialogs/filedialog.h"
 #include "tools/cabana/ui/dialogs/messagebox.h"
 #include "tools/cabana/ui/inistate.h"
+#include "tools/cabana/ui/panel.h"
 #include "tools/cabana/ui/threadpool.h"
 #include "tools/cabana/ui/tools/findsignal.h"
 #include "tools/cabana/ui/tools/findsimilarbits.h"
@@ -187,9 +188,13 @@ void MainWindow::createDockWidgets() {
   messages_widget_ = std::make_unique<MessagesWidget>();
   widget_connections_.push_back(messages_widget_->msgSelectionChanged.connect([this](const MessageId &id) { center_widget_.setMessage(id); }));
 
-  charts_widget_ = std::make_unique<ChartsWidget>();
+  analysis_session_ = std::make_unique<cabana::AnalysisSession>(*can);
+  charts_widget_ = std::make_unique<ChartsWidget>(*analysis_session_);
+  std::string workspace_error;
+  charts_widget_->restoreWorkspace(json11::Json::parse(settings.analysis_workspace, workspace_error));
   center_widget_.setChartsWidget(charts_widget_.get());
   video_widget_ = std::make_unique<VideoWidget>();
+  widget_connections_.push_back(analysis_session_->inspectionChanged.connect([this](double time) { video_widget_->inspect(time); }));
 }
 
 void MainWindow::showStatusMessage(const std::string &msg, int timeout_ms) {
@@ -345,7 +350,9 @@ void MainWindow::releaseStream() {
   wait_dlg_.connection.disconnect();
   wait_dlg_.open = false;
   widget_connections_.clear();
+  if (charts_widget_) settings.analysis_workspace = charts_widget_->workspace().dump();
   charts_widget_.reset();
+  analysis_session_.reset();
   video_widget_.reset();
   center_widget_.clear();
   messages_widget_.reset();
@@ -663,6 +670,7 @@ void MainWindow::saveSessionState() {
   }
   if (charts_widget_) {
     settings.active_charts = charts_widget_->serializeChartIds();
+    settings.analysis_workspace = charts_widget_->workspace().dump();
   }
 }
 
@@ -675,7 +683,7 @@ void MainWindow::restoreSessionState() {
     center_widget_.ensureDetailWidget()->restoreTabs(settings.active_msg_id, settings.selected_msg_ids);
   }
 
-  if (charts_widget_ != nullptr && !settings.active_charts.empty()) {
+  if (charts_widget_ != nullptr && charts_widget_->chartCount() == 0 && settings.analysis_workspace.empty() && !settings.active_charts.empty()) {
     charts_widget_->restoreChartsFromIds(settings.active_charts);
   }
 }
@@ -804,55 +812,29 @@ void MainWindow::drawDockspace() {
   // otherwise the host window is a few pixels taller than the viewport and scrolls
   const float status_height = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
-  const ImGuiID dock_id = ImGui::GetID("cabana_dockspace");
-  if (reset_layout_ || ImGui::DockBuilderGetNode(dock_id) == nullptr ||
-      (!ImGui::FindWindowByName(CHARTS_WINDOW) && !ImGui::FindWindowSettingsByID(ImHashStr(CHARTS_WINDOW)))) {
-    // Messages left, route above charts on the right, details in the middle.
-    ImGui::DockBuilderRemoveNode(dock_id);
-    ImGui::DockBuilderAddNode(dock_id, ImGuiDockNodeFlags_DockSpace);
-    ImGui::DockBuilderSetNodePos(dock_id, ImGui::GetCursorScreenPos());
-    ImGui::DockBuilderSetNodeSize(dock_id, dock_size);
-    ImGuiID center = dock_id, left = 0, right = 0, charts = 0;
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.28f, &left, &center);
-    ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.4f, &right, &center);
-    ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.55f, &charts, &right);
-    ImGui::DockBuilderDockWindow(CHARTS_WINDOW, charts);
-    ImGui::DockBuilderDockWindow(MESSAGES_PANEL_ID, left);
-    ImGui::DockBuilderDockWindow(VIDEO_PANEL, right);
-    ImGui::DockBuilderDockWindow(CENTER_PANEL, center);
-    ImGui::DockBuilderFinish(dock_id);
-    reset_layout_ = false;
-  }
+  const std::string page = charts_widget_ ? charts_widget_->activePageId() : "loading";
+  using J = json11::Json;
+  auto leaf = [](const J::array &names) { return J(J::object{{"panes", names}}); };
+  auto split = [](const char *axis, double ratio, const J &first, const J &second) {
+    return J(J::object{{"axis", axis}, {"ratio", ratio}, {"children", J::array{first, second}}});
+  };
+  J::array panes;
+  if (charts_widget_) for (const auto &name : charts_widget_->paneWindows()) panes.push_back(name);
+  auto layout = split("x", 0.28, leaf({MESSAGES_PANEL_ID}),
+                      split("x", 0.6, leaf({CENTER_PANEL}),
+                            split("y", 0.45, leaf({VIDEO_PANEL}), split("y", 0.3, leaf({CHARTS_WINDOW}), leaf(panes)))));
   // a panel never shrinks past half the width where the signal view's tool bar squishes
   const float min_panel_width = (SignalView::minimumWidth() + (ImGui::GetStyle().WindowPadding.x + ImGui::GetStyle().WindowBorderSize) * 2) * 0.5f;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(min_panel_width, ImGui::GetStyle().WindowMinSize.y));
-  ImGui::DockSpace(dock_id, dock_size);
+  docking_.draw(page, charts_widget_ ? charts_widget_->pageIds() : std::vector<std::string>{}, layout,
+                [this](const auto &id) { return charts_widget_ ? charts_widget_->pageLayout(id) : J(); },
+                [this](const auto &id, const auto &tree) { if (charts_widget_) charts_widget_->setPageLayout(id, tree); },
+                dock_size, reset_layout_, charts_widget_ ? charts_widget_->documentRevision() : 0);
+  reset_layout_ = false;
   ImGui::PopStyleVar();
   drawStatusBar();
   ImGui::End();
 }
-
-namespace {
-// closing a panel that floated out into its own os window brings it back into the default layout, only
-// the close button of a docked panel hides it
-bool floatingOut() { return ImGui::GetWindowViewport() != ImGui::GetMainViewport(); }
-
-// the side panels float out like the dialogs, and their dock nodes have no window menu button: its
-// only entry hides the tab bar, and with it the title and the close button
-void setNextPanelClass() {
-  ImGuiWindowClass window_class;
-  window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
-  window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
-  ImGui::SetNextWindowClass(&window_class);
-}
-
-bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags = 0) {
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  const bool visible = ImGui::Begin(name, open, flags | ImGuiWindowFlags_NoCollapse);
-  ImGui::PopStyleVar();
-  return visible;
-}
-}  // namespace
 
 void MainWindow::drawMessagesPanel() {
   const std::string name = (messages_widget_ ? messages_widget_->title() : "MESSAGES") + std::string(MESSAGES_PANEL_ID);
@@ -896,6 +878,7 @@ void MainWindow::draw() {
   } else {
     takeKeyEvents();  // modal dialogs swallow the shortcuts
   }
+  if (analysis_session_) analysis_session_->poll();
   if (!full_screen_) drawMenuBar();
   drawDockspace();
 
@@ -924,6 +907,7 @@ void MainWindow::draw() {
     }
     ImGui::End();
   }
+  if (charts_visible_ && charts_widget_) charts_widget_->drawPanes();
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
     it = (*it)->draw() ? it + 1 : tool_dialogs_.erase(it);
   }

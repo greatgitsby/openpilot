@@ -3,6 +3,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -58,6 +60,11 @@ void paceFrame() {
 }
 
 void renderFrame(GLFWwindow *window, MainWindow *win) {
+  // Opt-in evidence for workspace scaling; includes event processing and rendering,
+  // excludes the intentional frame-rate limiter below.
+  static std::ofstream profile(std::getenv("CABANA_PROFILE") ? std::getenv("CABANA_PROFILE") : "");
+  static const auto profile_start = std::chrono::steady_clock::now();
+  const auto frame_start = std::chrono::steady_clock::now();
   glfwPollEvents();
   utils::drainMainThreadQueue();
 
@@ -84,6 +91,12 @@ void renderFrame(GLFWwindow *window, MainWindow *win) {
     glfwMakeContextCurrent(backup_context);
   }
   glfwSwapBuffers(window);
+  if (profile.is_open()) {
+    const auto end = std::chrono::steady_clock::now();
+    profile << std::chrono::duration<double>(end - profile_start).count() << ','
+            << std::chrono::duration<double, std::milli>(end - frame_start).count() << ','
+            << (can ? can->fields.size() : 0) << '\n';
+  }
   paceFrame();
 }
 

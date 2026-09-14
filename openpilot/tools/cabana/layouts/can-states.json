@@ -1,0 +1,488 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "9145ab1c-240e-5550-8232-152fd8724578",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "8cb58711-d894-51dd-ac2c-a13c3eeead31",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/totalRxCnt"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/totalRxCnt"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/totalRxCnt"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 632.799721,
+            "bottom": -17755.925,
+            "top": 771630.925,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "803cd6a2-a84d-5f2a-a9bc-d8d73747ca8e",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/totalTxCnt"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/totalTxCnt"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/totalTxCnt"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 632.799721,
+            "bottom": -18545.5,
+            "top": 760365.5,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "0023a835-9867-5d5a-af56-2465a01b0d17",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/totalRxLostCnt"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/totalRxLostCnt"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/totalRxLostCnt"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 632.799721,
+            "bottom": -1.35,
+            "top": 55.35,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "efe0a336-4b07-588f-8c97-bc98498629e6",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/totalTxLostCnt"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/totalTxLostCnt"
+              },
+              "alias": "",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/totalTxLostCnt"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 632.799721,
+            "bottom": -0.05,
+            "top": 2.05,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "47f9974e-3e5b-545a-b7b3-9c4a22a19795",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/busOffCnt"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/busOffCnt"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/busOffCnt"
+              },
+              "alias": "",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 632.799721,
+            "bottom": -0.1,
+            "top": 0.1,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.500381,
+            "children": [
+              {
+                "axis": "x",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/8cb58711-d894-51dd-ac2c-a13c3eeead31"
+                    ],
+                    "selected": "###Chart/8cb58711-d894-51dd-ac2c-a13c3eeead31"
+                  },
+                  {
+                    "panes": [
+                      "###Chart/803cd6a2-a84d-5f2a-a9bc-d8d73747ca8e"
+                    ],
+                    "selected": "###Chart/803cd6a2-a84d-5f2a-a9bc-d8d73747ca8e"
+                  }
+                ]
+              },
+              {
+                "axis": "x",
+                "ratio": 0.3333333333333333,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/0023a835-9867-5d5a-af56-2465a01b0d17"
+                    ],
+                    "selected": "###Chart/0023a835-9867-5d5a-af56-2465a01b0d17"
+                  },
+                  {
+                    "axis": "x",
+                    "ratio": 0.5,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/efe0a336-4b07-588f-8c97-bc98498629e6"
+                        ],
+                        "selected": "###Chart/efe0a336-4b07-588f-8c97-bc98498629e6"
+                      },
+                      {
+                        "panes": [
+                          "###Chart/47f9974e-3e5b-545a-b7b3-9c4a22a19795"
+                        ],
+                        "selected": "###Chart/47f9974e-3e5b-545a-b7b3-9c4a22a19795"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

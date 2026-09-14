@@ -9,6 +9,10 @@
 #include <vector>
 
 #include "imgui.h"
+#include "json11/json11.hpp"
+#include "tools/cabana/analysis/session.h"
+#include "tools/cabana/ui/dialogs/functioneditor.h"
+#include "tools/cabana/ui/widgets/seriesbrowser.h"
 #include "imgui_internal.h"
 
 #include "tools/cabana/ui/chart/signalselector.h"
@@ -18,7 +22,6 @@
 #include "tools/cabana/streams/abstractstream.h"
 #include "tools/cabana/utils/util.h"
 
-const int CHART_MIN_WIDTH = 300;
 
 // a slider whose value is mapped onto a log10 scale
 class LogSlider {
@@ -47,28 +50,21 @@ private:
 class ChartView;
 class ChartsWidget;
 
-class ChartsContainer {
-public:
-  ChartsContainer(ChartsWidget *parent) : charts_widget_(parent) {}
-  void setDropIndicator(const ImVec2 &pt) { drop_indicator_pos_ = pt; }
-  void draw();  // grid layout of the current tab's charts
-  ChartView *getDropAfter(const ImVec2 &pos) const;
-  ChartView *childAt(const ImVec2 &pos) const;
-  const ImRect &geometry() const { return geometry_; }  // screen coordinates
-
-private:
-  void drawDropIndicator();
-
-  ImRect geometry_;
-  ChartsWidget *charts_widget_;
-  ImVec2 drop_indicator_pos_;
-};
-
 class ChartsWidget {
 public:
-  ChartsWidget();
+  explicit ChartsWidget(cabana::AnalysisSession &session);
+  cabana::AnalysisSession &session;
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
-  void draw();  // content only; MainWindow owns the dockable panel
+  void draw();  // workspace controls
+  void drawPanes();
+  json11::Json workspace() const;
+  uint64_t documentRevision() const { return document_revision_; }
+  bool restoreWorkspace(const json11::Json &doc);
+  std::string activePageId() const { return page_ids_.at(tabbar_.tabData(tabbar_.currentIndex())); }
+  std::vector<std::string> pageIds() const;
+  json11::Json pageLayout(const std::string &id) const;
+  void setPageLayout(const std::string &id, const json11::Json &layout) { page_layouts_[id] = layout; }
+  std::vector<std::string> paneWindows() const;
   size_t chartCount() const { return charts_.size(); }
   void showChart(const MessageId &id, const cabana::Signal *sig, bool show, bool merge);
   inline bool hasSignal(const MessageId &id, const cabana::Signal *sig) { return findChart(id, sig) != nullptr; }
@@ -76,15 +72,15 @@ public:
   void restoreChartsFromIds(const std::vector<std::string> &chart_ids);
   std::string whatsThis() const;
 
-  void setColumnCount(int n);
   void removeAll();
 
   Observable<> seriesChanged;
   Observable<double> showTip;
 
 private:
-  void handleEvents();  // the back button, focus loss, the chart drag and the value tip leave
   void newChart();
+  void openWorkspace(const std::string &path);
+  void editEquation(const std::string &id);
   ChartView *createChart(int pos = 0);
   void removeChart(ChartView *chart);
   void splitChart(ChartView *chart);
@@ -92,18 +88,8 @@ private:
   void eventsMerged(const MessageEventsMap &new_events);
   void updateState();
   void zoomReset();
-  void startChartDrag(ChartView *chart, const ImVec2 &global_pos);
-  void dragChartMove(const ImVec2 &global_pos);
-  void dragChartRelease(const ImVec2 &global_pos);
-  void cancelChartDrag();
-  bool chartDragActive() const { return drag_.source != nullptr; }
-  void startAutoScroll(const ImVec2 &global_pos);
-  void stopAutoScroll();
-  void doAutoScroll();
   void drawToolBar();
-  void updateTabBar();
   void setMaxChartRange(int value);
-  void updateLayout();
   void settingChanged();
   void showValueTip(double sec);
   void newTab();
@@ -112,37 +98,22 @@ private:
   ChartView *findChart(const MessageId &id, const cabana::Signal *sig);
   // draws the selector until closed, then runs `accepted` (unless `owner` was removed)
   void execSignalSelector(std::unique_ptr<SignalSelector> dlg, ChartView *owner, std::function<void(SignalSelector &)> accepted);
-  void drawDragPreview();
 
+  uint64_t document_revision_ = 0;
   LogSlider range_slider_{1000};
+  std::map<std::string, cabana::Equation> equations_;
+  FunctionEditor function_editor_;
+  SeriesBrowser browser_;
 
   UndoStack zoom_undo_stack_;
 
   std::vector<std::unique_ptr<ChartView>> charts_;
   std::unordered_map<int, std::vector<ChartView *>> tab_charts_;
   TabBar tabbar_;
-  ChartsContainer charts_container_{this};
-  ImGuiWindow *charts_scroll_ = nullptr;  // the scroll area child window
-  ImRect charts_scroll_viewport_;
+  std::unordered_map<int, std::string> page_ids_;
+  std::unordered_map<std::string, json11::Json> page_layouts_;
   int max_chart_range_ = 0;
   std::pair<double, double> display_range_;
-  bool columns_action_visible_ = false;
-  int column_count_ = 1;
-  int current_column_count_ = 0;
-  struct ChartDrag {
-    ChartView *source = nullptr;
-    ImVec2 press_pos;  // global
-    bool active = false;
-  } drag_;
-  // the drag preview is a 50% alpha copy of the whole chart tile, drawn in a window that takes no input
-  ImVec2 drag_preview_pos_;
-  ImVec2 drag_preview_size_;
-  bool drag_preview_visible_ = false;
-  ChartView *drop_target_ = nullptr;
-  int auto_scroll_count_ = 0;
-  ImVec2 auto_scroll_pos_;
-  bool auto_scroll_timer_active_ = false;
-  double auto_scroll_timer_next_ = 0;
   bool value_tip_visible_ = false;
   bool any_plot_hovered_ = false;
   std::vector<std::unique_ptr<ChartView>> deleted_charts_;  // freed at the start of the next draw()
@@ -151,7 +122,6 @@ private:
   std::function<void(SignalSelector &)> signal_selector_accepted_;
   Connections connections_;
   friend class ChartView;
-  friend class ChartsContainer;
 };
 
 class ZoomCommand : public UndoCommand {

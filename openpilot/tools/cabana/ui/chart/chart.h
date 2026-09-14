@@ -9,6 +9,10 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "implot.h"
+#include "tools/cabana/analysis/fields.h"
+#include "tools/cabana/analysis/session.h"
+#include "tools/cabana/analysis/transforms.h"
+#include "json11/json11.hpp"
 
 #include "tools/cabana/ui/chart/tiplabel.h"
 #include "tools/cabana/dbc/dbcmanager.h"
@@ -31,26 +35,39 @@ public:
   struct SigItem {
     MessageId msg_id;
     const cabana::Signal *sig = nullptr;
+    std::string name;
+    std::string source;
+    std::shared_ptr<const cabana::Samples> snapshot;
     CabanaColor color;
     bool visible = true;
-    std::vector<ImPlotPoint> vals;
-    std::vector<ImPlotPoint> step_vals;
+    std::string alias;
+    cabana::TransformSettings transform;
+    std::shared_ptr<const cabana::DisplaySamples> data = std::make_shared<const cabana::DisplaySamples>();
     ImPlotPoint track_pt{};
-    SegmentTree segment_tree;
+    bool usesCanFormatting() const { return sig && transform.type == cabana::Transform::None && transform.scale == 1 && transform.offset == 0; }
+    std::string label() const { return (alias.empty() ? name : alias) + (snapshot ? "" : " (missing)"); }
     double min = 0;
     double max = 0;
   };
 
   ChartView(const std::pair<double, double> &x_range, ChartsWidget *parent);
   void addSignal(const MessageId &msg_id, const cabana::Signal *sig);
+  void addSource(const std::string &source);
+  void addBinding(const MessageId &msg_id, const std::string &name);
+  void resolveBindings();
+  json11::Json definition() const;
+  void restoreDefinition(const json11::Json &definition);
+  const std::string &paneId() const { return pane_id_; }
+  void setPaneId(const std::string &id) { pane_id_ = id; }
+  SeriesType seriesType() const { return series_type_; }
   bool hasSignal(const MessageId &msg_id, const cabana::Signal *sig) const;
   void updateSeries(const cabana::Signal *sig = nullptr, const MessageEventsMap *msg_new_events = nullptr);
   void updatePlot(double cur, double min, double max);
   void setSeriesType(SeriesType type) { series_type_ = type; }
   void showTip(double sec);
   void hideTip();
-  void draw(float width);  // one chart of settings.chart_height
-  void drawGhost(float width);  // the same tile rendered again, without handling any input
+  void draw(const ImVec2 &size);
+  std::string windowName() const { return (title_.empty() ? "Chart" : title_) + "###Chart/" + pane_id_; }
   void removeIf(std::function<bool(const SigItem &)> predicate);
   void takeSignalsFrom(ChartView *source);
   // every signal but the first, with its original color, for a split into one chart per signal
@@ -65,15 +82,13 @@ public:
   }
 
 private:
-  using PointIter = std::vector<ImPlotPoint>::const_iterator;
+  using PointIter = cabana::Samples::const_iterator;
 
   void signalUpdated(const cabana::Signal *sig);
   void manageSignals();
-  void msgRemoved(MessageId id) { removeIf([=](auto &s) { return s.msg_id.address == id.address && !dbc()->msg(id); }); }
-  void signalRemoved(const cabana::Signal *sig) { removeIf([=](auto &s) { return s.sig == sig; }); }
+  void msgRemoved(MessageId id) { resolveBindings(); }
+  void signalRemoved(const cabana::Signal *sig);
 
-  void appendCanEvents(const cabana::Signal *sig, const std::vector<const CanEvent *> &events,
-                       std::vector<ImPlotPoint> &vals, std::vector<ImPlotPoint> &step_vals);
   void createToolButtons();
   void drawContextMenu();
   void handleMousePress();
@@ -96,9 +111,9 @@ private:
   double niceNumber(double x, bool ceiling);
   CabanaColor uniqueColor(CabanaColor color, const cabana::Signal *exclude = nullptr) const;
   // the last sample at or before sec, nullptr when there is none inside the visible range
-  const ImPlotPoint *lastPointBefore(const SigItem &s, double sec) const;
+  const cabana::Sample *lastPointBefore(const SigItem &s, double sec) const;
   // the samples inside [x_min_, x_max_)
-  std::pair<PointIter, PointIter> visibleRange(const std::vector<ImPlotPoint> &points) const;
+  std::pair<PointIter, PointIter> visibleRange(const cabana::Samples &points) const;
   inline void clearTrackPoints() { for (auto &s : sigs_) s.track_pt = {}; }
   inline float xPos(double sec) const { return layout_.plot_area.Min.x + (sec - x_min_) / (x_max_ - x_min_) * layout_.plot_area.GetWidth(); }
   inline float yPos(double val) const { return layout_.plot_area.Max.y - (val - y_min_) / (y_max_ - y_min_) * layout_.plot_area.GetHeight(); }
@@ -129,7 +144,10 @@ private:
   ImVec2 press_pos_;
   ImRect rubber_rect_;
   bool resume_after_scrub_ = false;
-  bool drawing_ghost_ = false;  // drawing the drag preview: no mouse handling, no tip
+  std::string pane_id_;
+  std::string title_;
+  json11::Json saved_range_;
+  std::optional<double> y_lower_, y_upper_;
   ImGuiID context_menu_id_ = 0;
 
   TipLabel tip_label_;

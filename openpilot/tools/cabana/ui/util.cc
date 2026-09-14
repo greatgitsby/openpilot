@@ -672,3 +672,5 @@ bool fusionSliderInt(const char *label, int *v, int min, int max, float width) {
                               ImVec2(hx + SLIDER_LENGTH * 0.5f, cy + handle_h * 0.5f)));
   return changed;
 }
+
+bool inputDouble(const char *label, double *value) { return ImGui::InputDouble(label, value); }

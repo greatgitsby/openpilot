@@ -1,0 +1,302 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "6fdec3a3-ea47-50e6-9906-8ddf7608ea65",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "d682347b-05fb-54d2-8bd5-14d440eb5011",
+          "title": "CAN RX",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/totalRxCnt"
+              },
+              "alias": "/pandaStates/0/canState0/totalRxCnt[Derivative]",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/totalRxCnt"
+              },
+              "alias": "/pandaStates/0/canState1/totalRxCnt[Derivative]",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/totalRxCnt"
+              },
+              "alias": "/pandaStates/0/canState2/totalRxCnt[Derivative]",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 1101.875,
+            "left": 0.0,
+            "bottom": -26.875,
+            "right": 60.526742
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "b8d86488-5e00-562f-8fe6-e97fedfd419b",
+          "title": "CAN TX",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/totalTxCnt"
+              },
+              "alias": "/pandaStates/0/canState0/totalTxCnt[Derivative]",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/totalTxCnt"
+              },
+              "alias": "/pandaStates/0/canState1/totalTxCnt[Derivative]",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/totalTxCnt"
+              },
+              "alias": "/pandaStates/0/canState2/totalTxCnt[Derivative]",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 455.1,
+            "left": 0.0,
+            "bottom": -11.1,
+            "right": 60.526742
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "4c1c3688-1983-5d55-a1b5-69a45070742c",
+          "title": "CAN errors",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState0/totalErrorCnt"
+              },
+              "alias": "/pandaStates/0/canState0/totalErrorCnt[Derivative]",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState1/totalErrorCnt"
+              },
+              "alias": "/pandaStates/0/canState1/totalErrorCnt[Derivative]",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/canState2/totalErrorCnt"
+              },
+              "alias": "/pandaStates/0/canState2/totalErrorCnt[Derivative]",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "top": 2515.35,
+            "left": 0.0,
+            "bottom": -61.35,
+            "right": 60.526742
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.33362,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/d682347b-05fb-54d2-8bd5-14d440eb5011"
+                ],
+                "selected": "###Chart/d682347b-05fb-54d2-8bd5-14d440eb5011"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.49935472253068824,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/b8d86488-5e00-562f-8fe6-e97fedfd419b"
+                    ],
+                    "selected": "###Chart/b8d86488-5e00-562f-8fe6-e97fedfd419b"
+                  },
+                  {
+                    "panes": [
+                      "###Chart/4c1c3688-1983-5d55-a1b5-69a45070742c"
+                    ],
+                    "selected": "###Chart/4c1c3688-1983-5d55-a1b5-69a45070742c"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

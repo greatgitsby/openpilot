@@ -1,0 +1,170 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "a9e25764-3775-53e3-96b5-e9eee68454ae",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "b4a2a321-f206-5fe6-9caf-be1c6c631cd5",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/horizontalAccuracy"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 134.825489,
+            "top": 4402341.574525,
+            "bottom": -107369.555525,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "8f605ac9-fbe9-5719-9ddb-dffd81886dd1",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/flags"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 134.825489,
+            "top": 1.025,
+            "bottom": -0.025,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "dd95b60e-2f2f-578b-880c-a685fe4b158d",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/ubloxGnss/measurementReport/numMeas"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 134.825489,
+            "top": 6.15,
+            "bottom": -0.15,
+            "left": 0.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.3333333333333333,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/b4a2a321-f206-5fe6-9caf-be1c6c631cd5"
+                ],
+                "selected": "###Chart/b4a2a321-f206-5fe6-9caf-be1c6c631cd5"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/8f605ac9-fbe9-5719-9ddb-dffd81886dd1"
+                    ],
+                    "selected": "###Chart/8f605ac9-fbe9-5719-9ddb-dffd81886dd1"
+                  },
+                  {
+                    "panes": [
+                      "###Chart/dd95b60e-2f2f-578b-880c-a685fe4b158d"
+                    ],
+                    "selected": "###Chart/dd95b60e-2f2f-578b-880c-a685fe4b158d"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

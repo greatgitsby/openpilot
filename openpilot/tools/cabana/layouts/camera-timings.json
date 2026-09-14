@@ -1,0 +1,631 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "407b0497-4254-599c-9672-373d24dd0330",
+      "name": "SOF / EOF (encodeIdx)",
+      "panes": [
+        {
+          "id": "7b6cb092-d6e3-5eaf-8f7e-aea230999a01",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/cabinEncodeIdx/timestampSof"
+              },
+              "alias": "/cabinEncodeIdx/timestampSof[Derivative]",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/narrowRoadEncodeIdx/timestampSof"
+              },
+              "alias": "/narrowRoadEncodeIdx/timestampSof[Derivative]",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/wideRoadEncodeIdx/timestampSof"
+              },
+              "alias": "/wideRoadEncodeIdx/timestampSof[Derivative]",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": 35000000.0,
+            "left": 0.0,
+            "top": 65000000.0,
+            "right": 630.006367
+          },
+          "y_lower": 35000000.0,
+          "y_upper": 65000000.0
+        },
+        {
+          "id": "4f32ac2b-39f8-5ba4-bbbb-69a1c1958a1c",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/cabinEncodeIdx/timestampEof"
+              },
+              "alias": "/cabinEncodeIdx/timestampEof[Derivative]",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/narrowRoadEncodeIdx/timestampEof"
+              },
+              "alias": "/narrowRoadEncodeIdx/timestampEof[Derivative]",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/wideRoadEncodeIdx/timestampEof"
+              },
+              "alias": "/wideRoadEncodeIdx/timestampEof[Derivative]",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": 35000000.0,
+            "left": 0.0,
+            "top": 65000000.0,
+            "right": 630.006367
+          },
+          "y_lower": 35000000.0,
+          "y_upper": 65000000.0
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.500885,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/7b6cb092-d6e3-5eaf-8f7e-aea230999a01"
+                ],
+                "selected": "###Chart/7b6cb092-d6e3-5eaf-8f7e-aea230999a01"
+              },
+              {
+                "panes": [
+                  "###Chart/4f32ac2b-39f8-5ba4-bbbb-69a1c1958a1c"
+                ],
+                "selected": "###Chart/4f32ac2b-39f8-5ba4-bbbb-69a1c1958a1c"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "cb7614d3-fbca-5749-ab82-577840a8aee1",
+      "name": "model timings",
+      "panes": [
+        {
+          "id": "ed6fb798-8de5-5d2c-ba36-ea0ceb205c39",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/modelV2/modelExecutionTime"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": 0.015143,
+            "left": 0.0,
+            "top": 0.016865,
+            "right": 630.006367
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "17e86481-7cb8-5a68-82ea-147e615cfffd",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/modelV2/frameDropPerc"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": -0.1,
+            "left": 0.0,
+            "top": 0.1,
+            "right": 630.006367
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.5,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/ed6fb798-8de5-5d2c-ba36-ea0ceb205c39"
+                ],
+                "selected": "###Chart/ed6fb798-8de5-5d2c-ba36-ea0ceb205c39"
+              },
+              {
+                "panes": [
+                  "###Chart/17e86481-7cb8-5a68-82ea-147e615cfffd"
+                ],
+                "selected": "###Chart/17e86481-7cb8-5a68-82ea-147e615cfffd"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "8a0bbc03-2b28-5dbb-9232-7e5fd6b60b07",
+      "name": "sensor info",
+      "panes": [
+        {
+          "id": "9cd17786-77de-5a5d-b1e7-ba108ae1474f",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/cabinCameraState/sensor"
+              },
+              "alias": "",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/narrowRoadCameraState/sensor"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/wideRoadCameraState/sensor"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": -0.1,
+            "left": 0.0,
+            "top": 0.1,
+            "right": 630.006367
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "panes": [
+              "###Chart/9cd17786-77de-5a5d-b1e7-ba108ae1474f"
+            ],
+            "selected": "###Chart/9cd17786-77de-5a5d-b1e7-ba108ae1474f"
+          }
+        ]
+      }
+    },
+    {
+      "id": "e665a331-e22a-552e-ab5d-6d9e980e6d9a",
+      "name": "SOF / EOF (cameraState)",
+      "panes": [
+        {
+          "id": "66e3146b-37e4-525c-b117-39db27e1d88b",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/cabinCameraState/timestampSof"
+              },
+              "alias": "/cabinCameraState/timestampSof[Derivative]",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/narrowRoadCameraState/timestampSof"
+              },
+              "alias": "/narrowRoadCameraState/timestampSof[Derivative]",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/wideRoadCameraState/timestampSof"
+              },
+              "alias": "/wideRoadCameraState/timestampSof[Derivative]",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": 35000000.0,
+            "left": 0.0,
+            "top": 65000000.0,
+            "right": 630.006367
+          },
+          "y_lower": 35000000.0,
+          "y_upper": 65000000.0
+        },
+        {
+          "id": "600a538b-89a1-5fba-8285-19201fa75db7",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/cabinCameraState/timestampEof"
+              },
+              "alias": "/cabinCameraState/timestampEof[Derivative]",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/narrowRoadCameraState/timestampEof"
+              },
+              "alias": "/narrowRoadCameraState/timestampEof[Derivative]",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/wideRoadCameraState/timestampEof"
+              },
+              "alias": "/wideRoadCameraState/timestampEof[Derivative]",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 1,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 1.0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "bottom": 35000000.0,
+            "left": 0.0,
+            "top": 65000000.0,
+            "right": 630.006367
+          },
+          "y_lower": 35000000.0,
+          "y_upper": 65000000.0
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.500885,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/66e3146b-37e4-525c-b117-39db27e1d88b"
+                ],
+                "selected": "###Chart/66e3146b-37e4-525c-b117-39db27e1d88b"
+              },
+              {
+                "panes": [
+                  "###Chart/600a538b-89a1-5fba-8285-19201fa75db7"
+                ],
+                "selected": "###Chart/600a538b-89a1-5fba-8285-19201fa75db7"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

@@ -1,46 +1,46 @@
 #define IMGUI_DEFINE_MATH_OPERATORS  // ImVec2 arithmetic, must precede imgui.h
 #include "tools/cabana/ui/chart/chartswidget.h"
 
-#include "tools/cabana/ui/threadpool.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <future>
+#include <set>
+#include <random>
+#include <fstream>
+#include <filesystem>
+#include "tools/cabana/analysis/workspace.h"
+#include "tools/cabana/ui/dialogs/filedialog.h"
+#include "tools/cabana/ui/dialogs/messagebox.h"
 
 #include "tools/cabana/settings.h"
 #include "tools/cabana/ui/chart/chart.h"
 #include "tools/cabana/ui/icons.h"
 #include "tools/cabana/ui/util.h"
+#include "tools/cabana/ui/panel.h"
 #include "tools/cabana/utils/strings.h"
 
-const int MAX_COLUMN_COUNT = 4;
-const int START_DRAG_DISTANCE = 10;
 const float MIN_RANGE_SLIDER_WIDTH = 40.0f;
 
 bool LogSlider::draw(const char *label, float width) {
   return fusionSliderInt(label, &pos_, min_, max_, width);
 }
 
-ChartsWidget::ChartsWidget() {
+ChartsWidget::ChartsWidget(cabana::AnalysisSession &session) : session(session) {
   range_slider_.setRange(1, settings.max_cached_minutes * 60);
 
   tabbar_.setAutoHide(true);
   tabbar_.setUsesScrollButtons(true);
   tabbar_.setTabsClosable(true);
 
-  column_count_ = std::clamp(settings.chart_column_count, 1, MAX_COLUMN_COUNT);
   max_chart_range_ = std::clamp(settings.chart_range, 1, settings.max_cached_minutes * 60);
   display_range_ = std::make_pair(can->minSeconds(), can->minSeconds() + max_chart_range_);
   range_slider_.setValue(max_chart_range_);
 
-  connections_.push_back(dbc()->fileChanged.connect([this]() { removeAll(); }));
   connections_.push_back(can->eventsMerged.connect([this](const MessageEventsMap &events) { eventsMerged(events); }));
   connections_.push_back(can->msgsReceived.connect([this](const std::set<MessageId> *, bool) { updateState(); }));
   connections_.push_back(can->seeking.connect([this](double) { updateState(); }));
   connections_.push_back(can->timeRangeChanged.connect([this](const auto &) { updateState(); }));
   connections_.push_back(settings.changed.connect([this]() { settingChanged(); }));
-  connections_.push_back(seriesChanged.connect([this]() { updateTabBar(); }));
   connections_.push_back(tabbar_.tabCloseRequested.connect([this](int index) { removeTab(index); }));
   connections_.push_back(tabbar_.tabContextMenu.connect([this](int index) {
     if (dropdown::BeginPopupContextItem()) {
@@ -53,9 +53,10 @@ ChartsWidget::ChartsWidget() {
     }
   }));
   connections_.push_back(tabbar_.currentChanged.connect([this](int index) {
-    if (index != -1) updateLayout();
+    if (index != -1) showValueTip(-1);
   }));
 
+  connections_.push_back(can->fieldsChanged.connect([this]() { updateState(); }));
   newTab();
 }
 
@@ -73,10 +74,12 @@ std::string ChartsWidget::whatsThis() const {
 
 void ChartsWidget::newTab() {
   static int tab_unique_id = 0;
-  int idx = tabbar_.addTab("");
-  tabbar_.setTabData(idx, tab_unique_id++);
+  int idx = tabbar_.addTab("Page " + std::to_string(tabbar_.count() + 1));
+  const int id = tab_unique_id++;
+  tabbar_.setTabData(idx, id);
+  std::random_device random;
+  page_ids_[id] = std::to_string(random()) + "-" + std::to_string(random());
   tabbar_.setCurrentIndex(idx);
-  updateTabBar();
 }
 
 void ChartsWidget::removeTab(int index) {
@@ -85,23 +88,15 @@ void ChartsWidget::removeTab(int index) {
     removeChart(c);
   }
   tab_charts_.erase(id);
+  page_layouts_.erase(page_ids_[id]);
+  page_ids_.erase(id);
   tabbar_.removeTab(index);
-  updateTabBar();
+  if (!tabbar_.count()) newTab();
 }
 
-void ChartsWidget::updateTabBar() {
-  for (int i = 0; i < tabbar_.count(); ++i) {
-    const auto &charts_in_tab = tab_charts_[tabbar_.tabData(i)];
-    tabbar_.setTabText(i, "Tab " + std::to_string(i + 1) + " (" + std::to_string((int)charts_in_tab.size()) + ")");
-  }
-}
 
 void ChartsWidget::eventsMerged(const MessageEventsMap &new_events) {
-  std::vector<std::future<void>> futures;
-  for (auto &c : charts_) {
-    futures.push_back(ThreadPool::instance().run([c = c.get(), &new_events]() { c->updateSeries(nullptr, &new_events); }));
-  }
-  for (auto &f : futures) f.get();
+  updateState();
 }
 
 void ChartsWidget::zoomReset() {
@@ -111,12 +106,12 @@ void ChartsWidget::zoomReset() {
 
 ImRect ChartsWidget::chartVisibleRect(ChartView *chart) {
   ImRect r = chart->rect();
-  r.ClipWith(charts_scroll_viewport_);
+  r.ClipWith(ImGui::GetCurrentWindow()->InnerRect);
   return r;
 }
 
 void ChartsWidget::showValueTip(double sec) {
-  if (chartDragActive()) sec = -1;  // no value tip while a drag is in progress
+  session.inspect(sec);
   showTip(sec);
   if (sec < 0 && !value_tip_visible_) return;
 
@@ -171,21 +166,71 @@ void ChartsWidget::drawToolBar() {
     for (int i = 0; i < type_count; ++i) {
       if (dropdown::Item(SERIES_TYPE_NAMES[i], nullptr, settings.chart_series_type == i)) {
         settings.chart_series_type = i;
-        settingChanged();
+        for (auto &c : charts_) c->setSeriesType((SeriesType)i);
       }
     }
   };
   items.push_back(toolbarMenu("chart_type", chart_type_text, "Type", chart_type_items));
 
-  const std::string columns_action_text = "Columns:  " + std::to_string(column_count_);
-  if (columns_action_visible_) {
-    auto column_items = [this]() {
-      for (int i = 0; i < MAX_COLUMN_COUNT; ++i) {
-        if (dropdown::Item(std::to_string(i + 1).c_str(), nullptr, column_count_ == i + 1)) setColumnCount(i + 1);
+  items.push_back(toolbarMenu("workspace", "Workspace", "Workspace", [this]() {
+    if (dropdown::Item("Open...")) FileDialog::getOpenFileName("Open Workspace", settings.last_dir, ".json", [this](const auto &path) { if (!path.empty()) openWorkspace(path); });
+    if (dropdown::Item("Save As...")) FileDialog::getSaveFileName("Save Workspace", settings.last_dir + "/workspace.json", ".json", [this](const auto &path) {
+      if (path.empty()) return;
+      std::ofstream output(path);
+      output << workspace().dump() << '\n';
+      if (!output) MessageBox::warning("Save Workspace", "Could not write " + path);
+    });
+    if (dropdown::BeginMenu("Presets")) {
+      std::error_code error;
+      for (const auto &entry : std::filesystem::directory_iterator(executableDir() / "layouts", error)) {
+        if (entry.path().extension() == ".json" && dropdown::Item(entry.path().stem().c_str())) openWorkspace(entry.path().string());
       }
-    };
-    items.push_back(toolbarMenu("columns", columns_action_text, "Columns", column_items));
-  }
+      dropdown::EndMenu();
+    }
+    if (dropdown::Item("Duplicate page")) {
+      auto document = workspace().object_items();
+      auto pages = document["pages"].array_items();
+      auto copy = pages[tabbar_.currentIndex()].object_items();
+      std::random_device random;
+      const std::string suffix = "-" + std::to_string(random());
+      copy["id"] = copy["id"].string_value() + suffix;
+      copy["name"] = copy["name"].string_value() + " copy";
+      auto panes = copy["panes"].array_items();
+      std::map<std::string, std::string> ids;
+      for (auto &pane : panes) {
+        auto object = pane.object_items();
+        const auto old = object["id"].string_value();
+        object["id"] = old + suffix;
+        ids["###Chart/" + old] = "###Chart/" + old + suffix;
+        pane = object;
+      }
+      std::function<json11::Json(const json11::Json &)> remap = [&](const json11::Json &value) -> json11::Json {
+        if (value.is_string() && ids.count(value.string_value())) return ids.at(value.string_value());
+        if (value.is_object()) { auto object = value.object_items(); for (auto &[_, child] : object) child = remap(child); return object; }
+        if (value.is_array()) { auto array = value.array_items(); for (auto &child : array) child = remap(child); return array; }
+        return value;
+      };
+      copy["dock"] = remap(copy["dock"]);
+      copy["panes"] = panes;
+      pages.push_back(copy);
+      document["pages"] = pages;
+      document["active_page"] = (int)pages.size() - 1;
+      restoreWorkspace(document);
+    }
+    std::string name = tabbar_.tabText(tabbar_.currentIndex());
+    if (inputText("Page name", &name)) tabbar_.setTabText(tabbar_.currentIndex(), name);
+  }));
+  items.push_back(toolbarMenu("functions", "Functions", "Python functions", [this]() {
+    if (dropdown::Item("New function...")) editEquation("");
+    for (const auto &[id, equation] : equations_) {
+      if (dropdown::BeginMenu(equation.name.c_str())) {
+        if (dropdown::Item("Edit...")) editEquation(id);
+        if (dropdown::Item("Plot")) { createChart()->addSource("equation/" + id); updateState(); }
+        if (auto it = session.diagnostics().find(id); it != session.diagnostics().end()) ImGui::TextWrapped("%s", it->second.c_str());
+        dropdown::EndMenu();
+      }
+    }
+  }));
 
   // the spacer right aligns the rest
   const size_t spacer_index = items.size();
@@ -252,9 +297,6 @@ void ChartsWidget::settingChanged() {
   if (range_slider_.maximum() != settings.max_cached_minutes * 60) {
     range_slider_.setRange(1, settings.max_cached_minutes * 60);
   }
-  for (auto &c : charts_) {
-    c->setSeriesType((SeriesType)settings.chart_series_type);
-  }
 }
 
 ChartView *ChartsWidget::findChart(const MessageId &id, const cabana::Signal *sig) {
@@ -270,7 +312,6 @@ ChartView *ChartsWidget::createChart(int pos) {
   charts_.insert(charts_.begin() + pos, std::move(chart));
   auto &current = currentCharts();
   current.insert(current.begin() + std::min(pos, (int)current.size()), ptr);
-  updateLayout();
   return ptr;
 }
 
@@ -302,7 +343,7 @@ std::vector<std::string> ChartsWidget::serializeChartIds() const {
     std::string ids;
     for (const auto &s : c->signals()) {
       if (!ids.empty()) ids += ',';
-      ids += s.msg_id.toString() + "|" + s.sig->name;
+      ids += s.msg_id.toString() + "|" + s.name;
     }
     chart_ids.push_back(ids);
   }
@@ -312,172 +353,14 @@ std::vector<std::string> ChartsWidget::serializeChartIds() const {
 
 void ChartsWidget::restoreChartsFromIds(const std::vector<std::string> &chart_ids) {
   for (const auto &chart_id : chart_ids) {
-    int index = 0;
+    auto *chart = createChart();
     for (const auto &part : utils::split(chart_id, ',')) {
       const size_t sep = part.find('|');
       if (sep == std::string::npos) continue;
-      MessageId msg_id = MessageId::fromString(part.substr(0, sep));
-      if (auto *msg = dbc()->msg(msg_id))
-        if (auto *sig = msg->sig(part.substr(sep + 1)))
-          showChart(msg_id, sig, true, index++ > 0);
+      if (auto id = MessageId::parse(part.substr(0, sep))) chart->addBinding(*id, part.substr(sep + 1));
     }
   }
-}
-
-void ChartsWidget::setColumnCount(int n) {
-  n = std::clamp(n, 1, MAX_COLUMN_COUNT);
-  if (column_count_ != n) {
-    column_count_ = settings.chart_column_count = n;
-    updateLayout();
-  }
-}
-
-void ChartsWidget::updateLayout() {
-  // the container has not been drawn yet (docked/floated this frame): keep the last known layout
-  const float container_width = charts_container_.geometry().GetWidth();
-  if (container_width <= 0) return;
-
-  int n = MAX_COLUMN_COUNT;
-  for (; n > 1; --n) {
-    if ((n * CHART_MIN_WIDTH + (n - 1) * ImGui::GetStyle().ItemSpacing.x) < container_width) break;
-  }
-
-  columns_action_visible_ = n > 1;
-  current_column_count_ = std::min(column_count_, n);
-}
-
-void ChartsWidget::startChartDrag(ChartView *chart, const ImVec2 &global_pos) {
-  stopAutoScroll();
-  drag_ = {.source = chart, .press_pos = global_pos};
-  showValueTip(-1);  // no value tip while a drag is in progress
-  // the drag preview re-renders the tile at CHART_MIN_WIDTH
-  drag_preview_size_ = ImVec2(CHART_MIN_WIDTH, (float)settings.chart_height);
-}
-
-void ChartsWidget::dragChartMove(const ImVec2 &global_pos) {
-  if (!drag_.active) {
-    ImVec2 d = global_pos - drag_.press_pos;
-    if (std::abs(d.x) + std::abs(d.y) < START_DRAG_DISTANCE) return;
-    drag_.active = true;
-    drag_preview_visible_ = true;
-  }
-  drag_preview_pos_ = global_pos + ImVec2(5, 5);
-
-  // hovering a tab switches to it so the chart can be dropped into another tab
-  int tab = tabbar_.tabAt(global_pos);
-  if (tab >= 0 && tab != tabbar_.currentIndex()) {
-    tabbar_.setCurrentIndex(tab);
-  }
-
-  ChartView *target = nullptr;
-  for (auto c : currentCharts()) {
-    if (c != drag_.source && c->rect().Contains(global_pos)) {
-      target = c;
-      break;
-    }
-  }
-  if (std::exchange(drop_target_, target) != target) {
-    for (auto &c : charts_) c->setDropHighlight(c.get() == target);
-  }
-  bool in_viewport = charts_scroll_viewport_.Contains(global_pos);
-  bool on_background = !target && in_viewport && !charts_container_.childAt(global_pos);
-  charts_container_.setDropIndicator(on_background ? global_pos : ImVec2());
-
-  if (in_viewport) {
-    startAutoScroll(global_pos);
-  }
-}
-
-void ChartsWidget::cancelChartDrag() {
-  drag_ = {};
-  stopAutoScroll();
-  drag_preview_visible_ = false;
-  charts_container_.setDropIndicator({});
-  if (auto target = std::exchange(drop_target_, nullptr)) target->setDropHighlight(false);
-}
-
-void ChartsWidget::dragChartRelease(const ImVec2 &global_pos) {
-  ChartView *source = drag_.source;
-  bool active = drag_.active;
-  ChartView *target = drop_target_;
-  cancelChartDrag();
-  if (!active) return;
-
-  bool in_viewport = charts_scroll_viewport_.Contains(global_pos);
-  if (target) {
-    // merge source into target
-    target->takeSignalsFrom(source);
-  } else if (in_viewport && !charts_container_.childAt(global_pos)) {
-    // reorder within the current tab
-    auto w = charts_container_.getDropAfter(global_pos);
-    if (w != source) {
-      for (auto &[_, list] : tab_charts_) {
-        list.erase(std::remove(list.begin(), list.end(), source), list.end());
-      }
-      auto &cur = currentCharts();
-      int to = w ? std::find(cur.begin(), cur.end(), w) - cur.begin() + 1 : 0;
-      cur.insert(cur.begin() + to, source);
-      updateLayout();
-      updateTabBar();
-    }
-  }
-}
-
-void ChartsWidget::drawDragPreview() {
-  if (!drag_preview_visible_ || !drag_.source) return;
-  // the drag preview is the whole tile (header + axes + plot) at 50% alpha, re-rendered into a window that
-  // takes no input, so the live chart keeps handling the mouse.
-  ImGui::SetNextWindowPos(drag_preview_pos_);
-  ImGui::SetNextWindowSize(drag_preview_size_);
-  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.5f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  const ImGuiWindowFlags flags = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDecoration |
-                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
-                                 ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDocking;
-  if (ImGui::Begin("##chart_drag_ghost", nullptr, flags)) {
-    drag_.source->drawGhost(drag_preview_size_.x);
-  }
-  ImGui::End();
-  ImGui::PopStyleVar(3);
-}
-
-void ChartsWidget::startAutoScroll(const ImVec2 &global_pos) {
-  auto_scroll_pos_ = global_pos;
-  if (!auto_scroll_timer_active_) auto_scroll_timer_next_ = ImGui::GetTime() + 0.05;
-  auto_scroll_timer_active_ = true;
-}
-
-void ChartsWidget::stopAutoScroll() {
-  auto_scroll_timer_active_ = false;
-  auto_scroll_count_ = 0;
-}
-
-void ChartsWidget::doAutoScroll() {
-  if (!charts_scroll_) return;
-  const int page_step = charts_scroll_viewport_.GetHeight();
-  if (auto_scroll_count_ < page_step) {
-    ++auto_scroll_count_;
-  }
-
-  int value = charts_scroll_->Scroll.y;
-  ImVec2 pos = auto_scroll_pos_;
-  ImRect area = charts_scroll_viewport_;
-
-  int new_value = value;
-  if (pos.y - area.Min.y < settings.chart_height / 2) {
-    new_value = value - auto_scroll_count_;
-  } else if (area.Max.y - pos.y < settings.chart_height / 2) {
-    new_value = value + auto_scroll_count_;
-  }
-  new_value = std::clamp<int>(new_value, 0, charts_scroll_->ScrollMax.y);
-  if (new_value != value) ImGui::SetScrollY(charts_scroll_, new_value);
-  if (value == new_value) {
-    stopAutoScroll();
-  } else if (chartDragActive()) {
-    // refresh the drop indicator/target at the new scroll position
-    dragChartMove(auto_scroll_pos_);
-  }
+  updateState();
 }
 
 void ChartsWidget::newChart() {
@@ -486,7 +369,8 @@ void ChartsWidget::newChart() {
     if (!items.empty()) {
       auto c = createChart();
       for (const auto &it : items) {
-        c->addSignal(it.msg_id, it.sig);
+        if (it.path.empty()) c->addSignal(it.msg_id, it.sig);
+        else c->addSource(it.path);
       }
       updateState();
     }
@@ -494,6 +378,7 @@ void ChartsWidget::newChart() {
 }
 
 void ChartsWidget::execSignalSelector(std::unique_ptr<SignalSelector> dlg, ChartView *owner, std::function<void(SignalSelector &)> accepted) {
+  dlg->setSources(session.sources());
   signal_selector_ = std::move(dlg);
   signal_selector_owner_ = owner;
   signal_selector_accepted_ = std::move(accepted);
@@ -501,8 +386,6 @@ void ChartsWidget::execSignalSelector(std::unique_ptr<SignalSelector> dlg, Chart
 }
 
 void ChartsWidget::removeChart(ChartView *chart) {
-  if (drag_.source == chart) cancelChartDrag();
-  if (drop_target_ == chart) drop_target_ = nullptr;
   if (signal_selector_owner_ == chart) {
     signal_selector_owner_ = nullptr;
     signal_selector_accepted_ = nullptr;
@@ -515,7 +398,6 @@ void ChartsWidget::removeChart(ChartView *chart) {
   for (auto &[_, list] : tab_charts_) {
     list.erase(std::remove(list.begin(), list.end(), chart), list.end());
   }
-  updateLayout();
   seriesChanged();
 }
 
@@ -530,121 +412,150 @@ void ChartsWidget::removeAll() {
   zoomReset();
 }
 
-void ChartsWidget::handleEvents() {
-  // the mouse back button undoes a zoom; there is no swipe-back gesture
-  if (ImGui::IsMouseClicked(3) && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
-    zoom_undo_stack_.undo();
-  }
-  if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow)) {
-    if (chartDragActive()) cancelChartDrag();
-    showValueTip(-1);
-  }
-
-  // route all mouse events to the chart drag, even when the source chart is hidden by a tab switch
-  if (chartDragActive()) {
-    if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-      dragChartMove(ImGui::GetMousePos());
-    } else {
-      dragChartRelease(ImGui::GetMousePos());
-    }
-  }
-
-  if (!value_tip_visible_) return;
-
-  // The tip is drawn without an input item, so the mouse is never "on the tip".
-  const ImVec2 delta = ImGui::GetIO().MouseDelta;
-  if (!any_plot_hovered_ &&
-      (delta.x != 0 || delta.y != 0 || !ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows))) {
-    showValueTip(-1);  // the mouse moved off the plot or out of the charts window
-  }
-}
-
 void ChartsWidget::draw() {
   deleted_charts_.clear();
-  ImGui::PushID(this);
-  if (auto_scroll_timer_active_ && ImGui::GetTime() >= auto_scroll_timer_next_) {
-    auto_scroll_timer_next_ = ImGui::GetTime() + 0.05;
-    doAutoScroll();
-  }
-  // the drop target and indicator must be resolved before the charts are painted, otherwise the highlight
-  // lags a frame behind the target used on release and the drop lands on the wrong chart
-  handleEvents();
-
+  function_editor_.draw();
   drawToolBar();
   tabbar_.draw();
-
-  any_plot_hovered_ = false;
-  if (ImGui::BeginChild("charts_scroll", ImVec2(0, 0), ImGuiChildFlags_None, 0)) {
-    charts_scroll_ = ImGui::GetCurrentWindow();
-    charts_scroll_viewport_ = charts_scroll_->InnerRect;
-    charts_container_.draw();
-  }
-  ImGui::EndChild();
-
-  drawDragPreview();
-
+  browser_.draw(session, [this](const std::string &source, bool merge) {
+    auto *chart = merge && !currentCharts().empty() ? currentCharts().front() : createChart();
+    chart->addSource(source);
+    updateState();
+  });
   if (signal_selector_ && !signal_selector_->draw()) {
     auto dlg = std::move(signal_selector_);
     auto accepted = std::move(signal_selector_accepted_);
     signal_selector_owner_ = nullptr;
     if (dlg->accepted() && accepted) accepted(*dlg);
   }
-  ImGui::PopID();
 }
 
-void ChartsContainer::draw() {
-  const ImVec2 start = ImGui::GetCursorScreenPos();
-  const float width_avail = ImGui::GetContentRegionAvail().x;
-  geometry_ = ImRect(start, start + ImVec2(width_avail, 0));
-  charts_widget_->updateLayout();
-
-  const int n = std::max(charts_widget_->current_column_count_, 1);
-  const float spacing = ImGui::GetStyle().ItemSpacing.x;
-  const float width = (geometry_.GetWidth() - (n - 1) * spacing) / n;
-  const ImVec2 origin = ImGui::GetCursorScreenPos();
-  auto current_charts = charts_widget_->currentCharts();  // copy: drawing may remove charts
-  float bottom = origin.y;
-  const bool aligned = ImPlot::BeginAlignedPlots("charts_align", true);
-  for (int i = 0; i < current_charts.size(); ++i) {
-    ImVec2 pos = origin + ImVec2((i % n) * (width + spacing), (i / n) * (settings.chart_height + ImGui::GetStyle().ItemSpacing.y));
-    ImGui::SetCursorScreenPos(pos);
-    current_charts[i]->draw(width);
-    bottom = std::max(bottom, pos.y + settings.chart_height);
-    if (current_charts[i]->plotHovered()) charts_widget_->any_plot_hovered_ = true;  // the window must be hovered too
-  }
-  if (aligned) ImPlot::EndAlignedPlots();
-  ImGui::SetCursorScreenPos(ImVec2(origin.x, bottom));
-  ImGui::Dummy(ImVec2(geometry_.GetWidth(), ImGui::GetStyle().ItemSpacing.y));
-  geometry_.Max.y = bottom + ImGui::GetStyle().ItemSpacing.y;
-  drawDropIndicator();
-}
-
-void ChartsContainer::drawDropIndicator() {
-  if (!(drop_indicator_pos_.x == 0 && drop_indicator_pos_.y == 0) && !childAt(drop_indicator_pos_)) {
-    ImRect r = geometry_;
-    r.Max.y = r.Min.y + ImGui::GetStyle().ItemSpacing.y;
-    if (auto insert_after = getDropAfter(drop_indicator_pos_)) {
-      float h = r.GetHeight();
-      r.Min.y = insert_after->rect().Max.y;
-      r.Max.y = r.Min.y + h;
+void ChartsWidget::drawPanes() {
+  any_plot_hovered_ = false;
+  for (auto *chart : std::vector<ChartView *>(currentCharts())) {
+    bool open = true;
+    setNextPanelClass();
+    ImGui::SetNextWindowSize(ImVec2(600, 350), ImGuiCond_FirstUseEver);
+    if (beginPanel(chart->windowName().c_str(), &open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+      chart->draw(ImGui::GetContentRegionAvail());
+      any_plot_hovered_ |= chart->plotHovered();
+      if (ImGui::IsMouseClicked(3) && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) zoom_undo_stack_.undo();
     }
-
-    ImGui::GetWindowDrawList()->AddRectFilled(r.Min, r.Max, ImGui::GetColorU32(ImGuiCol_Header), ImGui::GetStyle().FrameRounding);
+    ImGui::End();
+    if (!open) removeChart(chart);
   }
+  if (!any_plot_hovered_ && value_tip_visible_) showValueTip(-1);
 }
 
-ChartView *ChartsContainer::getDropAfter(const ImVec2 &pos) const {
-  const auto &charts = charts_widget_->currentCharts();
-  auto it = std::find_if(charts.crbegin(), charts.crend(), [&pos](auto c) {
-    const ImRect &area = c->rect();
-    return pos.x >= area.Min.x && pos.x <= area.Max.x && pos.y >= area.Max.y;
+json11::Json ChartsWidget::workspace() const {
+  using J = json11::Json;
+  J::array pages;
+  for (int i = 0; i < tabbar_.count(); ++i) {
+    J::array panes;
+    auto it = tab_charts_.find(tabbar_.tabData(i));
+    if (it != tab_charts_.end()) for (const auto *chart : it->second) panes.push_back(chart->definition());
+    std::set<std::string> windows{"###MessagesPanel", "###CenterWidget", "###VideoPanel", "###ChartsWindow"};
+    for (const auto &pane : panes) windows.insert("###Chart/" + pane["id"].string_value());
+    // A pane may close after this frame's dock capture. Never persist its stale tab.
+    std::function<J(const J &)> prune = [&](const J &node) -> J {
+      if (node.is_null()) return node;
+      auto copy = node.object_items();
+      if (node["panes"].is_array()) {
+        J::array kept;
+        for (const auto &name : node["panes"].array_items()) if (windows.count(name.string_value())) kept.push_back(name);
+        copy["panes"] = kept;
+        if (!node["selected"].is_null() && !windows.count(node["selected"].string_value())) copy["selected"] = "";
+      }
+      for (const auto *key : {"children", "floating"}) if (node[key].is_array()) {
+        J::array entries;
+        for (const auto &entry : node[key].array_items()) entries.push_back(prune(entry));
+        copy[key] = entries;
+      }
+      if (!node["tree"].is_null()) copy["tree"] = prune(node["tree"]);
+      return copy;
+    };
+    pages.push_back(J::object{{"id", page_ids_.at(tabbar_.tabData(i))}, {"name", tabbar_.tabText(i)}, {"panes", panes},
+                              {"dock", prune(pageLayout(page_ids_.at(tabbar_.tabData(i))))}});
+  }
+  J::array equations;
+  for (const auto &[id, e] : equations_) {
+    J::array inputs;
+    for (const auto &input : e.additional) inputs.push_back(input);
+    equations.push_back(J::object{{"id", id}, {"name", e.name}, {"source", e.source}, {"globals", e.globals},
+                                 {"function", e.function}, {"additional", inputs}, {"language", "python"}});
+  }
+  J view_range;
+  if (auto range = can->timeRange()) view_range = J::array{range->first, range->second};
+  return J::object{{"view_range", view_range}, {"relative_time", true}, {"equations", equations}, {"cabana_workspace", 1}, {"pages", pages}, {"active_page", tabbar_.currentIndex()}};
+}
+
+bool ChartsWidget::restoreWorkspace(const json11::Json &doc) {
+  if (!cabana::validateWorkspace(doc).empty()) return false;
+  ++document_revision_;
+  equations_.clear();
+  for (const auto &item : doc["equations"].array_items()) {
+    if (item["language"].string_value() != "python") return false;
+    cabana::Equation equation{item["name"].string_value(), item["source"].string_value(), item["globals"].string_value(), item["function"].string_value(), {}};
+    for (const auto &input : item["additional"].array_items()) equation.additional.push_back(input.string_value());
+    equations_[item["id"].string_value()] = std::move(equation);
+  }
+  session.setEquations(equations_);
+  removeAll();
+  for (int i = 0; i < doc["pages"].array_items().size(); ++i) {
+    if (i) newTab();
+    const auto &page = doc["pages"][i];
+    if (!page["id"].string_value().empty()) page_ids_[tabbar_.tabData(i)] = page["id"].string_value();
+    page_layouts_[activePageId()] = page["dock"];
+    for (const auto &pane : page["panes"].array_items()) createChart(charts_.size())->restoreDefinition(pane);
+    tabbar_.setTabText(i, page["name"].string_value());
+  }
+  tabbar_.setCurrentIndex(std::clamp(doc["active_page"].int_value(), 0, tabbar_.count() - 1));
+  auto range = doc["view_range"];
+  if (!doc.object_items().count("view_range")) {
+    const auto &saved = doc["pages"][tabbar_.currentIndex()]["panes"][0]["range"];
+    if (saved["left"].is_number() && saved["right"].is_number()) range = json11::Json::array{saved["left"], saved["right"]};
+  }
+  if (range.array_items().size() == 2 && range[1].number_value() > range[0].number_value()) {
+    can->setTimeRange(std::make_pair(range[0].number_value(), range[1].number_value()));
+  }
+  updateState();
+  return true;
+}
+
+std::vector<std::string> ChartsWidget::pageIds() const {
+  std::vector<std::string> ids;
+  for (int i = 0; i < tabbar_.count(); ++i) ids.push_back(page_ids_.at(tabbar_.tabData(i)));
+  return ids;
+}
+
+json11::Json ChartsWidget::pageLayout(const std::string &id) const {
+  auto it = page_layouts_.find(id);
+  return it == page_layouts_.end() ? json11::Json() : it->second;
+}
+
+std::vector<std::string> ChartsWidget::paneWindows() const {
+  std::vector<std::string> names;
+  auto it = tab_charts_.find(tabbar_.tabData(tabbar_.currentIndex()));
+  if (it != tab_charts_.end()) for (const auto *chart : it->second) names.push_back(chart->windowName());
+  return names;
+}
+
+void ChartsWidget::editEquation(const std::string &existing_id) {
+  std::random_device random;
+  const std::string id = existing_id.empty() ? std::to_string(random()) + "-" + std::to_string(random()) : existing_id;
+  cabana::Equation draft = existing_id.empty() ? cabana::Equation{"", "", "", "return value", {}} : equations_.at(id);
+  function_editor_.open(draft, [this, id](cabana::Equation equation) {
+    equations_[id] = std::move(equation);
+    session.setEquations(equations_);
   });
-  return it == charts.crend() ? nullptr : *it;
 }
 
-ChartView *ChartsContainer::childAt(const ImVec2 &pos) const {
-  for (auto c : charts_widget_->currentCharts()) {
-    if (c->rect().Contains(pos)) return c;
-  }
-  return nullptr;
+void ChartsWidget::openWorkspace(const std::string &path) {
+  std::ifstream input(path);
+  std::string text{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+  std::string error;
+  auto doc = cabana::migrateWorkspace(json11::Json::parse(text, error));
+  if (error.empty()) error = cabana::validateWorkspace(doc);
+  if (!error.empty()) MessageBox::warning("Open Workspace", error);
+  else restoreWorkspace(doc);
 }

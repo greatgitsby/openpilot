@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tools/cabana/analysis/fields.h"
+
 #include <algorithm>
 #include <array>
 #include <condition_variable>
@@ -22,6 +24,9 @@
 
 class AbstractStream {
 public:
+  cabana::FieldsSnapshot fields;
+  Observable<> fieldsChanged;
+
   AbstractStream();
   virtual ~AbstractStream() = default;
   virtual void start() = 0;

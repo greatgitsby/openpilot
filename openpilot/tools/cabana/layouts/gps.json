@@ -1,0 +1,219 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "cdce2abd-fa75-5396-a5df-b9918fbb9631",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "b5757780-1c92-54dd-bf13-05ca936a7013",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/hasFix"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "right": 1678.753571,
+            "bottom": -0.025,
+            "top": 1.025
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "851e904d-dc53-54f5-8cc1-4ef9e2da3719",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/satelliteCount"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "right": 1678.753571,
+            "bottom": -0.425,
+            "top": 17.425
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "ce36847d-0ff1-51f6-b505-6d768907a52d",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/horizontalAccuracy"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "right": 1678.753571,
+            "bottom": 0.0,
+            "top": 3.0
+          },
+          "y_lower": 0.0,
+          "y_upper": 3.0
+        },
+        {
+          "id": "c94d660b-0d07-5559-9741-5593226d2d53",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/gpsLocationExternal/horizontalAccuracy"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "right": 1678.753571,
+            "bottom": -17.262,
+            "top": 766.374004
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.24977024977024978,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/b5757780-1c92-54dd-bf13-05ca936a7013"
+                ],
+                "selected": "###Chart/b5757780-1c92-54dd-bf13-05ca936a7013"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.33414997287494885,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/851e904d-dc53-54f5-8cc1-4ef9e2da3719"
+                    ],
+                    "selected": "###Chart/851e904d-dc53-54f5-8cc1-4ef9e2da3719"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.5,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/ce36847d-0ff1-51f6-b505-6d768907a52d"
+                        ],
+                        "selected": "###Chart/ce36847d-0ff1-51f6-b505-6d768907a52d"
+                      },
+                      {
+                        "panes": [
+                          "###Chart/c94d660b-0d07-5559-9741-5593226d2d53"
+                        ],
+                        "selected": "###Chart/c94d660b-0d07-5559-9741-5593226d2d53"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}

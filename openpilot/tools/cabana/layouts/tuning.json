@@ -1,0 +1,1181 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "cf13f245-9e18-565d-a3ca-629548c33e88",
+      "name": "Lateral",
+      "panes": [
+        {
+          "id": "6a0d5662-4e9c-5538-ace8-842615463bfb",
+          "title": "Velocity [m/s]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/vEgo"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.253354,
+            "top": 29.954036,
+            "bottom": -0.841715,
+            "right": 631.055584
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "fe9c2d97-5d36-5e2d-b8fe-9cbe91f46f65",
+          "title": "Curvature [1/m] True [blue] Vehicle Model [purple] Plan [green]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/739fcfd2-774a-57a3-a45a-50ed36f828d6"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/f6c0219f-cfb5-5e0f-83a1-2a59e8f5f965"
+              },
+              "alias": "",
+              "color": [
+                120,
+                94,
+                240,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/b77501e7-4bee-5cd1-b273-9907ba6262c6"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "top": 0.006648,
+            "bottom": -0.00315,
+            "right": 631.055209
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "c6f12cc2-6abe-5e57-8d24-1abccf005d63",
+          "title": "Roll [rad]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/orientationNED/0"
+              },
+              "alias": "",
+              "color": [
+                255,
+                176,
+                0,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "top": 0.166067,
+            "bottom": -1.598381,
+            "right": 631.038276
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "e8e73776-9a02-5653-a0ce-c55d674713fe",
+          "title": "Engaged [green] Steering Pressed [blue]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/selfdriveState/enabled"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/steeringPressed"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.252984,
+            "top": 1.025,
+            "bottom": -0.025,
+            "right": 631.055584
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "4a3bca4a-3530-5f41-aff8-4661c3ca0ae8",
+          "title": "Steering Limited: Rate [orange] Saturated [magenta]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/74b88fb6-c9a8-566e-9c98-326297069e36"
+              },
+              "alias": "",
+              "color": [
+                255,
+                176,
+                0,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/lateralControlState/pidState/saturated"
+              },
+              "alias": "",
+              "color": [
+                220,
+                38,
+                127,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.253354,
+            "top": 1.025,
+            "bottom": -0.025,
+            "right": 631.055584
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.200458,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/6a0d5662-4e9c-5538-ace8-842615463bfb"
+                ],
+                "selected": "###Chart/6a0d5662-4e9c-5538-ace8-842615463bfb"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.24928396507000258,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/fe9c2d97-5d36-5e2d-b8fe-9cbe91f46f65"
+                    ],
+                    "selected": "###Chart/fe9c2d97-5d36-5e2d-b8fe-9cbe91f46f65"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.3339692017546636,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/c6f12cc2-6abe-5e57-8d24-1abccf005d63"
+                        ],
+                        "selected": "###Chart/c6f12cc2-6abe-5e57-8d24-1abccf005d63"
+                      },
+                      {
+                        "axis": "y",
+                        "ratio": 0.49856793014000517,
+                        "children": [
+                          {
+                            "panes": [
+                              "###Chart/e8e73776-9a02-5653-a0ce-c55d674713fe"
+                            ],
+                            "selected": "###Chart/e8e73776-9a02-5653-a0ce-c55d674713fe"
+                          },
+                          {
+                            "panes": [
+                              "###Chart/4a3bca4a-3530-5f41-aff8-4661c3ca0ae8"
+                            ],
+                            "selected": "###Chart/4a3bca4a-3530-5f41-aff8-4661c3ca0ae8"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "3aeee28d-9660-56c6-8d72-2d567cc8a1d4",
+      "name": "Longitudinal",
+      "panes": [
+        {
+          "id": "bfcb33b7-d7d5-5f66-8ce1-ec0df8f0da98",
+          "title": "Velocity [m/s] True [blue] Plan [green] Cruise [magenta]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/cruiseState/speed"
+              },
+              "alias": "",
+              "color": [
+                220,
+                38,
+                127,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/longitudinalPlan/speeds/0"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/vEgo"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "top": 42.713492,
+            "bottom": -1.041792,
+            "right": 631.055584
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "7417f921-f54d-5461-b79b-6f3c90117f94",
+          "title": "Acceleration [m/s^2] True [blue] Actuator [purple] Plan [green]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/0ca2cde4-a6ef-508f-90f7-4228d773cd5a"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/6a652ab7-0ebd-5aec-a1a8-6b99d00d5735"
+              },
+              "alias": "",
+              "color": [
+                120,
+                94,
+                240,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/0b1fcae0-e43d-5d99-a5a0-8daff5395579"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.253354,
+            "top": 0.808303,
+            "bottom": -1.213305,
+            "right": 631.055759
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "e12deb17-e8d3-5a69-8aa7-db6d0f400d3d",
+          "title": "Pitch [rad]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/orientationNED/1"
+              },
+              "alias": "",
+              "color": [
+                255,
+                176,
+                0,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "top": 0.158854,
+            "bottom": -0.594843,
+            "right": 631.038276
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "d3bd70ad-c37d-59fa-b48e-b36fb3cb773c",
+          "title": "Engaged [green] Gas [orange] Brake [magenta]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/enabled"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/gasPressed"
+              },
+              "alias": "",
+              "color": [
+                255,
+                176,
+                0,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/brakePressed"
+              },
+              "alias": "",
+              "color": [
+                220,
+                38,
+                127,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.253354,
+            "top": 1.025,
+            "bottom": -0.025,
+            "right": 631.055759
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "d61f8911-5e7b-5fcb-9592-bfaf1e7e6a01",
+          "title": "State [blue: off,pid,stop,start] Source [green: cruise,lead0,lead1,lead2,e2e]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/actuators/longControlState"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/longitudinalPlan/longitudinalPlanSource"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.25362,
+            "top": 5.125,
+            "bottom": -0.125,
+            "right": 631.055759
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.1875,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/bfcb33b7-d7d5-5f66-8ce1-ec0df8f0da98"
+                ],
+                "selected": "###Chart/bfcb33b7-d7d5-5f66-8ce1-ec0df8f0da98"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.23076923076923078,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/7417f921-f54d-5461-b79b-6f3c90117f94"
+                    ],
+                    "selected": "###Chart/7417f921-f54d-5461-b79b-6f3c90117f94"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.3,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/e12deb17-e8d3-5a69-8aa7-db6d0f400d3d"
+                        ],
+                        "selected": "###Chart/e12deb17-e8d3-5a69-8aa7-db6d0f400d3d"
+                      },
+                      {
+                        "axis": "y",
+                        "ratio": 0.42857142857142855,
+                        "children": [
+                          {
+                            "panes": [
+                              "###Chart/d3bd70ad-c37d-59fa-b48e-b36fb3cb773c"
+                            ],
+                            "selected": "###Chart/d3bd70ad-c37d-59fa-b48e-b36fb3cb773c"
+                          },
+                          {
+                            "panes": [
+                              "###Chart/d61f8911-5e7b-5fcb-9592-bfaf1e7e6a01"
+                            ],
+                            "selected": "###Chart/d61f8911-5e7b-5fcb-9592-bfaf1e7e6a01"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "e45cc7cb-6bdf-57bf-92ad-a13ce6214a6b",
+      "name": "Lateral Debug",
+      "panes": [
+        {
+          "id": "e93be738-fe27-58e5-9289-cf7c21ceba60",
+          "title": "Controller F [magenta] P [purple] I [blue]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/lateralControlState/pidState/f"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/lateralControlState/pidState/p"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/lateralControlState/pidState/i"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.0,
+            "top": 1.0,
+            "bottom": 0.0,
+            "right": 1.0
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "8324cadb-30dc-5743-9662-bd4dce2db393",
+          "title": "Driver Torque [blue] EPS Torque [green]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/steeringTorqueEps"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/steeringTorque"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.253354,
+            "top": 2690.99903,
+            "bottom": -3450.198981,
+            "right": 631.055584
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "3151997f-c55c-5b04-aecc-3ba035dd568f",
+          "title": "Engaged [green] Steering Pressed [blue]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carControl/enabled"
+              },
+              "alias": "",
+              "color": [
+                0,
+                158,
+                115,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/carState/steeringPressed"
+              },
+              "alias": "",
+              "color": [
+                0,
+                114,
+                178,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.253354,
+            "top": 1.025,
+            "bottom": -0.025,
+            "right": 631.055759
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "c62cf67d-d471-5c64-b26e-095c88a06834",
+          "title": "Steering Limited: Rate [orange] Saturated [magenta]",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "equation/74b88fb6-c9a8-566e-9c98-326297069e36"
+              },
+              "alias": "",
+              "color": [
+                255,
+                176,
+                0,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/controlsState/lateralControlState/pidState/saturated"
+              },
+              "alias": "",
+              "color": [
+                220,
+                38,
+                127,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 1.253354,
+            "top": 1.025,
+            "bottom": -0.025,
+            "right": 631.055584
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.25,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/e93be738-fe27-58e5-9289-cf7c21ceba60"
+                ],
+                "selected": "###Chart/e93be738-fe27-58e5-9289-cf7c21ceba60"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.3333333333333333,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/8324cadb-30dc-5743-9662-bd4dce2db393"
+                    ],
+                    "selected": "###Chart/8324cadb-30dc-5743-9662-bd4dce2db393"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.5,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/3151997f-c55c-5b04-aecc-3ba035dd568f"
+                        ],
+                        "selected": "###Chart/3151997f-c55c-5b04-aecc-3ba035dd568f"
+                      },
+                      {
+                        "panes": [
+                          "###Chart/c62cf67d-d471-5c64-b26e-095c88a06834"
+                        ],
+                        "selected": "###Chart/c62cf67d-d471-5c64-b26e-095c88a06834"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [
+    {
+      "name": "engaged curvature yaw",
+      "source": "/carControl/angularVelocity/2",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 == 1 or v2 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value / v3 if v3 != 0 else math.nan\nreturn 0",
+      "additional": [
+        "/carState/steeringPressed",
+        "/carControl/enabled",
+        "/carState/vEgo"
+      ],
+      "language": "python",
+      "id": "b77501e7-4bee-5cd1-b273-9907ba6262c6"
+    },
+    {
+      "name": "engaged curvature vehicle model",
+      "source": "/controlsState/curvature",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 == 1 or v2 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/steeringPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python",
+      "id": "f6c0219f-cfb5-5e0f-83a1-2a59e8f5f965"
+    },
+    {
+      "name": "engaged curvature plan",
+      "source": "/modelV2/action/desiredCurvature",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 == 1 or v2 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/steeringPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python",
+      "id": "739fcfd2-774a-57a3-a45a-50ed36f828d6"
+    },
+    {
+      "name": "engaged_accel_actual",
+      "source": "/carState/aEgo",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 != 0 or v2 != 0 or v3 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python",
+      "id": "0b1fcae0-e43d-5d99-a5a0-8daff5395579"
+    },
+    {
+      "name": "engaged_accel_plan",
+      "source": "/longitudinalPlan/accels/0",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 != 0 or v2 != 0 or v3 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python",
+      "id": "0ca2cde4-a6ef-508f-90f7-4228d773cd5a"
+    },
+    {
+      "name": "engaged_accel_actuator",
+      "source": "/carControl/actuators/accel",
+      "globals": "engage_delay = 5\nlast_bad_time = -engage_delay",
+      "function": "global last_bad_time\nif v1 != 0 or v2 != 0 or v3 == 0:\n  last_bad_time = time\nif time > last_bad_time + engage_delay:\n  return value\nreturn 0",
+      "additional": [
+        "/carState/brakePressed",
+        "/carState/gasPressed",
+        "/carControl/enabled"
+      ],
+      "language": "python",
+      "id": "6a652ab7-0ebd-5aec-a1a8-6b99d00d5735"
+    },
+    {
+      "name": "steering rate limited",
+      "source": "/carControl/actuators/torque",
+      "globals": "",
+      "function": "return int(abs(value - v1) > 0.001 or abs(v2 - v3) > 0.05)",
+      "additional": [
+        "/carOutput/actuatorsOutput/torque",
+        "/carControl/actuators/steeringAngleDeg",
+        "/carOutput/actuatorsOutput/steeringAngleDeg"
+      ],
+      "language": "python",
+      "id": "74b88fb6-c9a8-566e-9c98-326297069e36"
+    }
+  ],
+  "active_page": 0,
+  "relative_time": true
+}

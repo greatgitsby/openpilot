@@ -1,0 +1,838 @@
+{
+  "cabana_workspace": 1,
+  "pages": [
+    {
+      "id": "852c9a76-a492-535d-b45b-94fc77daa69f",
+      "name": "tab1",
+      "panes": [
+        {
+          "id": "e90895d5-1585-535b-a192-2fd55dac7eca",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/0"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/1"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/2"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/3"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/4"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/5"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/6"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuTempC/7"
+              },
+              "alias": "",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 87.987497,
+            "bottom": 75.912497,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "020883a4-c4ed-593b-b375-94e15739a207",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/pmicTempC/0"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/gpuTempC/0"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/gpuTempC/1"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/memoryTempC"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 85.861052,
+            "bottom": 66.49695,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "a0857577-cbc2-55aa-9a61-6c526e0988d8",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/maxTempC"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 86.207876,
+            "bottom": 70.665918,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "9f348078-d8c6-55ae-8387-ce9f27a44b23",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/thermalStatus"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 1.025,
+            "bottom": -0.025,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "45316264-a1cb-5314-af53-0870cf7d4349",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/powerDrawW"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 12.057358,
+            "bottom": 4.843517,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "340ff3ff-6a24-5b13-aa50-0c5376f666ab",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/fanSpeedPercentDesired"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/pandaStates/0/fanPower"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 100.0,
+            "bottom": 0.0,
+            "right": 301.842654
+          },
+          "y_lower": 0.0,
+          "y_upper": 100.0
+        },
+        {
+          "id": "0a7f5e92-cd3e-5cf1-9617-2a68ec221860",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/peripheralState/fanSpeedRpm"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 5018.4,
+            "bottom": 255.6,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "43d530bc-a7f4-5222-ad53-1702bd8bcdd8",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/0"
+              },
+              "alias": "",
+              "color": [
+                31,
+                119,
+                180,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/1"
+              },
+              "alias": "",
+              "color": [
+                214,
+                39,
+                40,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/2"
+              },
+              "alias": "",
+              "color": [
+                26,
+                201,
+                56,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/3"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 100.025,
+            "bottom": 14.975,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        },
+        {
+          "id": "479d7136-b3c4-53f4-83a0-e5ad0993c9f7",
+          "title": "",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/4"
+              },
+              "alias": "",
+              "color": [
+                241,
+                76,
+                193,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/5"
+              },
+              "alias": "",
+              "color": [
+                148,
+                103,
+                189,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/6"
+              },
+              "alias": "",
+              "color": [
+                23,
+                190,
+                207,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            },
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceState/cpuUsagePercent/7"
+              },
+              "alias": "",
+              "color": [
+                188,
+                189,
+                34,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "left": 0.006955,
+            "top": 102.5,
+            "bottom": -2.5,
+            "right": 301.842654
+          },
+          "y_lower": null,
+          "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.22,
+        "children": [
+          {
+            "panes": [
+              "###MessagesPanel",
+              "###CenterWidget",
+              "###VideoPanel",
+              "###ChartsWindow"
+            ],
+            "selected": "###ChartsWindow"
+          },
+          {
+            "axis": "y",
+            "ratio": 0.166785,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/e90895d5-1585-535b-a192-2fd55dac7eca"
+                ],
+                "selected": "###Chart/e90895d5-1585-535b-a192-2fd55dac7eca"
+              },
+              {
+                "axis": "y",
+                "ratio": 0.20017042420023642,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/020883a4-c4ed-593b-b375-94e15739a207"
+                    ],
+                    "selected": "###Chart/020883a4-c4ed-593b-b375-94e15739a207"
+                  },
+                  {
+                    "axis": "y",
+                    "ratio": 0.2492009663430518,
+                    "children": [
+                      {
+                        "panes": [
+                          "###Chart/a0857577-cbc2-55aa-9a61-6c526e0988d8"
+                        ],
+                        "selected": "###Chart/a0857577-cbc2-55aa-9a61-6c526e0988d8"
+                      },
+                      {
+                        "axis": "y",
+                        "ratio": 0.3333333333333333,
+                        "children": [
+                          {
+                            "panes": [
+                              "###Chart/9f348078-d8c6-55ae-8387-ce9f27a44b23"
+                            ],
+                            "selected": "###Chart/9f348078-d8c6-55ae-8387-ce9f27a44b23"
+                          },
+                          {
+                            "axis": "y",
+                            "ratio": 0.5,
+                            "children": [
+                              {
+                                "axis": "x",
+                                "ratio": 0.333124,
+                                "children": [
+                                  {
+                                    "panes": [
+                                      "###Chart/45316264-a1cb-5314-af53-0870cf7d4349"
+                                    ],
+                                    "selected": "###Chart/45316264-a1cb-5314-af53-0870cf7d4349"
+                                  },
+                                  {
+                                    "axis": "x",
+                                    "ratio": 0.5004708521524242,
+                                    "children": [
+                                      {
+                                        "panes": [
+                                          "###Chart/340ff3ff-6a24-5b13-aa50-0c5376f666ab"
+                                        ],
+                                        "selected": "###Chart/340ff3ff-6a24-5b13-aa50-0c5376f666ab"
+                                      },
+                                      {
+                                        "panes": [
+                                          "###Chart/0a7f5e92-cd3e-5cf1-9617-2a68ec221860"
+                                        ],
+                                        "selected": "###Chart/0a7f5e92-cd3e-5cf1-9617-2a68ec221860"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "axis": "x",
+                                "ratio": 0.502513,
+                                "children": [
+                                  {
+                                    "panes": [
+                                      "###Chart/43d530bc-a7f4-5222-ad53-1702bd8bcdd8"
+                                    ],
+                                    "selected": "###Chart/43d530bc-a7f4-5222-ad53-1702bd8bcdd8"
+                                  },
+                                  {
+                                    "panes": [
+                                      "###Chart/479d7136-b3c4-53f4-83a0-e5ad0993c9f7"
+                                    ],
+                                    "selected": "###Chart/479d7136-b3c4-53f4-83a0-e5ad0993c9f7"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "equations": [],
+  "active_page": 0,
+  "relative_time": true
+}
