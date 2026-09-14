@@ -608,9 +608,10 @@ void ChartView::drawAxes() {
   const ImPlotFlags flags = ImPlotFlags_NoTitle | ImPlotFlags_NoLegend | ImPlotFlags_NoMenus | ImPlotFlags_NoMouseText |
                             ImPlotFlags_NoBoxSelect | ImPlotFlags_NoInputs | ImPlotFlags_NoFrame;
   const ImPlotAxisFlags axis_flags = ImPlotAxisFlags_NoMenus | ImPlotAxisFlags_NoHighlight | ImPlotAxisFlags_NoSideSwitch | ImPlotAxisFlags_Lock;
-  // reserve room for the right half of the last x tick label
+  // Reserve both outer half-labels, including when compact plots hide the Y ticks.
   const float x_label_width = ImGui::CalcTextSize(formatNumber(x_max_, xAxisPrecision()).c_str()).x + ImGui::GetStyle().ItemInnerSpacing.x;
-  if (ImPlot::BeginPlot("##plot", ImVec2(layout_.content_rect.GetWidth() - x_label_width / 2, plot_h), flags)) {
+  ImGui::SetCursorScreenPos(ImVec2(layout_.content_rect.Min.x + x_label_width / 2, layout_.header_bottom));
+  if (ImPlot::BeginPlot("##plot", ImVec2(std::max(1.0f, layout_.content_rect.GetWidth() - x_label_width), plot_h), flags)) {
     ImPlot::SetupAxis(ImAxis_X1, nullptr, axis_flags);
     // Tiny stacked panes behave like sparklines: avoid colliding Y labels.
     // Exact values remain available through the shared inspection tooltip.
