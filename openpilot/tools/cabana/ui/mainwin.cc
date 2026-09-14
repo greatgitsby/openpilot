@@ -839,7 +839,6 @@ void MainWindow::drawDockspace() {
                    ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   drawWorkspaceBar();
   if (charts_widget_) {
-    charts_widget_->drawPageControls();
     messages_visible_ = charts_widget_->widgetVisible("###MessagesPanel");
     center_visible_ = charts_widget_->widgetVisible("###CenterWidget");
     video_visible_ = charts_widget_->widgetVisible("###VideoPanel");
@@ -991,25 +990,19 @@ void MainWindow::drawWorkspaceBar() {
   if (!charts_widget_) return;
   ImGui::PushID("workspace_toolbar");
   std::vector<ToolbarItem> items;
-  const float selector_width = ImGui::CalcTextSize("Workspace").x + ImGui::GetStyle().ItemSpacing.x + 220;
-  items.push_back({selector_width, [this]() {
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Workspace");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(220);
+  items.push_back({180, [this]() {
+    ImGui::SetNextItemWidth(180);
     std::vector<std::string> names;
     for (const auto &workspace : workspaces_) names.push_back(workspace["name"].string_value());
     int selected = active_workspace_;
     if (comboBox("##workspace", &selected, names)) nextFrame([this, selected]() { switchWorkspace(selected); });
+    ImGui::SetItemTooltip("Workspace");
   }});
   auto create_blank = [this]() { nextFrame([this]() {
     workspaces_.push_back(json11::Json::object{{"name", "Workspace " + std::to_string(workspaces_.size())},
                                               {"document", cabana::blankWorkspace()}});
     switchWorkspace(workspaces_.size() - 1);
   }); };
-  items.push_back({iconTextButtonWidth(icon::WINDOW_PLUS, "New blank"), [create_blank]() {
-    if (iconTextButton("new_workspace", icon::WINDOW_PLUS, "New blank")) create_blank();
-  }, "New blank workspace", create_blank});
   items.push_back(toolbarMenu("add_widget", "Add Widget", "Add Widget", [this]() {
     for (const auto &[label, id] : std::vector<std::pair<const char *, const char *>>{
       {"CAN Messages", "###MessagesPanel"}, {"Signal Details", "###CenterWidget"},
@@ -1022,7 +1015,8 @@ void MainWindow::drawWorkspaceBar() {
     }
     if (dropdown::Item("Plot")) docking_.addWindow(charts_widget_->addPlot());
   }));
-  items.push_back(toolbarMenu("workspace_actions", "Workspace", "Workspace", [this]() {
+  items.push_back(toolbarMenu("workspace_actions", "Workspace", "Workspace", [this, create_blank]() {
+    if (dropdown::Item("New blank workspace")) create_blank();
     std::string name = workspaces_[active_workspace_]["name"].string_value();
     if (inputText("Name", &name) && !name.empty()) {
       auto item = workspaces_[active_workspace_].object_items(); item["name"] = name; workspaces_[active_workspace_] = item;
@@ -1053,7 +1047,7 @@ void MainWindow::drawWorkspaceBar() {
       dropdown::EndMenu();
     }
   }));
-  drawToolbar(items, items.size());
+  charts_widget_->drawPageControls(items);
   ImGui::PopID();
 }
 

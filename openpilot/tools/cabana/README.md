@@ -101,4 +101,6 @@ Pages belong to the selected workspace. Use the new-page button or **Page** menu
 
 **Workspace → Presets** and **Open** add workspaces to the selector; **Save As** exports the selected workspace. Workspaces, page contents, and docking arrangements persist across restarts. Existing single-workspace settings are retained as an Imported workspace.
 
+Workspace and chart actions share one compact toolbar, with overflow on narrow windows. The page tab row appears only when a workspace has multiple pages; create blank workspaces from the Workspace menu.
+
 The timeline and playback controls stay above the Help/FPS footer across every workspace and page. Shared panel and section components provide consistent content padding and dock gutters. Camera widgets share that controller and contain no separate playback controls.

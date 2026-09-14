@@ -28,7 +28,7 @@ bool LogSlider::draw(const char *label, float width) {
 ChartsWidget::ChartsWidget(cabana::AnalysisSession &session) : session(session) {
   range_slider_.setRange(1, settings.max_cached_minutes * 60);
 
-  tabbar_.setAutoHide(false);
+  tabbar_.setAutoHide(true);
   tabbar_.setUsesScrollButtons(true);
   tabbar_.setTabsClosable(true);
 
@@ -142,12 +142,11 @@ void ChartsWidget::setMaxChartRange(int value) {
   updateState();
 }
 
-void ChartsWidget::drawToolBar() {
+void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
   float slider_width = 150.0f;
   const bool is_zoomed = can->timeRange().has_value();
 
   // the labels are captured by reference, they outlive the draw calls below
-  std::vector<ToolbarItem> items;
   items.push_back({iconButtonWidth(), [this]() {
     if (stepButton("new_plot_btn", true, "New Chart")) newChart();
   }});
@@ -393,10 +392,10 @@ void ChartsWidget::removeAll(bool reset_range) {
   if (reset_range) zoomReset();
 }
 
-void ChartsWidget::drawPageControls() {
+void ChartsWidget::drawPageControls(const std::vector<ToolbarItem> &workspace_items) {
   deleted_charts_.clear();
   function_editor_.draw();
-  drawToolBar();
+  drawToolBar(workspace_items);
   tabbar_.draw();
   if (signal_selector_ && !signal_selector_->draw()) {
     auto dlg = std::move(signal_selector_);

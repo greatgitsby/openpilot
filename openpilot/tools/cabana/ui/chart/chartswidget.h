@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "imgui.h"
+#include "tools/cabana/ui/util.h"
 #include "json11/json11.hpp"
 #include "tools/cabana/analysis/session.h"
 #include "tools/cabana/ui/dialogs/functioneditor.h"
@@ -57,7 +58,7 @@ public:
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
   void draw();  // workspace controls
   void drawPanes();
-  void drawPageControls();
+  void drawPageControls(const std::vector<ToolbarItem> &workspace_items = {});
   std::string addPlot();
   bool widgetVisible(const std::string &id) const;
   void setWidgetVisible(const std::string &id, bool visible);
@@ -91,7 +92,7 @@ private:
   void eventsMerged(const MessageEventsMap &new_events);
   void updateState();
   void zoomReset();
-  void drawToolBar();
+  void drawToolBar(std::vector<ToolbarItem> items);
   void setMaxChartRange(int value);
   void settingChanged();
   void showValueTip(double sec);
