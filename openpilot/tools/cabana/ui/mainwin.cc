@@ -1006,7 +1006,7 @@ void MainWindow::drawWorkspaceBar() {
       {"Series Browser", "###ChartsWindow"}, {"Road Camera", "###VideoPanel"},
       {"Wide Camera", "###WideCameraPanel"}, {"Cabin Camera", "###CabinCameraPanel"}}) {
       bool visible = charts_widget_->widgetVisible(id);
-      if (ImGui::Checkbox(label, &visible)) {
+      if (checkBox(label, &visible)) {
         charts_widget_->setWidgetVisible(id, visible);
         if (visible) docking_.addWindow(id);
       }
