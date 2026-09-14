@@ -84,7 +84,6 @@ private:
   ChartView *createChart(int pos = 0);
   void removeChart(ChartView *chart);
   void splitChart(ChartView *chart);
-  ImRect chartVisibleRect(ChartView *chart);
   void eventsMerged(const MessageEventsMap &new_events);
   void updateState();
   void zoomReset();

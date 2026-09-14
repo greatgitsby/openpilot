@@ -104,12 +104,6 @@ void ChartsWidget::zoomReset() {
   zoom_undo_stack_.clear();
 }
 
-ImRect ChartsWidget::chartVisibleRect(ChartView *chart) {
-  ImRect r = chart->rect();
-  r.ClipWith(ImGui::GetCurrentWindow()->InnerRect);
-  return r;
-}
-
 void ChartsWidget::showValueTip(double sec) {
   session.inspect(sec);
   showTip(sec);

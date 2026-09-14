@@ -511,7 +511,7 @@ void ChartView::adoptSignal(SigItem s) {
 
 void ChartView::showTip(double sec) {
   ImRect tip_area(ImVec2(layout_.rect.Min.x, layout_.plot_area.Min.y), ImVec2(layout_.rect.Max.x, layout_.plot_area.Max.y));
-  ImRect visible_rect = charts_widget_->chartVisibleRect(this);
+  ImRect visible_rect = layout_.visible_rect;
   visible_rect.ClipWith(tip_area);
   if (visible_rect.GetWidth() <= 0 || visible_rect.GetHeight() <= 0) {
     tip_label_.hide();
@@ -557,13 +557,16 @@ void ChartView::draw(const ImVec2 &size) {
   const ImVec2 tile_pos = ImGui::GetCursorScreenPos();
   const ImVec2 tile_size(std::max(size.x, 1.0f), std::max(size.y, 1.0f));
   layout_.rect = ImRect(tile_pos, tile_pos + tile_size);
-  if (ImGui::BeginChild("chart", tile_size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+  const bool visible = ImGui::BeginChild("chart", tile_size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+  layout_.visible_rect = visible ? layout_.rect : ImRect(0, 0, 0, 0);
+  if (visible) {
+    layout_.visible_rect.ClipWith(ImGui::GetCurrentWindow()->InnerClipRect);
     updateLayout();
     paint();
     drawContextMenu();
     if (auto source = droppedSeries(layout_.plot_area); !source.empty()) addSource(source);
     // Keep the tip above the plot, but below popup menus and other windows.
-    ImRect visible_rect = charts_widget_->chartVisibleRect(this);
+    ImRect visible_rect = layout_.visible_rect;
     visible_rect.ClipWith(ImRect(ImVec2(layout_.rect.Min.x, layout_.plot_area.Min.y),
                                ImVec2(layout_.rect.Max.x, layout_.plot_area.Max.y)));
     if (visible_rect.GetWidth() > 0 && visible_rect.GetHeight() > 0) tip_label_.draw(visible_rect);

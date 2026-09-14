@@ -121,6 +121,7 @@ private:
   // layout
   struct Layout {
     ImRect rect;  // the whole chart widget, screen coordinates
+    ImRect visible_rect;  // cached in the owning pane for updates between frames
     ImRect content_rect;  // the same inset on all four sides, including during a drag
     ImRect plot_area;
     ImRect move_icon_rect;

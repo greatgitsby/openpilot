@@ -11,6 +11,7 @@
 #include "tools/cabana/analysis/export.h"
 #include <unistd.h>
 #include "tools/cabana/ui/chart/chartswidget.h"
+#include "tools/cabana/ui/chart/chart.h"
 #include "tools/cabana/ui/panel.h"
 
 using J = json11::Json;
@@ -101,8 +102,58 @@ void test_docking() {
   ImGui::DestroyContext();
 }
 
+void test_tooltip_between_frames() {
+  ImGui::CreateContext();
+  ImPlot::CreateContext();
+  auto &io = ImGui::GetIO();
+  io.IniFilename = nullptr;
+  io.DisplaySize = ImVec2(1000, 700);
+  loadFonts();
+  applyTheme(0);
+  unsigned char *pixels; int width, height;
+  io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+  TestStream stream;
+  can = &stream;
+  stream.fields["/speed"] = std::make_shared<const cabana::Samples>(cabana::Samples{{0, 0}, {1, 10}, {2, 20}});
+  {
+    cabana::AnalysisSession session(stream);
+    ChartsWidget charts(session);
+    auto chart = std::make_unique<ChartView>(std::make_pair(0.0, 2.0), &charts);
+    auto connection = stream.timeRangeChanged.connect([&](const auto &range) {
+      chart->updatePlot(stream.currentSec(), range->first, range->second);
+    });
+    chart->addSource("/speed");
+    for (int i = 0; i < 2; ++i) {
+      ImGui::NewFrame();
+      ImGui::SetNextWindowSize(ImVec2(800, 600));
+      ImGui::Begin(chart->windowName().c_str());
+      chart->draw(ImGui::GetContentRegionAvail());
+      chart->showTip(1);
+      ImGui::End();
+      ImGui::Render();
+    }
+    chart->hideTip();
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(900, 0));
+    ImGui::SetNextWindowSize(ImVec2(80, 80));
+    ImGui::Begin("Another pane");
+    chart->showTip(1);
+    REQUIRE(chart->signals()[0].track_pt.x == 1);
+    ImGui::End();
+    ImGui::Render();
+    REQUIRE(GImGui->CurrentWindow == nullptr);
+    // Stream notifications are drained before NewFrame, with a visible tooltip.
+    stream.setTimeRange(std::make_pair(0.0, 3.0));
+    REQUIRE(chart->signals()[0].track_pt.x == 1);
+  }
+  can = nullptr;
+  ImPlot::DestroyContext();
+  ImGui::DestroyContext();
+}
+
 void test_workspace_ui() {
   test_docking();
+  test_tooltip_between_frames();
   const auto csv_path = std::filesystem::temp_directory_path() / ("cabana-export-" + std::to_string(getpid()) + ".csv");
   cabana::exportVisibleCsv(csv_path.string(), {{"speed, \"CAN\"", {{0, 1}, {1, 2}, {2, 3}, {3, 4}}}}, 1, 2);
   std::ifstream csv_file(csv_path);
