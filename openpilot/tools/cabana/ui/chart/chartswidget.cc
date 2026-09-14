@@ -142,27 +142,9 @@ void ChartsWidget::setMaxChartRange(int value) {
   updateState();
 }
 
-void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
-  float slider_width = 150.0f;
-  const bool is_zoomed = can->timeRange().has_value();
-
-  // the labels are captured by reference, they outlive the draw calls below
-  items.push_back(toolbarTextAction("new_plot_btn", "Add Plot", [this]() { newChart(); }));
-  items.push_back(toolbarTextAction("new_tab_btn", "Add Page", [this]() { newTab(); }));
-
-  const int type_count = (int)std::size(SERIES_TYPE_NAMES);
-  const std::string chart_type_text = std::string("Plot style: ") + SERIES_TYPE_NAMES[std::clamp(settings.chart_series_type, 0, type_count - 1)];
-  auto chart_type_items = [this]() {
-    for (int i = 0; i < type_count; ++i) {
-      if (dropdown::Item(SERIES_TYPE_NAMES[i], nullptr, settings.chart_series_type == i)) {
-        settings.chart_series_type = i;
-        for (auto &c : charts_) c->setSeriesType((SeriesType)i);
-      }
-    }
-  };
-  items.push_back(toolbarMenu("chart_type", chart_type_text, "Plot style", chart_type_items));
-
-  items.push_back(toolbarMenu("page", "Page Options", "Page Options", [this]() {
+void ChartsWidget::drawMenus() {
+  if (dropdown::BeginMenu("Page")) {
+    if (dropdown::Item("Add page")) newTab();
     if (dropdown::Item("Duplicate page")) {
       auto document = workspace().object_items();
       auto pages = document["pages"].array_items();
@@ -195,18 +177,41 @@ void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
     }
     std::string name = tabbar_.tabText(tabbar_.currentIndex());
     if (inputText("Page name", &name)) tabbar_.setTabText(tabbar_.currentIndex(), name);
-  }));
-  items.push_back(toolbarMenu("functions", "Functions", "Python functions", [this]() {
-    if (dropdown::Item("New function...")) editEquation("");
-    for (const auto &[id, equation] : equations_) {
-      if (dropdown::BeginMenu(equation.name.c_str())) {
-        if (dropdown::Item("Edit...")) editEquation(id);
-        if (dropdown::Item("Plot")) { createChart()->addSource("equation/" + id); updateState(); }
-        if (auto it = session.diagnostics().find(id); it != session.diagnostics().end()) ImGui::TextWrapped("%s", it->second.c_str());
-        dropdown::EndMenu();
+    dropdown::EndMenu();
+  }
+  if (dropdown::BeginMenu("Plots")) {
+    if (dropdown::Item("Add plot...")) newChart();
+    if (dropdown::BeginMenu("Plot style")) {
+      const int type_count = (int)std::size(SERIES_TYPE_NAMES);
+      for (int i = 0; i < type_count; ++i) {
+        if (dropdown::Item(SERIES_TYPE_NAMES[i], nullptr, settings.chart_series_type == i)) {
+          settings.chart_series_type = i;
+          for (auto &c : charts_) c->setSeriesType((SeriesType)i);
+        }
       }
+      dropdown::EndMenu();
     }
-  }));
+    if (dropdown::BeginMenu("Python functions")) {
+      if (dropdown::Item("New function...")) editEquation("");
+      for (const auto &[id, equation] : equations_) {
+        if (dropdown::BeginMenu(equation.name.c_str())) {
+          if (dropdown::Item("Edit...")) editEquation(id);
+          if (dropdown::Item("Plot")) { createChart()->addSource("equation/" + id); updateState(); }
+          if (auto it = session.diagnostics().find(id); it != session.diagnostics().end()) ImGui::TextWrapped("%s", it->second.c_str());
+          dropdown::EndMenu();
+        }
+      }
+      dropdown::EndMenu();
+    }
+    ImGui::Separator();
+    if (dropdown::Item("Clear all plots", nullptr, false, !charts_.empty())) removeAll();
+    dropdown::EndMenu();
+  }
+}
+
+void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
+  float slider_width = 150.0f;
+  const bool is_zoomed = can->timeRange().has_value();
 
   // the spacer right aligns the rest
   const size_t spacer_index = items.size();
@@ -249,7 +254,6 @@ void ChartsWidget::drawToolBar(std::vector<ToolbarItem> items) {
       ImGui::SetItemTooltip("Reset Zoom");
     }});
   }
-  items.push_back(toolbarTextAction("remove_all_btn", "Clear Plots", [this]() { removeAll(); }, !charts_.empty()));
 
   // the slider shrinks first, the buttons stay pinned to the right edge
   if (slider_index != (size_t)-1) {

@@ -162,6 +162,8 @@ void MainWindow::drawMenuBar() {
     dropdown::EndMenu();
   }
 
+  drawWorkspaceMenus();
+
   if (dropdown::BeginMenu("Tools", hasStream())) {
     if (dropdown::Item("Find Similar Bits")) findSimilarBits();
     if (dropdown::Item("Find Signal")) findSignal();
@@ -998,11 +1000,6 @@ void MainWindow::drawWorkspaceBar() {
     if (comboBox("##workspace", &selected, names)) nextFrame([this, selected]() { switchWorkspace(selected); });
     ImGui::SetItemTooltip("Workspace");
   }});
-  auto create_blank = [this]() { nextFrame([this]() {
-    workspaces_.push_back(json11::Json::object{{"name", "Workspace " + std::to_string(workspaces_.size())},
-                                              {"document", cabana::blankWorkspace()}});
-    switchWorkspace(workspaces_.size() - 1);
-  }); };
   items.push_back(toolbarMenu("add_widget", "Add Widget", "Add Widget", [this]() {
     for (const auto &[label, id] : std::vector<std::pair<const char *, const char *>>{
       {"CAN Messages", "###MessagesPanel"}, {"Signal Details", "###CenterWidget"},
@@ -1015,7 +1012,19 @@ void MainWindow::drawWorkspaceBar() {
     }
     if (dropdown::Item("Plot")) docking_.addWindow(charts_widget_->addPlot());
   }));
-  items.push_back(toolbarMenu("workspace_actions", "Manage Workspace", "Manage Workspace", [this, create_blank]() {
+  if (full_screen_) items.push_back(toolbarMenu("workspace_menus", "Actions", "Actions", [this]() { drawWorkspaceMenus(); }));
+  charts_widget_->drawPageControls(items);
+  ImGui::PopID();
+}
+
+void MainWindow::drawWorkspaceMenus() {
+  if (!charts_widget_) return;
+  if (dropdown::BeginMenu("Workspace")) {
+    auto create_blank = [this]() { nextFrame([this]() {
+      workspaces_.push_back(json11::Json::object{{"name", "Workspace " + std::to_string(workspaces_.size())},
+                                                {"document", cabana::blankWorkspace()}});
+      switchWorkspace(workspaces_.size() - 1);
+    }); };
     if (dropdown::Item("New blank workspace")) create_blank();
     std::string name = workspaces_[active_workspace_]["name"].string_value();
     if (inputText("Name", &name) && !name.empty()) {
@@ -1046,9 +1055,9 @@ void MainWindow::drawWorkspaceBar() {
           nextFrame([this, path = entry.path().string()]() { importWorkspace(path); });
       dropdown::EndMenu();
     }
-  }));
-  charts_widget_->drawPageControls(items);
-  ImGui::PopID();
+    dropdown::EndMenu();
+  }
+  charts_widget_->drawMenus();
 }
 
 void MainWindow::drawCamera(int index) {

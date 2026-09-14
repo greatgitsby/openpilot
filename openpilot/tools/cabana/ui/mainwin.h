@@ -84,6 +84,7 @@ private:
   void drawRecentFilesMenu();
   void drawDockspace();
   void drawWorkspaceBar();
+  void drawWorkspaceMenus();
   void saveWorkspace();
   void switchWorkspace(int index);
   void importWorkspace(const std::string &path);

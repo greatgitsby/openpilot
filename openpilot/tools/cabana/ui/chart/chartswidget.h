@@ -58,6 +58,7 @@ public:
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
   void draw();  // workspace controls
   void drawPanes();
+  void drawMenus();
   void drawPageControls(const std::vector<ToolbarItem> &workspace_items = {});
   std::string addPlot();
   bool widgetVisible(const std::string &id) const;
