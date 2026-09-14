@@ -1012,7 +1012,6 @@ void MainWindow::drawWorkspaceBar() {
       }
     }
     ImGui::Separator();
-    if (ImGui::Button("Add empty plot")) docking_.addWindow(charts_widget_->addPlot());
     ImGui::TextDisabled("Double-click a series to create a docked plot.");
   }));
   if (full_screen_) items.push_back(toolbarMenu("workspace_menus", "Actions", "Actions", [this]() { drawWorkspaceMenus(); }));
