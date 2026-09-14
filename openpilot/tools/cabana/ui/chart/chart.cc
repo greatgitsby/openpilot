@@ -228,25 +228,46 @@ void ChartView::updateLayout() {
   const int row_height = std::max<int>(marker_size, fm_height) +
                          (layout_.compact_header ? 0 : fm_height + style.ItemInnerSpacing.y);
   const int legend_left = top_left.x;
-  const int legend_right = std::max<int>(layout_.manage_btn_rect.Min.x - ImGui::GetStyle().ItemSpacing.x, legend_left + 10);
+  const auto rowRight = [&](int y) {
+    return std::max<int>(y < layout_.manage_btn_rect.Max.y
+                            ? layout_.manage_btn_rect.Min.x - style.ItemSpacing.x : layout_.content_rect.Max.x,
+                        legend_left + 10);
+  };
 
-  // layout legend entries left-to-right, wrapping between the move icon and the buttons
+  // Pack full labels into rows, reserving space beside the header buttons.
   layout_.legend_rects.clear();
   int x = legend_left, y = top_left.y;
+  int legend_right = rowRight(y);
+  size_t row_start = 0;
+  const auto finishRow = [&]() {
+    const size_t count = layout_.legend_rects.size() - row_start;
+    if (!count) return;
+    // Keep each name's measured width, then share spare space equally across the row.
+    const float extra = (legend_right - layout_.legend_rects.back().Max.x) / count;
+    for (size_t i = 0; i < count; ++i) {
+      auto &rect = layout_.legend_rects[row_start + i];
+      rect.Min.x += i * extra;
+      rect.Max.x += (i + 1) * extra;
+    }
+    row_start = layout_.legend_rects.size();
+  };
   for (auto &s : sigs_) {
-    int w = marker_size + style.ItemInnerSpacing.x + bold->CalcTextSizeA(font_size, FLT_MAX, 0.0f, s.label().c_str()).x +
-            ImGui::CalcTextSize((s.alias.empty() && s.source.rfind("can/", 0) == 0 ? msgLabel(s.msg_id) : std::string()).c_str()).x;
+    int w = std::ceil(marker_size + style.ItemInnerSpacing.x + bold->CalcTextSizeA(font_size, FLT_MAX, 0.0f, s.label().c_str()).x +
+                      ImGui::CalcTextSize((s.alias.empty() && s.source.rfind("can/", 0) == 0 ? msgLabel(s.msg_id) : std::string()).c_str()).x);
     pushMonoFont(font_size);
     w = std::max(w, (int)std::ceil(ImGui::CalcTextSize("-0.00000e+000").x));
     popMonoFont();
-    w = std::min(w, legend_right - legend_left);  // keep oversized entries clear of the header buttons
     if (x + w > legend_right && x > legend_left) {
+      finishRow();
       x = legend_left;
       y += row_height;
+      legend_right = rowRight(y);
     }
+    w = std::min(w, legend_right - legend_left);  // only reserve button space on rows beside the buttons
     layout_.legend_rects.emplace_back(ImVec2(x, y), ImVec2(x + w, y + std::max<int>(marker_size, fm_height)));
     x += w + style.ItemSpacing.x;
   }
+  finishRow();
 
   // add top space for the legend and signal values
   layout_.header_bottom = std::max<float>(y + row_height, layout_.manage_btn_rect.Max.y) +
@@ -672,6 +693,7 @@ void ChartView::drawLegend() {
       updateAxisY();
     }
     ImGui::PopID();
+    ImGui::SetItemTooltip("%s", s.label().c_str());
 
     if (series_type_ == SeriesType::Scatter) {
       painter->AddCircleFilled(r.Min + ImVec2(marker_size / 2.0f, 2.0f + marker_size / 2.0f), marker_size / 2.0f, toImU32(s.color));
