@@ -62,6 +62,8 @@ ValidState validateDouble(const std::string &input);
 
 namespace utils {
 
+// Replay can own 120 camera-buffer FDs and import another 120 into camera widgets.
+bool ensureCameraFileDescriptorLimit();
 bool isMainThread();
 // inline on the main thread, queued until drainMainThreadQueue() otherwise
 void runOnMainThread(std::function<void()> fn);

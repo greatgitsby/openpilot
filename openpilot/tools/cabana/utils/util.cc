@@ -15,6 +15,7 @@
 #include <thread>
 #include <unordered_map>
 #include <sys/socket.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #ifdef __APPLE__
@@ -26,6 +27,15 @@
 static const std::thread::id main_thread_id = std::this_thread::get_id();
 static std::mutex main_thread_queue_mutex;
 static std::vector<std::function<void()>> main_thread_queue;
+
+bool utils::ensureCameraFileDescriptorLimit() {
+  constexpr rlim_t required = 1024;
+  rlimit limit;
+  if (getrlimit(RLIMIT_NOFILE, &limit) != 0) return false;
+  if (limit.rlim_cur >= required) return true;
+  if (limit.rlim_max < required) return false;
+  return util::set_file_descriptor_limit(required) == 0;
+}
 
 bool utils::isMainThread() { return std::this_thread::get_id() == main_thread_id; }
 

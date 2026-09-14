@@ -10,6 +10,15 @@
 #include "tools/cabana/analysis/workspace.h"
 #include "tools/cabana/analysis/export.h"
 #include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include "tools/cabana/ui/widgets/cameraview.h"
+#include "openpilot/cereal/visionstream.h"
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include "msgq/visionipc/visionipc_server.h"
+#include "msgq/visionipc/visionipc_client.h"
 #include "tools/cabana/ui/chart/chartswidget.h"
 #include "tools/cabana/ui/chart/chart.h"
 #include "tools/cabana/ui/panel.h"
@@ -155,7 +164,78 @@ void test_tooltip_between_frames() {
   ImGui::DestroyContext();
 }
 
+void test_unavailable_camera() {
+  const std::string name = "cabana-absent-test-" + std::to_string(getpid());
+  const auto path = get_ipc_path(name);
+  const int listener = ipc_bind(path.c_str());
+  REQUIRE(listener >= 0);
+  std::atomic<bool> stop = false;
+  std::atomic<int> discoveries = 0, unsupported = 0;
+  std::thread server([&]() {
+    while (!stop) {
+      pollfd pending{listener, POLLIN, 0};
+      if (poll(&pending, 1, 20) <= 0) continue;
+      int fd = accept(listener, nullptr, nullptr);
+      if (fd < 0) continue;
+      VisionStreamType request;
+      if (ipc_sendrecv_with_fds(false, fd, &request, sizeof(request), nullptr, 0, nullptr) == sizeof(request)) {
+        if (request == VISION_STREAM_LIST) {
+          VisionStreamType available = VISION_STREAM_NARROW_ROAD;
+          ipc_sendrecv_with_fds(true, fd, &available, sizeof(available), nullptr, 0, nullptr);
+          ++discoveries;
+        } else {
+          ++unsupported;
+        }
+      }
+      close(fd);
+    }
+  });
+  {
+    CameraWidget camera(name, VISION_STREAM_WIDE_ROAD);
+    camera.setVisible(true);
+    for (int i = 0; i < 100 && discoveries < 3; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    camera.setVisible(false);
+  }
+  stop = true;
+  server.join();
+  close(listener);
+  unlink(path.c_str());
+  REQUIRE(discoveries >= 3);
+  REQUIRE(unsupported == 0);
+}
+
+void test_camera_fd_budget() {
+  const pid_t child = fork();
+  REQUIRE(child >= 0);
+  if (child == 0) {
+    rlimit limit;
+    if (getrlimit(RLIMIT_NOFILE, &limit) != 0 || limit.rlim_max < 512) _exit(2);
+    limit.rlim_cur = 256;
+    if (setrlimit(RLIMIT_NOFILE, &limit) != 0) _exit(3);
+    if (!utils::ensureCameraFileDescriptorLimit()) _exit(6);
+    // Simulate the files/sockets already held by the UI, route readers, and decoders.
+    for (int i = 0; i < 64; ++i) if (open("/dev/null", O_RDONLY) < 0) _exit(4);
+    const std::string name = "cabana-fd-test-" + std::to_string(getpid());
+    {
+      VisionIpcServer server(name);
+      for (auto type : {VISION_STREAM_NARROW_ROAD, VISION_STREAM_WIDE_ROAD, VISION_STREAM_CABIN})
+        server.create_buffers_with_sizes(type, 40, 32, 32, 1536, 32, 1024);
+      server.start_listener();
+      VisionIpcClient road(name, VISION_STREAM_NARROW_ROAD, false);
+      VisionIpcClient wide(name, VISION_STREAM_WIDE_ROAD, false);
+      VisionIpcClient cabin(name, VISION_STREAM_CABIN, false);
+      if (!road.connect() || !wide.connect() || !cabin.connect()) _exit(5);
+    }
+    _exit(0);
+  }
+  int status = 0;
+  REQUIRE(waitpid(child, &status, 0) == child);
+  REQUIRE(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+
 void test_workspace_ui() {
+  test_camera_fd_budget();
+  test_unavailable_camera();
   test_docking();
   test_tooltip_between_frames();
   const auto csv_path = std::filesystem::temp_directory_path() / ("cabana-export-" + std::to_string(getpid()) + ".csv");
@@ -330,4 +410,7 @@ void test_workspace_ui() {
   }
 }
 
-int main() { return run_native_test(test_workspace_ui); }
+int main(int argc, char **argv) {
+  if (argc > 1 && std::string(argv[1]) == "--camera-fd-budget") return run_native_test(test_camera_fd_budget);
+  return run_native_test(test_workspace_ui);
+}

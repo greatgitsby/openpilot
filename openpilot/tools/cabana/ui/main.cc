@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -141,6 +142,10 @@ std::optional<int> parseArgs(int argc, char *argv[], CabanaArgs &args) {
 }  // namespace
 
 int main(int argc, char *argv[]) {
+  if (!utils::ensureCameraFileDescriptorLimit()) {
+    fprintf(stderr, "Cabana needs a file-descriptor limit of at least 1024 for camera replay. Could not raise the limit.\n");
+    return 1;
+  }
 #ifdef __GLIBC__
   // Worker threads (sparklines, chart series, replay) would each get their own glibc malloc arena and the
   // arenas fragment without bound (RSS grew ~3 MB/min with charts open). macOS has a single allocator zone.
@@ -150,6 +155,7 @@ int main(int argc, char *argv[]) {
   // ensure the current dir matches the executable's directory
   std::error_code ec;
   std::filesystem::current_path(executableDir(), ec);
+  if (!ec) setenv("PWD", std::filesystem::current_path().c_str(), 1);
 
   CabanaArgs args;
   if (auto code = parseArgs(argc, argv, args)) return *code;

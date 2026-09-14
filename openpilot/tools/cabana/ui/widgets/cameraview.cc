@@ -157,7 +157,7 @@ void CameraWidget::vipcThread() {
       // the server changed (a new route): the last frame is stale. A fresh thread keeps it, see startVipcThread().
       if (std::exchange(was_connected, false)) clearFrames();
       auto streams = VisionIpcClient::getAvailableStreams(stream_name_, false);
-      if (streams.empty()) {
+      if (!streams.count(cur_stream)) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         continue;
       }
