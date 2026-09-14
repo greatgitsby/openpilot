@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "5736a58f-0a59-56f5-b202-256391fa149c",
-      "name": "tab1",
+      "name": "Controls safety",
       "panes": [
         {
           "id": "a6cdeca5-2bff-5019-88ce-358d1f31c9fd",
-          "title": "",
+          "title": "Controls permission",
           "style": 0,
           "curves": [
             {
@@ -66,7 +66,7 @@
         },
         {
           "id": "b3036749-54a6-5f9a-80ce-d08a43255d94",
-          "title": "",
+          "title": "CAN lag [ms]",
           "style": 0,
           "curves": [
             {
@@ -103,7 +103,7 @@
         },
         {
           "id": "54d8ea07-eb09-544d-b38a-0eeb703b1f10",
-          "title": "",
+          "title": "Receive safety checks",
           "style": 0,
           "curves": [
             {
@@ -162,7 +162,7 @@
         },
         {
           "id": "ee0a2692-9751-56af-9420-a4f936060394",
-          "title": "",
+          "title": "Blocked transmissions",
           "style": 0,
           "curves": [
             {
@@ -199,7 +199,7 @@
         },
         {
           "id": "aba976f8-814b-53dc-8f9a-fc634579441a",
-          "title": "",
+          "title": "Driver pedals",
           "style": 0,
           "curves": [
             {
@@ -259,65 +259,56 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.2,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/a6cdeca5-2bff-5019-88ce-358d1f31c9fd"
-                ],
-                "selected": "###Chart/a6cdeca5-2bff-5019-88ce-358d1f31c9fd"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.25,
+                "ratio": 0.3333333333333333,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/b3036749-54a6-5f9a-80ce-d08a43255d94"
-                    ],
-                    "selected": "###Chart/b3036749-54a6-5f9a-80ce-d08a43255d94"
+                      "###Chart/a6cdeca5-2bff-5019-88ce-358d1f31c9fd"
+                    ]
                   },
                   {
                     "axis": "y",
-                    "ratio": 0.3333333333333333,
+                    "ratio": 0.5,
                     "children": [
                       {
                         "panes": [
-                          "###Chart/54d8ea07-eb09-544d-b38a-0eeb703b1f10"
-                        ],
-                        "selected": "###Chart/54d8ea07-eb09-544d-b38a-0eeb703b1f10"
+                          "###Chart/b3036749-54a6-5f9a-80ce-d08a43255d94"
+                        ]
                       },
                       {
-                        "axis": "y",
-                        "ratio": 0.5,
-                        "children": [
-                          {
-                            "panes": [
-                              "###Chart/ee0a2692-9751-56af-9420-a4f936060394"
-                            ],
-                            "selected": "###Chart/ee0a2692-9751-56af-9420-a4f936060394"
-                          },
-                          {
-                            "panes": [
-                              "###Chart/aba976f8-814b-53dc-8f9a-fc634579441a"
-                            ],
-                            "selected": "###Chart/aba976f8-814b-53dc-8f9a-fc634579441a"
-                          }
+                        "panes": [
+                          "###Chart/54d8ea07-eb09-544d-b38a-0eeb703b1f10"
                         ]
                       }
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/ee0a2692-9751-56af-9420-a4f936060394"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/aba976f8-814b-53dc-8f9a-fc634579441a"
                     ]
                   }
                 ]
@@ -325,7 +316,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

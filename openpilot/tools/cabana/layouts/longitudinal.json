@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "cf0e6d69-5e51-5610-96c0-58892dcd0ee4",
-      "name": "tab1",
+      "name": "Longitudinal",
       "panes": [
         {
           "id": "a463cefc-c302-5790-8fa8-08ca37047148",
-          "title": "",
+          "title": "Acceleration tracking",
           "style": 0,
           "curves": [
             {
@@ -110,7 +110,7 @@
         },
         {
           "id": "65bd79d8-3639-5c5b-ad82-7e73dd6ce339",
-          "title": "",
+          "title": "Controller terms",
           "style": 0,
           "curves": [
             {
@@ -191,7 +191,7 @@
         },
         {
           "id": "bdb11171-b548-54fd-9664-be1436383c65",
-          "title": "",
+          "title": "Speed tracking",
           "style": 0,
           "curves": [
             {
@@ -250,7 +250,7 @@
         },
         {
           "id": "10f5c40c-182e-56cf-966d-35eced20f172",
-          "title": "",
+          "title": "Longitudinal engagement",
           "style": 0,
           "curves": [
             {
@@ -310,53 +310,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.250401,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/a463cefc-c302-5790-8fa8-08ca37047148"
-                ],
-                "selected": "###Chart/a463cefc-c302-5790-8fa8-08ca37047148"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.3329766982079752,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/65bd79d8-3639-5c5b-ad82-7e73dd6ce339"
-                    ],
-                    "selected": "###Chart/65bd79d8-3639-5c5b-ad82-7e73dd6ce339"
+                      "###Chart/a463cefc-c302-5790-8fa8-08ca37047148"
+                    ]
                   },
                   {
-                    "axis": "y",
-                    "ratio": 0.500802,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/bdb11171-b548-54fd-9664-be1436383c65"
-                        ],
-                        "selected": "###Chart/bdb11171-b548-54fd-9664-be1436383c65"
-                      },
-                      {
-                        "panes": [
-                          "###Chart/10f5c40c-182e-56cf-966d-35eced20f172"
-                        ],
-                        "selected": "###Chart/10f5c40c-182e-56cf-966d-35eced20f172"
-                      }
+                    "panes": [
+                      "###Chart/65bd79d8-3639-5c5b-ad82-7e73dd6ce339"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/bdb11171-b548-54fd-9664-be1436383c65"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/10f5c40c-182e-56cf-966d-35eced20f172"
                     ]
                   }
                 ]
@@ -364,7 +356,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

@@ -7,7 +7,7 @@
       "panes": [
         {
           "id": "6a0d5662-4e9c-5538-ace8-842615463bfb",
-          "title": "Velocity [m/s]",
+          "title": "Speed [m/s]",
           "style": 0,
           "curves": [
             {
@@ -44,7 +44,7 @@
         },
         {
           "id": "fe9c2d97-5d36-5e2d-b8fe-9cbe91f46f65",
-          "title": "Curvature [1/m] True [blue] Vehicle Model [purple] Plan [green]",
+          "title": "Curvature [1/m]",
           "style": 0,
           "curves": [
             {
@@ -162,7 +162,7 @@
         },
         {
           "id": "e8e73776-9a02-5653-a0ce-c55d674713fe",
-          "title": "Engaged [green] Steering Pressed [blue]",
+          "title": "Engagement and driver input",
           "style": 0,
           "curves": [
             {
@@ -221,7 +221,7 @@
         },
         {
           "id": "4a3bca4a-3530-5f41-aff8-4661c3ca0ae8",
-          "title": "Steering Limited: Rate [orange] Saturated [magenta]",
+          "title": "Steering limits",
           "style": 0,
           "curves": [
             {
@@ -281,63 +281,54 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.200458,
+            "axis": "x",
+            "ratio": 0.6,
             "children": [
               {
-                "panes": [
-                  "###Chart/6a0d5662-4e9c-5538-ace8-842615463bfb"
-                ],
-                "selected": "###Chart/6a0d5662-4e9c-5538-ace8-842615463bfb"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.24928396507000258,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
                       "###Chart/fe9c2d97-5d36-5e2d-b8fe-9cbe91f46f65"
-                    ],
-                    "selected": "###Chart/fe9c2d97-5d36-5e2d-b8fe-9cbe91f46f65"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/c6f12cc2-6abe-5e57-8d24-1abccf005d63"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.3333333333333333,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/6a0d5662-4e9c-5538-ace8-842615463bfb"
+                    ]
                   },
                   {
                     "axis": "y",
-                    "ratio": 0.3339692017546636,
+                    "ratio": 0.5,
                     "children": [
                       {
                         "panes": [
-                          "###Chart/c6f12cc2-6abe-5e57-8d24-1abccf005d63"
-                        ],
-                        "selected": "###Chart/c6f12cc2-6abe-5e57-8d24-1abccf005d63"
+                          "###Chart/e8e73776-9a02-5653-a0ce-c55d674713fe"
+                        ]
                       },
                       {
-                        "axis": "y",
-                        "ratio": 0.49856793014000517,
-                        "children": [
-                          {
-                            "panes": [
-                              "###Chart/e8e73776-9a02-5653-a0ce-c55d674713fe"
-                            ],
-                            "selected": "###Chart/e8e73776-9a02-5653-a0ce-c55d674713fe"
-                          },
-                          {
-                            "panes": [
-                              "###Chart/4a3bca4a-3530-5f41-aff8-4661c3ca0ae8"
-                            ],
-                            "selected": "###Chart/4a3bca4a-3530-5f41-aff8-4661c3ca0ae8"
-                          }
+                        "panes": [
+                          "###Chart/4a3bca4a-3530-5f41-aff8-4661c3ca0ae8"
                         ]
                       }
                     ]
@@ -347,7 +338,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "3aeee28d-9660-56c6-8d72-2d567cc8a1d4",
@@ -355,7 +349,7 @@
       "panes": [
         {
           "id": "bfcb33b7-d7d5-5f66-8ce1-ec0df8f0da98",
-          "title": "Velocity [m/s] True [blue] Plan [green] Cruise [magenta]",
+          "title": "Speed tracking [m/s]",
           "style": 0,
           "curves": [
             {
@@ -436,7 +430,7 @@
         },
         {
           "id": "7417f921-f54d-5461-b79b-6f3c90117f94",
-          "title": "Acceleration [m/s^2] True [blue] Actuator [purple] Plan [green]",
+          "title": "Acceleration tracking [m/s²]",
           "style": 0,
           "curves": [
             {
@@ -554,7 +548,7 @@
         },
         {
           "id": "d3bd70ad-c37d-59fa-b48e-b36fb3cb773c",
-          "title": "Engaged [green] Gas [orange] Brake [magenta]",
+          "title": "Engagement and pedals",
           "style": 0,
           "curves": [
             {
@@ -635,7 +629,7 @@
         },
         {
           "id": "d61f8911-5e7b-5fcb-9592-bfaf1e7e6a01",
-          "title": "State [blue: off,pid,stop,start] Source [green: cruise,lead0,lead1,lead2,e2e]",
+          "title": "Controller state and source",
           "style": 0,
           "curves": [
             {
@@ -695,63 +689,54 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.1875,
+            "axis": "x",
+            "ratio": 0.6,
             "children": [
               {
-                "panes": [
-                  "###Chart/bfcb33b7-d7d5-5f66-8ce1-ec0df8f0da98"
-                ],
-                "selected": "###Chart/bfcb33b7-d7d5-5f66-8ce1-ec0df8f0da98"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.23076923076923078,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
+                      "###Chart/bfcb33b7-d7d5-5f66-8ce1-ec0df8f0da98"
+                    ]
+                  },
+                  {
+                    "panes": [
                       "###Chart/7417f921-f54d-5461-b79b-6f3c90117f94"
-                    ],
-                    "selected": "###Chart/7417f921-f54d-5461-b79b-6f3c90117f94"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.3333333333333333,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/e12deb17-e8d3-5a69-8aa7-db6d0f400d3d"
+                    ]
                   },
                   {
                     "axis": "y",
-                    "ratio": 0.3,
+                    "ratio": 0.5,
                     "children": [
                       {
                         "panes": [
-                          "###Chart/e12deb17-e8d3-5a69-8aa7-db6d0f400d3d"
-                        ],
-                        "selected": "###Chart/e12deb17-e8d3-5a69-8aa7-db6d0f400d3d"
+                          "###Chart/d3bd70ad-c37d-59fa-b48e-b36fb3cb773c"
+                        ]
                       },
                       {
-                        "axis": "y",
-                        "ratio": 0.42857142857142855,
-                        "children": [
-                          {
-                            "panes": [
-                              "###Chart/d3bd70ad-c37d-59fa-b48e-b36fb3cb773c"
-                            ],
-                            "selected": "###Chart/d3bd70ad-c37d-59fa-b48e-b36fb3cb773c"
-                          },
-                          {
-                            "panes": [
-                              "###Chart/d61f8911-5e7b-5fcb-9592-bfaf1e7e6a01"
-                            ],
-                            "selected": "###Chart/d61f8911-5e7b-5fcb-9592-bfaf1e7e6a01"
-                          }
+                        "panes": [
+                          "###Chart/d61f8911-5e7b-5fcb-9592-bfaf1e7e6a01"
                         ]
                       }
                     ]
@@ -761,7 +746,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "e45cc7cb-6bdf-57bf-92ad-a13ce6214a6b",
@@ -769,7 +757,7 @@
       "panes": [
         {
           "id": "e93be738-fe27-58e5-9289-cf7c21ceba60",
-          "title": "Controller F [magenta] P [purple] I [blue]",
+          "title": "Controller terms",
           "style": 0,
           "curves": [
             {
@@ -850,7 +838,7 @@
         },
         {
           "id": "8324cadb-30dc-5743-9662-bd4dce2db393",
-          "title": "Driver Torque [blue] EPS Torque [green]",
+          "title": "Driver and EPS torque",
           "style": 0,
           "curves": [
             {
@@ -909,7 +897,7 @@
         },
         {
           "id": "3151997f-c55c-5b04-aecc-3ba035dd568f",
-          "title": "Engaged [green] Steering Pressed [blue]",
+          "title": "Engagement and driver input",
           "style": 0,
           "curves": [
             {
@@ -968,7 +956,7 @@
         },
         {
           "id": "c62cf67d-d471-5c64-b26e-095c88a06834",
-          "title": "Steering Limited: Rate [orange] Saturated [magenta]",
+          "title": "Steering limits",
           "style": 0,
           "curves": [
             {
@@ -1028,53 +1016,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.25,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/e93be738-fe27-58e5-9289-cf7c21ceba60"
-                ],
-                "selected": "###Chart/e93be738-fe27-58e5-9289-cf7c21ceba60"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.3333333333333333,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/8324cadb-30dc-5743-9662-bd4dce2db393"
-                    ],
-                    "selected": "###Chart/8324cadb-30dc-5743-9662-bd4dce2db393"
+                      "###Chart/e93be738-fe27-58e5-9289-cf7c21ceba60"
+                    ]
                   },
                   {
-                    "axis": "y",
-                    "ratio": 0.5,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/3151997f-c55c-5b04-aecc-3ba035dd568f"
-                        ],
-                        "selected": "###Chart/3151997f-c55c-5b04-aecc-3ba035dd568f"
-                      },
-                      {
-                        "panes": [
-                          "###Chart/c62cf67d-d471-5c64-b26e-095c88a06834"
-                        ],
-                        "selected": "###Chart/c62cf67d-d471-5c64-b26e-095c88a06834"
-                      }
+                    "panes": [
+                      "###Chart/8324cadb-30dc-5743-9662-bd4dce2db393"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/3151997f-c55c-5b04-aecc-3ba035dd568f"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/c62cf67d-d471-5c64-b26e-095c88a06834"
                     ]
                   }
                 ]
@@ -1082,7 +1062,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [

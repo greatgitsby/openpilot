@@ -7,7 +7,7 @@
       "panes": [
         {
           "id": "7b6cb092-d6e3-5eaf-8f7e-aea230999a01",
-          "title": "",
+          "title": "Frame start timestamps",
           "style": 0,
           "curves": [
             {
@@ -88,7 +88,7 @@
         },
         {
           "id": "4f32ac2b-39f8-5ba4-bbbb-69a1c1958a1c",
-          "title": "",
+          "title": "Frame end timestamps",
           "style": 0,
           "curves": [
             {
@@ -170,37 +170,34 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
-            "ratio": 0.500885,
+            "ratio": 0.5,
             "children": [
               {
                 "panes": [
                   "###Chart/7b6cb092-d6e3-5eaf-8f7e-aea230999a01"
-                ],
-                "selected": "###Chart/7b6cb092-d6e3-5eaf-8f7e-aea230999a01"
+                ]
               },
               {
                 "panes": [
                   "###Chart/4f32ac2b-39f8-5ba4-bbbb-69a1c1958a1c"
-                ],
-                "selected": "###Chart/4f32ac2b-39f8-5ba4-bbbb-69a1c1958a1c"
+                ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "cb7614d3-fbca-5749-ab82-577840a8aee1",
@@ -208,7 +205,7 @@
       "panes": [
         {
           "id": "ed6fb798-8de5-5d2c-ba36-ea0ceb205c39",
-          "title": "",
+          "title": "Model execution time",
           "style": 0,
           "curves": [
             {
@@ -245,7 +242,7 @@
         },
         {
           "id": "17e86481-7cb8-5a68-82ea-147e615cfffd",
-          "title": "",
+          "title": "Dropped frames",
           "style": 0,
           "curves": [
             {
@@ -283,16 +280,12 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
@@ -301,19 +294,20 @@
               {
                 "panes": [
                   "###Chart/ed6fb798-8de5-5d2c-ba36-ea0ceb205c39"
-                ],
-                "selected": "###Chart/ed6fb798-8de5-5d2c-ba36-ea0ceb205c39"
+                ]
               },
               {
                 "panes": [
                   "###Chart/17e86481-7cb8-5a68-82ea-147e615cfffd"
-                ],
-                "selected": "###Chart/17e86481-7cb8-5a68-82ea-147e615cfffd"
+                ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "8a0bbc03-2b28-5dbb-9232-7e5fd6b60b07",
@@ -321,7 +315,7 @@
       "panes": [
         {
           "id": "9cd17786-77de-5a5d-b1e7-ba108ae1474f",
-          "title": "",
+          "title": "Camera sensors",
           "style": 0,
           "curves": [
             {
@@ -403,25 +397,23 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "panes": [
               "###Chart/9cd17786-77de-5a5d-b1e7-ba108ae1474f"
-            ],
-            "selected": "###Chart/9cd17786-77de-5a5d-b1e7-ba108ae1474f"
+            ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "e665a331-e22a-552e-ab5d-6d9e980e6d9a",
@@ -429,7 +421,7 @@
       "panes": [
         {
           "id": "66e3146b-37e4-525c-b117-39db27e1d88b",
-          "title": "",
+          "title": "Frame start timestamps",
           "style": 0,
           "curves": [
             {
@@ -510,7 +502,7 @@
         },
         {
           "id": "600a538b-89a1-5fba-8285-19201fa75db7",
-          "title": "",
+          "title": "Frame end timestamps",
           "style": 0,
           "curves": [
             {
@@ -592,37 +584,34 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
-            "ratio": 0.500885,
+            "ratio": 0.5,
             "children": [
               {
                 "panes": [
                   "###Chart/66e3146b-37e4-525c-b117-39db27e1d88b"
-                ],
-                "selected": "###Chart/66e3146b-37e4-525c-b117-39db27e1d88b"
+                ]
               },
               {
                 "panes": [
                   "###Chart/600a538b-89a1-5fba-8285-19201fa75db7"
-                ],
-                "selected": "###Chart/600a538b-89a1-5fba-8285-19201fa75db7"
+                ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

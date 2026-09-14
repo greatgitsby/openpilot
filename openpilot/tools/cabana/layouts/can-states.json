@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "9145ab1c-240e-5550-8232-152fd8724578",
-      "name": "tab1",
+      "name": "CAN health",
       "panes": [
         {
           "id": "8cb58711-d894-51dd-ac2c-a13c3eeead31",
-          "title": "",
+          "title": "CAN received",
           "style": 0,
           "curves": [
             {
@@ -88,7 +88,7 @@
         },
         {
           "id": "803cd6a2-a84d-5f2a-a9bc-d8d73747ca8e",
-          "title": "",
+          "title": "CAN transmitted",
           "style": 0,
           "curves": [
             {
@@ -169,7 +169,7 @@
         },
         {
           "id": "0023a835-9867-5d5a-af56-2465a01b0d17",
-          "title": "",
+          "title": "Receive losses",
           "style": 0,
           "curves": [
             {
@@ -250,7 +250,7 @@
         },
         {
           "id": "efe0a336-4b07-588f-8c97-bc98498629e6",
-          "title": "",
+          "title": "Transmit losses",
           "style": 0,
           "curves": [
             {
@@ -331,7 +331,7 @@
         },
         {
           "id": "47f9974e-3e5b-545a-b7b3-9c4a22a19795",
-          "title": "",
+          "title": "Bus-off events",
           "style": 0,
           "curves": [
             {
@@ -413,65 +413,56 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.500381,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "axis": "x",
-                "ratio": 0.5,
-                "children": [
-                  {
-                    "panes": [
-                      "###Chart/8cb58711-d894-51dd-ac2c-a13c3eeead31"
-                    ],
-                    "selected": "###Chart/8cb58711-d894-51dd-ac2c-a13c3eeead31"
-                  },
-                  {
-                    "panes": [
-                      "###Chart/803cd6a2-a84d-5f2a-a9bc-d8d73747ca8e"
-                    ],
-                    "selected": "###Chart/803cd6a2-a84d-5f2a-a9bc-d8d73747ca8e"
-                  }
-                ]
-              },
-              {
-                "axis": "x",
+                "axis": "y",
                 "ratio": 0.3333333333333333,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/0023a835-9867-5d5a-af56-2465a01b0d17"
-                    ],
-                    "selected": "###Chart/0023a835-9867-5d5a-af56-2465a01b0d17"
+                      "###Chart/8cb58711-d894-51dd-ac2c-a13c3eeead31"
+                    ]
                   },
                   {
-                    "axis": "x",
+                    "axis": "y",
                     "ratio": 0.5,
                     "children": [
                       {
                         "panes": [
-                          "###Chart/efe0a336-4b07-588f-8c97-bc98498629e6"
-                        ],
-                        "selected": "###Chart/efe0a336-4b07-588f-8c97-bc98498629e6"
+                          "###Chart/803cd6a2-a84d-5f2a-a9bc-d8d73747ca8e"
+                        ]
                       },
                       {
                         "panes": [
-                          "###Chart/47f9974e-3e5b-545a-b7b3-9c4a22a19795"
-                        ],
-                        "selected": "###Chart/47f9974e-3e5b-545a-b7b3-9c4a22a19795"
+                          "###Chart/0023a835-9867-5d5a-af56-2465a01b0d17"
+                        ]
                       }
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/efe0a336-4b07-588f-8c97-bc98498629e6"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/47f9974e-3e5b-545a-b7b3-9c4a22a19795"
                     ]
                   }
                 ]
@@ -479,7 +470,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

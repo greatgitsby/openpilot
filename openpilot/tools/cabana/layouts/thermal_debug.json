@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "852c9a76-a492-535d-b45b-94fc77daa69f",
-      "name": "tab1",
+      "name": "Temperatures",
       "panes": [
         {
           "id": "e90895d5-1585-535b-a192-2fd55dac7eca",
-          "title": "",
+          "title": "CPU temperature",
           "style": 0,
           "curves": [
             {
@@ -198,7 +198,7 @@
         },
         {
           "id": "020883a4-c4ed-593b-b375-94e15739a207",
-          "title": "",
+          "title": "Component temperatures",
           "style": 0,
           "curves": [
             {
@@ -301,7 +301,7 @@
         },
         {
           "id": "a0857577-cbc2-55aa-9a61-6c526e0988d8",
-          "title": "",
+          "title": "Maximum temperature",
           "style": 0,
           "curves": [
             {
@@ -338,7 +338,7 @@
         },
         {
           "id": "9f348078-d8c6-55ae-8387-ce9f27a44b23",
-          "title": "",
+          "title": "Thermal status",
           "style": 0,
           "curves": [
             {
@@ -372,10 +372,68 @@
           },
           "y_lower": null,
           "y_upper": null
-        },
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.18,
+        "children": [
+          {
+            "panes": [
+              "###ChartsWindow"
+            ]
+          },
+          {
+            "axis": "x",
+            "ratio": 0.5,
+            "children": [
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/e90895d5-1585-535b-a192-2fd55dac7eca"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/020883a4-c4ed-593b-b375-94e15739a207"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/a0857577-cbc2-55aa-9a61-6c526e0988d8"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/9f348078-d8c6-55ae-8387-ce9f27a44b23"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
+    },
+    {
+      "id": "afbbd1e0-7749-5701-9adc-84ce4ff97028",
+      "name": "Cooling and power",
+      "panes": [
         {
           "id": "45316264-a1cb-5314-af53-0870cf7d4349",
-          "title": "",
+          "title": "Power draw [W]",
           "style": 0,
           "curves": [
             {
@@ -412,7 +470,7 @@
         },
         {
           "id": "340ff3ff-6a24-5b13-aa50-0c5376f666ab",
-          "title": "",
+          "title": "Fan demand",
           "style": 0,
           "curves": [
             {
@@ -471,7 +529,7 @@
         },
         {
           "id": "0a7f5e92-cd3e-5cf1-9617-2a68ec221860",
-          "title": "",
+          "title": "Fan speed [RPM]",
           "style": 0,
           "curves": [
             {
@@ -505,10 +563,57 @@
           },
           "y_lower": null,
           "y_upper": null
-        },
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.18,
+        "children": [
+          {
+            "panes": [
+              "###ChartsWindow"
+            ]
+          },
+          {
+            "axis": "y",
+            "ratio": 0.3333333333333333,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/45316264-a1cb-5314-af53-0870cf7d4349"
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/340ff3ff-6a24-5b13-aa50-0c5376f666ab"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/0a7f5e92-cd3e-5cf1-9617-2a68ec221860"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
+    },
+    {
+      "id": "15a40d1c-1f46-55c1-8ce7-cceba51a621e",
+      "name": "CPU load",
+      "panes": [
         {
           "id": "43d530bc-a7f4-5222-ad53-1702bd8bcdd8",
-          "title": "",
+          "title": "CPU utilization: cores 0–3",
           "style": 0,
           "curves": [
             {
@@ -611,7 +716,7 @@
         },
         {
           "id": "479d7136-b3c4-53f4-83a0-e5ad0993c9f7",
-          "title": "",
+          "title": "CPU utilization: cores 4–7",
           "style": 0,
           "curves": [
             {
@@ -715,121 +820,34 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
-            "ratio": 0.166785,
+            "ratio": 0.5,
             "children": [
               {
                 "panes": [
-                  "###Chart/e90895d5-1585-535b-a192-2fd55dac7eca"
-                ],
-                "selected": "###Chart/e90895d5-1585-535b-a192-2fd55dac7eca"
+                  "###Chart/43d530bc-a7f4-5222-ad53-1702bd8bcdd8"
+                ]
               },
               {
-                "axis": "y",
-                "ratio": 0.20017042420023642,
-                "children": [
-                  {
-                    "panes": [
-                      "###Chart/020883a4-c4ed-593b-b375-94e15739a207"
-                    ],
-                    "selected": "###Chart/020883a4-c4ed-593b-b375-94e15739a207"
-                  },
-                  {
-                    "axis": "y",
-                    "ratio": 0.2492009663430518,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/a0857577-cbc2-55aa-9a61-6c526e0988d8"
-                        ],
-                        "selected": "###Chart/a0857577-cbc2-55aa-9a61-6c526e0988d8"
-                      },
-                      {
-                        "axis": "y",
-                        "ratio": 0.3333333333333333,
-                        "children": [
-                          {
-                            "panes": [
-                              "###Chart/9f348078-d8c6-55ae-8387-ce9f27a44b23"
-                            ],
-                            "selected": "###Chart/9f348078-d8c6-55ae-8387-ce9f27a44b23"
-                          },
-                          {
-                            "axis": "y",
-                            "ratio": 0.5,
-                            "children": [
-                              {
-                                "axis": "x",
-                                "ratio": 0.333124,
-                                "children": [
-                                  {
-                                    "panes": [
-                                      "###Chart/45316264-a1cb-5314-af53-0870cf7d4349"
-                                    ],
-                                    "selected": "###Chart/45316264-a1cb-5314-af53-0870cf7d4349"
-                                  },
-                                  {
-                                    "axis": "x",
-                                    "ratio": 0.5004708521524242,
-                                    "children": [
-                                      {
-                                        "panes": [
-                                          "###Chart/340ff3ff-6a24-5b13-aa50-0c5376f666ab"
-                                        ],
-                                        "selected": "###Chart/340ff3ff-6a24-5b13-aa50-0c5376f666ab"
-                                      },
-                                      {
-                                        "panes": [
-                                          "###Chart/0a7f5e92-cd3e-5cf1-9617-2a68ec221860"
-                                        ],
-                                        "selected": "###Chart/0a7f5e92-cd3e-5cf1-9617-2a68ec221860"
-                                      }
-                                    ]
-                                  }
-                                ]
-                              },
-                              {
-                                "axis": "x",
-                                "ratio": 0.502513,
-                                "children": [
-                                  {
-                                    "panes": [
-                                      "###Chart/43d530bc-a7f4-5222-ad53-1702bd8bcdd8"
-                                    ],
-                                    "selected": "###Chart/43d530bc-a7f4-5222-ad53-1702bd8bcdd8"
-                                  },
-                                  {
-                                    "panes": [
-                                      "###Chart/479d7136-b3c4-53f4-83a0-e5ad0993c9f7"
-                                    ],
-                                    "selected": "###Chart/479d7136-b3c4-53f4-83a0-e5ad0993c9f7"
-                                  }
-                                ]
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
+                "panes": [
+                  "###Chart/479d7136-b3c4-53f4-83a0-e5ad0993c9f7"
                 ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

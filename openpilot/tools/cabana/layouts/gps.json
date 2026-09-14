@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "cdce2abd-fa75-5396-a5df-b9918fbb9631",
-      "name": "tab1",
+      "name": "GPS",
       "panes": [
         {
           "id": "b5757780-1c92-54dd-bf13-05ca936a7013",
-          "title": "",
+          "title": "GPS fix",
           "style": 0,
           "curves": [
             {
@@ -44,7 +44,7 @@
         },
         {
           "id": "851e904d-dc53-54f5-8cc1-4ef9e2da3719",
-          "title": "",
+          "title": "Satellites",
           "style": 0,
           "curves": [
             {
@@ -81,7 +81,7 @@
         },
         {
           "id": "ce36847d-0ff1-51f6-b505-6d768907a52d",
-          "title": "",
+          "title": "Horizontal accuracy",
           "style": 0,
           "curves": [
             {
@@ -118,7 +118,7 @@
         },
         {
           "id": "c94d660b-0d07-5559-9741-5593226d2d53",
-          "title": "",
+          "title": "Horizontal accuracy detail",
           "style": 0,
           "curves": [
             {
@@ -156,53 +156,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.24977024977024978,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/b5757780-1c92-54dd-bf13-05ca936a7013"
-                ],
-                "selected": "###Chart/b5757780-1c92-54dd-bf13-05ca936a7013"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.33414997287494885,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/851e904d-dc53-54f5-8cc1-4ef9e2da3719"
-                    ],
-                    "selected": "###Chart/851e904d-dc53-54f5-8cc1-4ef9e2da3719"
+                      "###Chart/b5757780-1c92-54dd-bf13-05ca936a7013"
+                    ]
                   },
                   {
-                    "axis": "y",
-                    "ratio": 0.5,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/ce36847d-0ff1-51f6-b505-6d768907a52d"
-                        ],
-                        "selected": "###Chart/ce36847d-0ff1-51f6-b505-6d768907a52d"
-                      },
-                      {
-                        "panes": [
-                          "###Chart/c94d660b-0d07-5559-9741-5593226d2d53"
-                        ],
-                        "selected": "###Chart/c94d660b-0d07-5559-9741-5593226d2d53"
-                      }
+                    "panes": [
+                      "###Chart/851e904d-dc53-54f5-8cc1-4ef9e2da3719"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/ce36847d-0ff1-51f6-b505-6d768907a52d"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/c94d660b-0d07-5559-9741-5593226d2d53"
                     ]
                   }
                 ]
@@ -210,7 +202,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

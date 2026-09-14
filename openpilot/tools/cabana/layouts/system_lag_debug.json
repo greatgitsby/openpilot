@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "59b1349d-115c-5505-b563-a1c97555c7c8",
-      "name": "tab1",
+      "name": "System lag",
       "panes": [
         {
           "id": "bd60211d-04ee-56de-8394-a165b99688de",
-          "title": "",
+          "title": "CPU utilization",
           "style": 0,
           "curves": [
             {
@@ -198,7 +198,7 @@
         },
         {
           "id": "2882797b-4adc-5345-8a07-f5771ee7c97c",
-          "title": "",
+          "title": "CPU temperature",
           "style": 0,
           "curves": [
             {
@@ -433,7 +433,7 @@
         },
         {
           "id": "25a6bfb8-30c2-5f5f-b804-b00125a1bdd9",
-          "title": "",
+          "title": "Dropped model frames",
           "style": 0,
           "curves": [
             {
@@ -470,7 +470,7 @@
         },
         {
           "id": "c890fa49-9607-58a7-b230-2cae895c07b8",
-          "title": "",
+          "title": "CAN lag [ms]",
           "style": 0,
           "curves": [
             {
@@ -508,53 +508,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.24972875027124974,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/bd60211d-04ee-56de-8394-a165b99688de"
-                ],
-                "selected": "###Chart/bd60211d-04ee-56de-8394-a165b99688de"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.3342974281327305,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/2882797b-4adc-5345-8a07-f5771ee7c97c"
-                    ],
-                    "selected": "###Chart/2882797b-4adc-5345-8a07-f5771ee7c97c"
+                      "###Chart/bd60211d-04ee-56de-8394-a165b99688de"
+                    ]
                   },
                   {
-                    "axis": "y",
-                    "ratio": 0.5,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/25a6bfb8-30c2-5f5f-b804-b00125a1bdd9"
-                        ],
-                        "selected": "###Chart/25a6bfb8-30c2-5f5f-b804-b00125a1bdd9"
-                      },
-                      {
-                        "panes": [
-                          "###Chart/c890fa49-9607-58a7-b230-2cae895c07b8"
-                        ],
-                        "selected": "###Chart/c890fa49-9607-58a7-b230-2cae895c07b8"
-                      }
+                    "panes": [
+                      "###Chart/2882797b-4adc-5345-8a07-f5771ee7c97c"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/25a6bfb8-30c2-5f5f-b804-b00125a1bdd9"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/c890fa49-9607-58a7-b230-2cae895c07b8"
                     ]
                   }
                 ]
@@ -562,7 +554,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

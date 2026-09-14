@@ -7,7 +7,7 @@
       "panes": [
         {
           "id": "1ebb74b9-d72f-5d9c-9e89-27421568526e",
-          "title": "desired vs actual lateral acceleration (closer means better conformance to plan)",
+          "title": "Lateral acceleration tracking",
           "style": 0,
           "curves": [
             {
@@ -66,7 +66,7 @@
         },
         {
           "id": "b636fca5-bf72-544d-9b13-a78574d2f421",
-          "title": "desired vs actual lateral acceleration, road-roll factored out (closer means better conformance to plan)",
+          "title": "Lateral acceleration without roll",
           "style": 0,
           "curves": [
             {
@@ -125,7 +125,7 @@
         },
         {
           "id": "aa84c844-5042-564f-9077-0b4d6c4380bc",
-          "title": "controller feed-forward vs actuator output (closer means controller prediction is more accurate)",
+          "title": "Feedforward and actuator output",
           "style": 0,
           "curves": [
             {
@@ -206,7 +206,7 @@
         },
         {
           "id": "3dae2fef-c32b-5972-802e-665fcf5150e3",
-          "title": "vehicle speed",
+          "title": "Speed",
           "style": 0,
           "curves": [
             {
@@ -288,53 +288,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.250949,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/1ebb74b9-d72f-5d9c-9e89-27421568526e"
-                ],
-                "selected": "###Chart/1ebb74b9-d72f-5d9c-9e89-27421568526e"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.33248870904651356,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/b636fca5-bf72-544d-9b13-a78574d2f421"
-                    ],
-                    "selected": "###Chart/b636fca5-bf72-544d-9b13-a78574d2f421"
+                      "###Chart/1ebb74b9-d72f-5d9c-9e89-27421568526e"
+                    ]
                   },
                   {
-                    "axis": "y",
-                    "ratio": 0.501898,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/aa84c844-5042-564f-9077-0b4d6c4380bc"
-                        ],
-                        "selected": "###Chart/aa84c844-5042-564f-9077-0b4d6c4380bc"
-                      },
-                      {
-                        "panes": [
-                          "###Chart/3dae2fef-c32b-5972-802e-665fcf5150e3"
-                        ],
-                        "selected": "###Chart/3dae2fef-c32b-5972-802e-665fcf5150e3"
-                      }
+                    "panes": [
+                      "###Chart/b636fca5-bf72-544d-9b13-a78574d2f421"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/aa84c844-5042-564f-9077-0b4d6c4380bc"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/3dae2fef-c32b-5972-802e-665fcf5150e3"
                     ]
                   }
                 ]
@@ -342,7 +334,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "0948ffdd-f883-5e96-bc80-a11aae3689bb",
@@ -350,7 +345,7 @@
       "panes": [
         {
           "id": "5702e2c1-4b45-5e2b-ab80-ea44074e3e09",
-          "title": "configured-initial vs online-learned steerRatio, set configured value to match learned",
+          "title": "Steering ratio: configured vs learned",
           "style": 0,
           "curves": [
             {
@@ -409,7 +404,7 @@
         },
         {
           "id": "f68caa15-bf67-5cb9-8af3-cf91c86d8c4a",
-          "title": "configured-initial vs online-learned tireStiffnessRatio, set configured value to match learned",
+          "title": "Tire stiffness: configured vs learned",
           "style": 0,
           "curves": [
             {
@@ -468,7 +463,7 @@
         },
         {
           "id": "afb4b961-1d25-58c3-9492-1947995270b4",
-          "title": "online-learned steering angle offsets for straight-ahead driving, large values here may indicate alignment problems",
+          "title": "Steering angle offsets",
           "style": 0,
           "curves": [
             {
@@ -528,49 +523,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
-            "ratio": 0.33428166571833423,
+            "ratio": 0.3333333333333333,
             "children": [
               {
                 "panes": [
                   "###Chart/5702e2c1-4b45-5e2b-ab80-ea44074e3e09"
-                ],
-                "selected": "###Chart/5702e2c1-4b45-5e2b-ab80-ea44074e3e09"
+                ]
               },
               {
                 "axis": "y",
-                "ratio": 0.4978632125566493,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
                       "###Chart/f68caa15-bf67-5cb9-8af3-cf91c86d8c4a"
-                    ],
-                    "selected": "###Chart/f68caa15-bf67-5cb9-8af3-cf91c86d8c4a"
+                    ]
                   },
                   {
                     "panes": [
                       "###Chart/afb4b961-1d25-58c3-9492-1947995270b4"
-                    ],
-                    "selected": "###Chart/afb4b961-1d25-58c3-9492-1947995270b4"
+                    ]
                   }
                 ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "bf04034d-ef44-595a-a998-83ea0b3cfb54",
@@ -578,7 +569,7 @@
       "panes": [
         {
           "id": "6f6c1b60-8d51-5018-811e-1002f71d23cc",
-          "title": "offline-calculated vs online-learned lateral accel scaling factor, accel obtained from 100% actuator output",
+          "title": "Lateral acceleration scaling",
           "style": 0,
           "curves": [
             {
@@ -659,7 +650,7 @@
         },
         {
           "id": "6f78705c-4e31-5ec9-882f-915c17bafa12",
-          "title": "learned lateral accel offset, vehicle-specific compensation to obtain true zero lateral accel",
+          "title": "Lateral acceleration offset",
           "style": 0,
           "curves": [
             {
@@ -718,7 +709,7 @@
         },
         {
           "id": "5d0098e9-ae7c-5f41-acc9-4cc826b60548",
-          "title": "offline-calculated vs online-learned EPS friction factor, necessary to start moving the steering wheel",
+          "title": "EPS friction",
           "style": 0,
           "curves": [
             {
@@ -800,16 +791,12 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
@@ -818,8 +805,7 @@
               {
                 "panes": [
                   "###Chart/6f6c1b60-8d51-5018-811e-1002f71d23cc"
-                ],
-                "selected": "###Chart/6f6c1b60-8d51-5018-811e-1002f71d23cc"
+                ]
               },
               {
                 "axis": "y",
@@ -828,21 +814,22 @@
                   {
                     "panes": [
                       "###Chart/6f78705c-4e31-5ec9-882f-915c17bafa12"
-                    ],
-                    "selected": "###Chart/6f78705c-4e31-5ec9-882f-915c17bafa12"
+                    ]
                   },
                   {
                     "panes": [
                       "###Chart/5d0098e9-ae7c-5f41-acc9-4cc826b60548"
-                    ],
-                    "selected": "###Chart/5d0098e9-ae7c-5f41-acc9-4cc826b60548"
+                    ]
                   }
                 ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "a3641087-a58f-51fb-9437-1ffe87b0f667",
@@ -850,7 +837,7 @@
       "panes": [
         {
           "id": "0fc47168-b4ef-5034-9acb-56aa94cf8b8a",
-          "title": "actuator lag learning state, 0 = learning, 1 = learned/applying, 2 = invalid",
+          "title": "Actuator learning state",
           "style": 0,
           "curves": [
             {
@@ -887,7 +874,7 @@
         },
         {
           "id": "13e79701-4b76-5e20-8341-c3ce74b6329c",
-          "title": "offline default vs online estimated steering actuator lag",
+          "title": "Steering actuator delay",
           "style": 0,
           "curves": [
             {
@@ -968,7 +955,7 @@
         },
         {
           "id": "8c91429f-cbeb-5363-b730-30c0542259e4",
-          "title": "online estimated steering actuator lag, standard deviation",
+          "title": "Delay uncertainty",
           "style": 0,
           "curves": [
             {
@@ -1006,49 +993,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
-            "ratio": 0.3044096955903044,
+            "ratio": 0.3333333333333333,
             "children": [
               {
                 "panes": [
                   "###Chart/0fc47168-b4ef-5034-9acb-56aa94cf8b8a"
-                ],
-                "selected": "###Chart/0fc47168-b4ef-5034-9acb-56aa94cf8b8a"
+                ]
               },
               {
                 "axis": "y",
-                "ratio": 0.5153373174753555,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
                       "###Chart/13e79701-4b76-5e20-8341-c3ce74b6329c"
-                    ],
-                    "selected": "###Chart/13e79701-4b76-5e20-8341-c3ce74b6329c"
+                    ]
                   },
                   {
                     "panes": [
                       "###Chart/8c91429f-cbeb-5363-b730-30c0542259e4"
-                    ],
-                    "selected": "###Chart/8c91429f-cbeb-5363-b730-30c0542259e4"
+                    ]
                   }
                 ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     },
     {
       "id": "5824d211-fb3d-591e-b4a5-8436b0aece6f",
@@ -1056,7 +1039,7 @@
       "panes": [
         {
           "id": "3c32a125-0ea9-5416-96cf-e89d10ebce27",
-          "title": "rate-of-change limits on steering actuator (blue = original, green = rate-limited before CAN output)",
+          "title": "Steering rate limits",
           "style": 0,
           "curves": [
             {
@@ -1115,7 +1098,7 @@
         },
         {
           "id": "6acca61e-c9ee-59b3-b23b-319fec5e9949",
-          "title": "controller feed-forward vs actuator output (closer means controller prediction is more accurate)",
+          "title": "Feedforward and actuator output",
           "style": 0,
           "curves": [
             {
@@ -1196,7 +1179,7 @@
         },
         {
           "id": "58da5448-45f9-5ca6-9886-1685068e941b",
-          "title": "proportional, integral, and feed-forward terms (actuator output = sum of PIF terms)",
+          "title": "P / I / feedforward terms",
           "style": 0,
           "curves": [
             {
@@ -1299,7 +1282,7 @@
         },
         {
           "id": "50e3f5df-16d3-56fe-9202-54fc0f7d2abd",
-          "title": "road roll angle, from openpilot localizer",
+          "title": "Road roll",
           "style": 0,
           "curves": [
             {
@@ -1337,53 +1320,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.26565473434526565,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/3c32a125-0ea9-5416-96cf-e89d10ebce27"
-                ],
-                "selected": "###Chart/3c32a125-0ea9-5416-96cf-e89d10ebce27"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.34302358833574365,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/6acca61e-c9ee-59b3-b23b-319fec5e9949"
-                    ],
-                    "selected": "###Chart/6acca61e-c9ee-59b3-b23b-319fec5e9949"
+                      "###Chart/3c32a125-0ea9-5416-96cf-e89d10ebce27"
+                    ]
                   },
                   {
-                    "axis": "y",
-                    "ratio": 0.5093419394421782,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/58da5448-45f9-5ca6-9886-1685068e941b"
-                        ],
-                        "selected": "###Chart/58da5448-45f9-5ca6-9886-1685068e941b"
-                      },
-                      {
-                        "panes": [
-                          "###Chart/50e3f5df-16d3-56fe-9202-54fc0f7d2abd"
-                        ],
-                        "selected": "###Chart/50e3f5df-16d3-56fe-9202-54fc0f7d2abd"
-                      }
+                    "panes": [
+                      "###Chart/6acca61e-c9ee-59b3-b23b-319fec5e9949"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/58da5448-45f9-5ca6-9886-1685068e941b"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/50e3f5df-16d3-56fe-9202-54fc0f7d2abd"
                     ]
                   }
                 ]
@@ -1391,7 +1366,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [

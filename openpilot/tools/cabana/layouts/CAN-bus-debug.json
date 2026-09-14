@@ -3,7 +3,7 @@
   "pages": [
     {
       "id": "6fdec3a3-ea47-50e6-9906-8ddf7608ea65",
-      "name": "tab1",
+      "name": "CAN traffic",
       "panes": [
         {
           "id": "d682347b-05fb-54d2-8bd5-14d440eb5011",
@@ -251,49 +251,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
-            "ratio": 0.33362,
+            "ratio": 0.3333333333333333,
             "children": [
               {
                 "panes": [
                   "###Chart/d682347b-05fb-54d2-8bd5-14d440eb5011"
-                ],
-                "selected": "###Chart/d682347b-05fb-54d2-8bd5-14d440eb5011"
+                ]
               },
               {
                 "axis": "y",
-                "ratio": 0.49935472253068824,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
                       "###Chart/b8d86488-5e00-562f-8fe6-e97fedfd419b"
-                    ],
-                    "selected": "###Chart/b8d86488-5e00-562f-8fe6-e97fedfd419b"
+                    ]
                   },
                   {
                     "panes": [
                       "###Chart/4c1c3688-1983-5d55-a1b5-69a45070742c"
-                    ],
-                    "selected": "###Chart/4c1c3688-1983-5d55-a1b5-69a45070742c"
+                    ]
                   }
                 ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

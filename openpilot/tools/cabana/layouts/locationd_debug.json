@@ -3,48 +3,11 @@
   "pages": [
     {
       "id": "9e268102-ed8b-5366-a3ee-ea241068f0e9",
-      "name": "tab1",
+      "name": "Motion sensors",
       "panes": [
         {
-          "id": "7878cba6-9ffc-5b89-8682-12e804d47b45",
-          "title": "",
-          "style": 0,
-          "curves": [
-            {
-              "source": {
-                "kind": "series",
-                "path": "/deviceMotion/inputsOK"
-              },
-              "alias": "",
-              "color": [
-                255,
-                127,
-                14,
-                255
-              ],
-              "visible": true,
-              "transform": {
-                "type": 0,
-                "scale": 1,
-                "offset": 0,
-                "time_offset": 0,
-                "divisor": 0,
-                "window": 10
-              }
-            }
-          ],
-          "range": {
-            "right": 2280.128382,
-            "left": 0.0,
-            "top": 1.025,
-            "bottom": -0.025
-          },
-          "y_lower": null,
-          "y_upper": null
-        },
-        {
           "id": "d252fa33-2e91-5c8e-8da7-9a9ef6f8aa55",
-          "title": "",
+          "title": "Acceleration",
           "style": 0,
           "curves": [
             {
@@ -125,7 +88,7 @@
         },
         {
           "id": "b9147597-abae-57e4-b2f2-8efb2ba26f2a",
-          "title": "",
+          "title": "Angular velocity",
           "style": 0,
           "curves": [
             {
@@ -203,10 +166,83 @@
           },
           "y_lower": null,
           "y_upper": null
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.18,
+        "children": [
+          {
+            "panes": [
+              "###ChartsWindow"
+            ]
+          },
+          {
+            "axis": "y",
+            "ratio": 0.5,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/d252fa33-2e91-5c8e-8da7-9a9ef6f8aa55"
+                ]
+              },
+              {
+                "panes": [
+                  "###Chart/b9147597-abae-57e4-b2f2-8efb2ba26f2a"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
+    },
+    {
+      "id": "c3df7471-62ea-5598-a412-8937227a3be9",
+      "name": "Input health",
+      "panes": [
+        {
+          "id": "7878cba6-9ffc-5b89-8682-12e804d47b45",
+          "title": "Motion inputs",
+          "style": 0,
+          "curves": [
+            {
+              "source": {
+                "kind": "series",
+                "path": "/deviceMotion/inputsOK"
+              },
+              "alias": "",
+              "color": [
+                255,
+                127,
+                14,
+                255
+              ],
+              "visible": true,
+              "transform": {
+                "type": 0,
+                "scale": 1,
+                "offset": 0,
+                "time_offset": 0,
+                "divisor": 0,
+                "window": 10
+              }
+            }
+          ],
+          "range": {
+            "right": 2280.128382,
+            "left": 0.0,
+            "top": 1.025,
+            "bottom": -0.025
+          },
+          "y_lower": null,
+          "y_upper": null
         },
         {
           "id": "f55ec36f-b497-5136-9137-0e3fb4d548b0",
-          "title": "",
+          "title": "Input validity",
           "style": 0,
           "curves": [
             {
@@ -328,10 +364,46 @@
           },
           "y_lower": null,
           "y_upper": null
-        },
+        }
+      ],
+      "dock": {
+        "axis": "x",
+        "ratio": 0.18,
+        "children": [
+          {
+            "panes": [
+              "###ChartsWindow"
+            ]
+          },
+          {
+            "axis": "y",
+            "ratio": 0.5,
+            "children": [
+              {
+                "panes": [
+                  "###Chart/7878cba6-9ffc-5b89-8682-12e804d47b45"
+                ]
+              },
+              {
+                "panes": [
+                  "###Chart/f55ec36f-b497-5136-9137-0e3fb4d548b0"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
+    },
+    {
+      "id": "6f61f284-c823-57dc-b593-425b18938ed1",
+      "name": "Sensor timing",
+      "panes": [
         {
           "id": "a6975f6e-20f9-5e61-b99e-e492322a7e17",
-          "title": "",
+          "title": "Log timestamps",
           "style": 0,
           "curves": [
             {
@@ -390,7 +462,7 @@
         },
         {
           "id": "387d12fd-6a31-5327-a814-058fd088cc02",
-          "title": "",
+          "title": "Sensor timestamps",
           "style": 0,
           "curves": [
             {
@@ -450,85 +522,34 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
-            "ratio": 0.16658783341216657,
+            "ratio": 0.5,
             "children": [
               {
                 "panes": [
-                  "###Chart/7878cba6-9ffc-5b89-8682-12e804d47b45"
-                ],
-                "selected": "###Chart/7878cba6-9ffc-5b89-8682-12e804d47b45"
+                  "###Chart/a6975f6e-20f9-5e61-b99e-e492322a7e17"
+                ]
               },
               {
-                "axis": "y",
-                "ratio": 0.20045523647939256,
-                "children": [
-                  {
-                    "panes": [
-                      "###Chart/d252fa33-2e91-5c8e-8da7-9a9ef6f8aa55"
-                    ],
-                    "selected": "###Chart/d252fa33-2e91-5c8e-8da7-9a9ef6f8aa55"
-                  },
-                  {
-                    "axis": "y",
-                    "ratio": 0.24928753764907685,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/b9147597-abae-57e4-b2f2-8efb2ba26f2a"
-                        ],
-                        "selected": "###Chart/b9147597-abae-57e4-b2f2-8efb2ba26f2a"
-                      },
-                      {
-                        "axis": "y",
-                        "ratio": 0.33301748367776945,
-                        "children": [
-                          {
-                            "panes": [
-                              "###Chart/f55ec36f-b497-5136-9137-0e3fb4d548b0"
-                            ],
-                            "selected": "###Chart/f55ec36f-b497-5136-9137-0e3fb4d548b0"
-                          },
-                          {
-                            "axis": "y",
-                            "ratio": 0.5007103251910684,
-                            "children": [
-                              {
-                                "panes": [
-                                  "###Chart/a6975f6e-20f9-5e61-b99e-e492322a7e17"
-                                ],
-                                "selected": "###Chart/a6975f6e-20f9-5e61-b99e-e492322a7e17"
-                              },
-                              {
-                                "panes": [
-                                  "###Chart/387d12fd-6a31-5327-a814-058fd088cc02"
-                                ],
-                                "selected": "###Chart/387d12fd-6a31-5327-a814-058fd088cc02"
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
+                "panes": [
+                  "###Chart/387d12fd-6a31-5327-a814-058fd088cc02"
                 ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],

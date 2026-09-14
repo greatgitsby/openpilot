@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "32f996d5-024e-5b42-9eec-29549dcaadd3",
-      "name": "tab1",
+      "name": "Torque limits",
       "panes": [
         {
           "id": "a5cbd52f-b58d-5138-93ec-7b1560218e36",
-          "title": "",
+          "title": "Lateral acceleration comparison",
           "style": 0,
           "curves": [
             {
@@ -66,7 +66,7 @@
         },
         {
           "id": "bc97dbfd-94aa-5e87-9950-9958e418dcc0",
-          "title": "",
+          "title": "Torque estimate",
           "style": 0,
           "curves": [
             {
@@ -103,7 +103,7 @@
         },
         {
           "id": "af25d7ad-999f-59ab-9f49-3defc1c2e97b",
-          "title": "",
+          "title": "Driver input and torque",
           "style": 0,
           "curves": [
             {
@@ -162,7 +162,7 @@
         },
         {
           "id": "3bbc9800-fe58-51ea-a560-4bc059ebfafe",
-          "title": "",
+          "title": "Speed",
           "style": 0,
           "curves": [
             {
@@ -200,53 +200,45 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
-            "axis": "y",
-            "ratio": 0.24972375027624968,
+            "axis": "x",
+            "ratio": 0.5,
             "children": [
               {
-                "panes": [
-                  "###Chart/a5cbd52f-b58d-5138-93ec-7b1560218e36"
-                ],
-                "selected": "###Chart/a5cbd52f-b58d-5138-93ec-7b1560218e36"
-              },
-              {
                 "axis": "y",
-                "ratio": 0.3343151929220808,
+                "ratio": 0.5,
                 "children": [
                   {
                     "panes": [
-                      "###Chart/bc97dbfd-94aa-5e87-9950-9958e418dcc0"
-                    ],
-                    "selected": "###Chart/bc97dbfd-94aa-5e87-9950-9958e418dcc0"
+                      "###Chart/a5cbd52f-b58d-5138-93ec-7b1560218e36"
+                    ]
                   },
                   {
-                    "axis": "y",
-                    "ratio": 0.5,
-                    "children": [
-                      {
-                        "panes": [
-                          "###Chart/af25d7ad-999f-59ab-9f49-3defc1c2e97b"
-                        ],
-                        "selected": "###Chart/af25d7ad-999f-59ab-9f49-3defc1c2e97b"
-                      },
-                      {
-                        "panes": [
-                          "###Chart/3bbc9800-fe58-51ea-a560-4bc059ebfafe"
-                        ],
-                        "selected": "###Chart/3bbc9800-fe58-51ea-a560-4bc059ebfafe"
-                      }
+                    "panes": [
+                      "###Chart/bc97dbfd-94aa-5e87-9950-9958e418dcc0"
+                    ]
+                  }
+                ]
+              },
+              {
+                "axis": "y",
+                "ratio": 0.5,
+                "children": [
+                  {
+                    "panes": [
+                      "###Chart/af25d7ad-999f-59ab-9f49-3defc1c2e97b"
+                    ]
+                  },
+                  {
+                    "panes": [
+                      "###Chart/3bbc9800-fe58-51ea-a560-4bc059ebfafe"
                     ]
                   }
                 ]
@@ -254,7 +246,10 @@
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [

@@ -3,11 +3,11 @@
   "pages": [
     {
       "id": "a9e25764-3775-53e3-96b5-e9eee68454ae",
-      "name": "tab1",
+      "name": "GNSS",
       "panes": [
         {
           "id": "b4a2a321-f206-5fe6-9caf-be1c6c631cd5",
-          "title": "",
+          "title": "Horizontal accuracy",
           "style": 0,
           "curves": [
             {
@@ -44,7 +44,7 @@
         },
         {
           "id": "8f605ac9-fbe9-5719-9ddb-dffd81886dd1",
-          "title": "",
+          "title": "GPS flags",
           "style": 0,
           "curves": [
             {
@@ -81,7 +81,7 @@
         },
         {
           "id": "dd95b60e-2f2f-578b-880c-a685fe4b158d",
-          "title": "",
+          "title": "GNSS measurements",
           "style": 0,
           "curves": [
             {
@@ -119,16 +119,12 @@
       ],
       "dock": {
         "axis": "x",
-        "ratio": 0.22,
+        "ratio": 0.18,
         "children": [
           {
             "panes": [
-              "###MessagesPanel",
-              "###CenterWidget",
-              "###VideoPanel",
               "###ChartsWindow"
-            ],
-            "selected": "###ChartsWindow"
+            ]
           },
           {
             "axis": "y",
@@ -137,8 +133,7 @@
               {
                 "panes": [
                   "###Chart/b4a2a321-f206-5fe6-9caf-be1c6c631cd5"
-                ],
-                "selected": "###Chart/b4a2a321-f206-5fe6-9caf-be1c6c631cd5"
+                ]
               },
               {
                 "axis": "y",
@@ -147,21 +142,22 @@
                   {
                     "panes": [
                       "###Chart/8f605ac9-fbe9-5719-9ddb-dffd81886dd1"
-                    ],
-                    "selected": "###Chart/8f605ac9-fbe9-5719-9ddb-dffd81886dd1"
+                    ]
                   },
                   {
                     "panes": [
                       "###Chart/dd95b60e-2f2f-578b-880c-a685fe4b158d"
-                    ],
-                    "selected": "###Chart/dd95b60e-2f2f-578b-880c-a685fe4b158d"
+                    ]
                   }
                 ]
               }
             ]
           }
         ]
-      }
+      },
+      "widgets": [
+        "###ChartsWindow"
+      ]
     }
   ],
   "equations": [],
