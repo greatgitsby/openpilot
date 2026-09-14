@@ -119,6 +119,10 @@ void keepAlive(ImGuiID root) { ImGui::DockSpace(root, ImVec2(0, 0), ImGuiDockNod
 }
 
 namespace docking {
+bool Workspace::hasWindow(const std::string &name) const {
+  return std::find(active_windows_.begin(), active_windows_.end(), identity(name.c_str())) != active_windows_.end();
+}
+
 void Workspace::draw(const std::string &page, const std::vector<std::string> &pages, const json11::Json &default_layout,
                      const std::function<json11::Json(const std::string &)> &read,
                      const std::function<void(const std::string &, const json11::Json &)> &write,

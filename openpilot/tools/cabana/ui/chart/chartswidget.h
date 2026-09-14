@@ -48,6 +48,7 @@ private:
   int pos_ = 0;
 };
 
+namespace docking { class Workspace; }
 class ChartView;
 class ChartsWidget;
 
@@ -57,7 +58,7 @@ public:
   cabana::AnalysisSession &session;
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
   void draw();  // workspace controls
-  void drawPanes();
+  void drawPanes(const docking::Workspace &workspace);
   void drawMenus();
   void drawPageControls(const std::vector<ToolbarItem> &workspace_items = {});
   std::string addPlot();

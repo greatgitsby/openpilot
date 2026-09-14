@@ -24,6 +24,7 @@ void keepAlive(ImGuiID root);
 namespace docking {
 class Workspace {
 public:
+  bool hasWindow(const std::string &name) const;
   void addWindow(const std::string &name) { pending_windows_.push_back(name); }
   void draw(const std::string &page, const std::vector<std::string> &pages, const json11::Json &default_layout,
             const std::function<json11::Json(const std::string &)> &read,

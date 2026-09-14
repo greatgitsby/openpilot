@@ -936,7 +936,7 @@ void MainWindow::draw() {
     charts_widget_->setWidgetVisible("###CenterWidget", center_visible_);
     charts_widget_->setWidgetVisible("###VideoPanel", video_visible_);
     charts_widget_->setWidgetVisible("###ChartsWindow", charts_visible_);
-    charts_widget_->drawPanes();
+    charts_widget_->drawPanes(docking_);
     for (int i = 0; i < 3; ++i) drawCamera(i);
   }
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
