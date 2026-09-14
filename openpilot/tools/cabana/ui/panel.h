@@ -24,13 +24,15 @@ void keepAlive(ImGuiID root);
 namespace docking {
 class Workspace {
 public:
-  bool hasWindow(const std::string &name) const;
+  // Assign newly introduced panes before Begin; existing/restored panes retain their placement.
+  void dockWindow(const std::string &name);
   void addWindow(const std::string &name) { pending_windows_.push_back(name); }
   void draw(const std::string &page, const std::vector<std::string> &pages, const json11::Json &default_layout,
             const std::function<json11::Json(const std::string &)> &read,
             const std::function<void(const std::string &, const json11::Json &)> &write,
             const ImVec2 &size, bool reset, uint64_t revision);
 private:
+  bool hasWindow(const std::string &name) const;
   std::string active_page_;
   uint64_t revision_ = 0;
   std::vector<std::string> active_windows_;

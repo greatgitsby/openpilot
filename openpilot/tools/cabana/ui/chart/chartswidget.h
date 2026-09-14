@@ -58,7 +58,7 @@ public:
   cabana::AnalysisSession &session;
   ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
   void draw();  // workspace controls
-  void drawPanes(const docking::Workspace &workspace);
+  void drawPanes(docking::Workspace &workspace);
   void drawMenus();
   void drawPageControls(const std::vector<ToolbarItem> &workspace_items = {});
   std::string addPlot();

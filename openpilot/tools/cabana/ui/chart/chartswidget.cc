@@ -407,7 +407,7 @@ void ChartsWidget::draw() {
   });
 }
 
-void ChartsWidget::drawPanes(const docking::Workspace &workspace) {
+void ChartsWidget::drawPanes(docking::Workspace &workspace) {
   // Let ImGui resolve the docking gesture first: center/tab drops share a node,
   // while edge drops create separate nodes and must remain separate charts.
   const auto *payload = ImGui::GetDragDropPayload();
@@ -441,11 +441,10 @@ void ChartsWidget::drawPanes(const docking::Workspace &workspace) {
     }
     if (merge_drop_frames_ == 0) dragged_chart_id_.clear();
   }
+  // Assign new panes before any chart begins, including actions from the browser this frame.
+  for (auto *chart : currentCharts()) workspace.dockWindow(chart->windowName());
   any_plot_hovered_ = false;
   for (auto *chart : std::vector<ChartView *>(currentCharts())) {
-    // Browser/CAN actions can create charts after this frame's docking pass.
-    // Submit them next frame, once the workspace has assigned their destination.
-    if (!workspace.hasWindow(chart->windowName())) continue;
     bool open = true;
     setNextPanelClass();
     ImGui::SetNextWindowSize(ImVec2(600, 350), ImGuiCond_FirstUseEver);

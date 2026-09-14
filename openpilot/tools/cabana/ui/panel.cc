@@ -123,6 +123,47 @@ bool Workspace::hasWindow(const std::string &name) const {
   return std::find(active_windows_.begin(), active_windows_.end(), identity(name.c_str())) != active_windows_.end();
 }
 
+void Workspace::dockWindow(const std::string &name) {
+  if (hasWindow(name)) return;
+  const ImGuiID root = ImHashStr(("CabanaWorkspace/" + active_page_).c_str());
+  auto *target = ImGui::DockBuilderGetNode(root);
+  const bool chart = identity(name.c_str()).rfind("###Chart/", 0) == 0;
+  ImGuiDockNode *plot_node = nullptr;
+  ImGuiDockNode *largest_leaf = nullptr;
+  std::function<void(ImGuiDockNode *)> find_plot = [&](ImGuiDockNode *node) {
+    if (!node) return;
+    const bool sidebar = node->Windows.Size == 1 && identity(node->Windows[0]->Name) == "###ChartsWindow";
+    if (!sidebar && !node->IsSplitNode() && (!largest_leaf || node->Size.x * node->Size.y > largest_leaf->Size.x * largest_leaf->Size.y)) largest_leaf = node;
+    for (const auto *window : node->Windows) {
+      if (identity(window->Name).rfind("###Chart/", 0) == 0 && (!plot_node || node->Size.y > plot_node->Size.y)) plot_node = node;
+    }
+    for (auto *child : node->ChildNodes) find_plot(child);
+  };
+  find_plot(target);
+  ImGuiID destination = root;
+  if (chart && plot_node) {
+    // Stack plots while there is useful room; use tabs rather than creating tiny slivers.
+    destination = plot_node->ID;
+    if (plot_node->Size.y >= ImGui::GetFontSize() * 18)
+      destination = ImGui::DockBuilderSplitNode(destination, ImGuiDir_Down, .5f, nullptr, nullptr);
+  } else if (target && (target->IsSplitNode() || !target->Windows.empty())) {
+    const auto id = identity(name.c_str());
+    const bool browser = id == "###ChartsWindow" || id == "###MessagesPanel";
+    // Add beside the largest pane rather than repeatedly squeezing the whole page.
+    auto *leaf = largest_leaf ? largest_leaf : target;
+    destination = leaf->ID;
+    if (!leaf->Windows.empty() && leaf->Size.x >= ImGui::GetFontSize() * 40) {
+      const float ratio = browser && leaf == target ? .25f : .5f;
+      destination = ImGui::DockBuilderSplitNode(leaf->ID, browser ? ImGuiDir_Left : ImGuiDir_Right,
+                                                ratio, nullptr, nullptr);
+    }
+  }
+  ImGui::DockBuilderDockWindow(name.c_str(), destination);
+  pending_tab_focus[ImHashStr(name.c_str())] = 3;
+  ImGui::DockBuilderFinish(root);
+  active_windows_.push_back(identity(name.c_str()));
+}
+
 void Workspace::draw(const std::string &page, const std::vector<std::string> &pages, const json11::Json &default_layout,
                      const std::function<json11::Json(const std::string &)> &read,
                      const std::function<void(const std::string &, const json11::Json &)> &write,
@@ -173,42 +214,10 @@ void Workspace::draw(const std::string &page, const std::vector<std::string> &pa
   }
   if (!pending_windows_.empty()) {
     for (const auto &name : pending_windows_) {
-      auto *target = ImGui::DockBuilderGetNode(root);
-      const bool chart = identity(name.c_str()).rfind("###Chart/", 0) == 0;
-      ImGuiDockNode *plot_node = nullptr;
-      ImGuiDockNode *largest_leaf = nullptr;
-      std::function<void(ImGuiDockNode *)> find_plot = [&](ImGuiDockNode *node) {
-        if (!node) return;
-        const bool sidebar = node->Windows.Size == 1 && identity(node->Windows[0]->Name) == "###ChartsWindow";
-        if (!sidebar && !node->IsSplitNode() && (!largest_leaf || node->Size.x * node->Size.y > largest_leaf->Size.x * largest_leaf->Size.y)) largest_leaf = node;
-        for (const auto *window : node->Windows) {
-          if (identity(window->Name).rfind("###Chart/", 0) == 0 && (!plot_node || node->Size.y > plot_node->Size.y)) plot_node = node;
-        }
-        for (auto *child : node->ChildNodes) find_plot(child);
-      };
-      find_plot(target);
-      ImGuiID destination = root;
-      if (chart && plot_node) {
-        // Stack plots while there is useful room; use tabs rather than creating tiny slivers.
-        destination = plot_node->ID;
-        if (plot_node->Size.y >= ImGui::GetFontSize() * 18)
-          destination = ImGui::DockBuilderSplitNode(destination, ImGuiDir_Down, .5f, nullptr, nullptr);
-      } else if (target && (target->IsSplitNode() || !target->Windows.empty())) {
-        const auto id = identity(name.c_str());
-        const bool browser = id == "###ChartsWindow" || id == "###MessagesPanel";
-        // Add beside the largest pane rather than repeatedly squeezing the whole page.
-        auto *leaf = largest_leaf ? largest_leaf : target;
-        destination = leaf->ID;
-        if (!leaf->Windows.empty() && leaf->Size.x >= ImGui::GetFontSize() * 40) {
-          const float ratio = browser && leaf == target ? .25f : .5f;
-          destination = ImGui::DockBuilderSplitNode(leaf->ID, browser ? ImGuiDir_Left : ImGuiDir_Right,
-                                                    ratio, nullptr, nullptr);
-        }
-      }
-      ImGui::DockBuilderDockWindow(name.c_str(), destination);
-      pending_tab_focus[ImHashStr(name.c_str())] = 3;
+      // Explicit requests also redock existing, intentionally floating panels.
+      active_windows_.erase(std::remove(active_windows_.begin(), active_windows_.end(), identity(name.c_str())), active_windows_.end());
+      dockWindow(name);
     }
-    ImGui::DockBuilderFinish(root);
     pending_windows_.clear();
   }
   active_windows_.clear();

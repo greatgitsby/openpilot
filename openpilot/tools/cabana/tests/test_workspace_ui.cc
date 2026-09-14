@@ -86,9 +86,11 @@ void test_docking() {
                  [&](const auto &id, const auto &value) { layouts[id] = value; }, ImGui::GetContentRegionAvail(), false, 1);
     ImGui::End();
     for (const auto *name : {"A###Chart/a", "B###Chart/b", "C###Chart/c"}) {
+      docking.dockWindow(name);
       setNextPanelClass(); beginPanel(name, nullptr); ImGui::TextUnformatted("Contents"); ImGui::End();
     }
-    if (added_plot && docking.hasWindow("D###Chart/d")) {
+    if (added_plot) {
+      docking.dockWindow("D###Chart/d");
       setNextPanelClass(); beginPanel("D###Chart/d", nullptr); ImGui::End();
     }
     ImGui::Render();
@@ -118,10 +120,7 @@ void test_docking() {
   REQUIRE(a->DockNode->SelectedTabId == a->TabId);
   // Charts created by a browser/function action are discovered without an explicit addWindow call.
   added_plot = true;
-  frame();  // Created after docking: no floating window is submitted.
-  REQUIRE(!ImGui::FindWindowByName("###Chart/d"));
-  tree = J::object{{"panes", J::array{"###Chart/a", "###Chart/b", "###Chart/c", "###Chart/d"}}};
-  frame();  // Its very first submitted frame must already be docked.
+  frame();  // Created after DockSpace: its first Begin must already be docked.
   auto *d = ImGui::FindWindowByName("###Chart/d");
   REQUIRE(d->DockNode && d->DockNode != a->DockNode && d->DockNode != b->DockNode);
   auto *root = d->DockNode;
