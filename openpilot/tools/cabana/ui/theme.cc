@@ -105,7 +105,8 @@ void applyTheme(int theme) {
   style.WindowBorderSize = 1.0f;
   style.FrameBorderSize = 1.0f;
   style.TabBorderSize = 1.0f;
-  style.WindowPadding = ImVec2(spacing::CONTROL, spacing::CONTROL);
+  style.WindowPadding = ImVec2(spacing::PANEL, spacing::PANEL);
+  style.DockingSeparatorSize = spacing::CONTROL;
   style.FramePadding = ImVec2(spacing::CONTROL, spacing::INNER);
   style.ItemSpacing = ImVec2(spacing::CONTROL, spacing::CONTROL);
   style.ItemInnerSpacing = ImVec2(spacing::INNER, spacing::INNER);

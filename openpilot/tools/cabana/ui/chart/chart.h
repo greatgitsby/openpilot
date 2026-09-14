@@ -130,6 +130,7 @@ private:
     std::vector<ImRect> legend_rects;
     float header_bottom = 0;
     bool plot_hovered = false;
+    bool compact_header = false;
   } layout_;
   // axes
   double x_min_;

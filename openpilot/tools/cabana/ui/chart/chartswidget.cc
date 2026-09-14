@@ -420,7 +420,7 @@ void ChartsWidget::drawPanes() {
     bool open = true;
     setNextPanelClass();
     ImGui::SetNextWindowSize(ImVec2(600, 350), ImGuiCond_FirstUseEver);
-    if (beginPanel(chart->windowName().c_str(), &open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    if (beginPanel(chart->windowName().c_str(), &open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse, false)) {
       chart->draw(ImGui::GetContentRegionAvail());
       any_plot_hovered_ |= chart->plotHovered();
       if (ImGui::IsMouseClicked(3) && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) zoom_undo_stack_.undo();

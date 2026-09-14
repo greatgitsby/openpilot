@@ -1,4 +1,5 @@
 #include "tools/cabana/ui/panel.h"
+#include "tools/cabana/ui/util.h"
 
 #include <algorithm>
 #include <set>
@@ -19,7 +20,8 @@ void setNextPanelClass() {
   ImGui::SetNextWindowClass(&window_class);
 }
 
-bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags) {
+bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags, bool pad_content) {
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, pad_content ? contentPadding(ContentPadding::Panel) : ImVec2(0, 0));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   const bool visible = ImGui::Begin(name, open, flags | ImGuiWindowFlags_NoCollapse);
   if (auto it = pending_tab_focus.find(ImHashStr(name)); it != pending_tab_focus.end()) {
@@ -32,7 +34,7 @@ bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags) {
       if (--it->second <= 0) pending_tab_focus.erase(it);
     }
   }
-  ImGui::PopStyleVar();
+  ImGui::PopStyleVar(2);
   return visible;
 }
 

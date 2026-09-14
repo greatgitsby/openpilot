@@ -37,6 +37,8 @@ inline ImU32 withAlpha(ImU32 c, int alpha) { return (c & ~IM_COL32_A_MASK) | ((I
 // is reserved for parts of one control (icon/label, checkbox/label, dropdown arrow).
 namespace spacing {
 constexpr float CONTROL = 8.0f;
+constexpr float PANEL = 12.0f;
+constexpr float SECTION = 16.0f;
 constexpr float INNER = 4.0f;
 constexpr float DIALOG_BUTTON_MIN_WIDTH = 80.0f;
 }  // namespace spacing

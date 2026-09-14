@@ -31,6 +31,14 @@ inline bool inputText(const char *label, std::string *s, const char *hint = "", 
 
 bool inputTextMultiline(const char *label, std::string *s, const ImVec2 &size, ImGuiInputTextFlags flags = 0);
 
+// Shared content insets: panels, top-level sections, and compact status rows.
+enum class ContentPadding { Panel, Section, Compact };
+ImVec2 contentPadding(ContentPadding kind);
+float paddedHeight(float content_height, ContentPadding kind);
+// Always pair with EndChild, including when clipped. Padding contributes to size.
+bool beginPaddedChild(const char *id, const ImVec2 &size, ContentPadding kind = ContentPadding::Panel,
+                      ImGuiWindowFlags flags = 0);
+
 constexpr float CONTROL_OUTLINE_PADDING = 1.0f;
 // Always pair with ImGui::EndChild(), even when false is returned.
 bool beginControlChild(const char *id, const ImVec2 &size, ImGuiWindowFlags flags = 0);

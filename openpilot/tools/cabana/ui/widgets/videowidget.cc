@@ -284,16 +284,12 @@ void PlaybackController::updateSliderThumbnail() {
 
 float PlaybackController::sizeHintHeight() const {
   // Include the footer padding so controls stay clear of the window edges.
-  return SLIDER_HEIGHT + toolbarHeight() + ImGui::GetStyle().ItemSpacing.y + 2 * ImGui::GetStyle().WindowPadding.y;
+  return paddedHeight(SLIDER_HEIGHT + toolbarHeight() + ImGui::GetStyle().ItemSpacing.y, ContentPadding::Section);
 }
 
 void PlaybackController::drawPlayback() {
-  const auto padding = ImGui::GetStyle().WindowPadding;
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2 * padding.x, padding.y));
-  const bool visible = ImGui::BeginChild("##playback_footer", ImVec2(0, sizeHintHeight()),
-                                       ImGuiChildFlags_AlwaysUseWindowPadding,
-                                       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-  ImGui::PopStyleVar();
+  const bool visible = beginPaddedChild("##playback_footer", ImVec2(0, sizeHintHeight()), ContentPadding::Section,
+                                        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   if (visible) {
     if (slider_) {
       timeRangeChanged();

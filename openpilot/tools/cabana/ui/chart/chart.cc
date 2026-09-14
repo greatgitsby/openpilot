@@ -210,10 +210,9 @@ void ChartView::manageSignals() {
 
 void ChartView::updateLayout() {
   const ImGuiStyle &style = ImGui::GetStyle();
-  // WindowPadding can be zero in a borderless pane or drag preview. Chart
-  // content always uses the shared control gap, independently of its parent.
+  // Chart cards own their inset; their dock window adds no second layer of padding.
   layout_.content_rect = layout_.rect;
-  layout_.content_rect.Expand(-style.ItemSpacing.x);
+  layout_.content_rect.Expand(-contentPadding(ContentPadding::Panel).x);
   const ImVec2 top_left = layout_.content_rect.Min;
   const ImVec2 btn_size(iconButtonWidth(), iconButtonWidth());
   const ImVec2 close_min(layout_.content_rect.Max.x - btn_size.x, top_left.y);
@@ -225,7 +224,9 @@ void ChartView::updateLayout() {
   const float font_size = ImGui::GetFontSize();
   const float fm_height = ImGui::GetTextLineHeight();
   const int marker_size = markerSize();
-  const int row_height = std::max<int>(marker_size, fm_height) + fm_height + style.ItemInnerSpacing.y;  // + the signal value line
+  layout_.compact_header = layout_.content_rect.GetHeight() < 10 * fm_height;
+  const int row_height = std::max<int>(marker_size, fm_height) +
+                         (layout_.compact_header ? 0 : fm_height + style.ItemInnerSpacing.y);
   const int legend_left = top_left.x;
   const int legend_right = std::max<int>(layout_.manage_btn_rect.Min.x - ImGui::GetStyle().ItemSpacing.x, legend_left + 10);
 
@@ -248,7 +249,8 @@ void ChartView::updateLayout() {
   }
 
   // add top space for the legend and signal values
-  layout_.header_bottom = std::max<float>(y + row_height, layout_.manage_btn_rect.Max.y) + ImGui::GetStyle().ItemSpacing.y;
+  layout_.header_bottom = std::max<float>(y + row_height, layout_.manage_btn_rect.Max.y) +
+                          (layout_.compact_header ? style.ItemInnerSpacing.y : style.ItemSpacing.y);
 }
 
 void ChartView::updatePlot(double cur, double min, double max) {
@@ -610,12 +612,16 @@ void ChartView::drawAxes() {
   const float x_label_width = ImGui::CalcTextSize(formatNumber(x_max_, xAxisPrecision()).c_str()).x + ImGui::GetStyle().ItemInnerSpacing.x;
   if (ImPlot::BeginPlot("##plot", ImVec2(layout_.content_rect.GetWidth() - x_label_width / 2, plot_h), flags)) {
     ImPlot::SetupAxis(ImAxis_X1, nullptr, axis_flags);
-    ImPlot::SetupAxis(ImAxis_Y1, y_unit_.empty() ? nullptr : y_unit_.c_str(), axis_flags);
+    // Tiny stacked panes behave like sparklines: avoid colliding Y labels.
+    // Exact values remain available through the shared inspection tooltip.
+    const auto y_flags = axis_flags | (plot_h < 4 * ImGui::GetTextLineHeight() ? ImPlotAxisFlags_NoTickLabels : 0);
+    ImPlot::SetupAxis(ImAxis_Y1, y_unit_.empty() ? nullptr : y_unit_.c_str(), y_flags);
     ImPlot::SetupAxisLimits(ImAxis_X1, x_min_, x_max_, ImPlotCond_Always);
     ImPlot::SetupAxisLimits(ImAxis_Y1, y_min_, y_max_, ImPlotCond_Always);
     // the format must be set before the ticks are generated
     ImPlot::SetupAxisFormat(ImAxis_Y1, ("%." + std::to_string(y_precision_) + "f").c_str());
-    ImPlot::SetupAxisTicks(ImAxis_Y1, y_min_, y_max_, y_tick_count_);
+    const int fitting_ticks = std::max(2, (int)((plot_h - 2 * ImGui::GetTextLineHeight()) / (1.5f * ImGui::GetTextLineHeight())) + 1);
+    ImPlot::SetupAxisTicks(ImAxis_Y1, y_min_, y_max_, std::min(y_tick_count_, fitting_ticks));
     ImPlot::SetupAxisFormat(ImAxis_X1, ("%." + std::to_string(xAxisPrecision()) + "f").c_str());
     ImPlot::SetupAxisTicks(ImAxis_X1, x_min_, x_max_, X_TICK_COUNT);
     ImPlot::SetupFinish();
@@ -799,6 +805,7 @@ void ChartView::drawTimeline() {
 }
 
 void ChartView::drawSignalValue() {
+  if (layout_.compact_header) return;  // values remain available in the shared inspection tooltip
   pushMonoFont(ImGui::GetFontSize());
   ImDrawList *painter = ImGui::GetWindowDrawList();
   const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);

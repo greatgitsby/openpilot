@@ -63,6 +63,23 @@ bool inputTextMultiline(const char *label, std::string *s, const ImVec2 &size, I
                                    inputCallback, &ctx);
 }
 
+ImVec2 contentPadding(ContentPadding kind) {
+  if (kind == ContentPadding::Section) return ImVec2(spacing::SECTION, spacing::PANEL);
+  if (kind == ContentPadding::Compact) return ImVec2(spacing::SECTION, spacing::INNER);
+  return ImVec2(spacing::PANEL, spacing::PANEL);
+}
+
+float paddedHeight(float content_height, ContentPadding kind) {
+  return content_height + 2 * contentPadding(kind).y;
+}
+
+bool beginPaddedChild(const char *id, const ImVec2 &size, ContentPadding kind, ImGuiWindowFlags flags) {
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, contentPadding(kind));
+  const bool visible = ImGui::BeginChild(id, size, ImGuiChildFlags_AlwaysUseWindowPadding, flags);
+  ImGui::PopStyleVar();
+  return visible;
+}
+
 bool beginControlChild(const char *id, const ImVec2 &size, ImGuiWindowFlags flags) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(CONTROL_OUTLINE_PADDING, CONTROL_OUTLINE_PADDING));
   const bool visible = ImGui::BeginChild(id, size, ImGuiChildFlags_AlwaysUseWindowPadding, flags);

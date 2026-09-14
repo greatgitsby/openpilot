@@ -744,13 +744,12 @@ void MainWindow::handleShortcuts() {
 
 void MainWindow::drawStatusBar() {
   ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyle().Colors[ImGuiCol_MenuBarBg]);
-  ImGui::BeginChild("status_bar", ImVec2(0, ImGui::GetFrameHeight()), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+  beginPaddedChild("status_bar", ImVec2(0, paddedHeight(ImGui::GetFrameHeight(), ContentPadding::Compact)),
+                   ContentPadding::Compact, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   const ImVec2 min = ImGui::GetWindowPos();
   ImGui::GetWindowDrawList()->AddRectFilled(min, ImVec2(min.x + ImGui::GetWindowWidth(), min.y + 1.0f), ImGui::GetColorU32(ImGuiCol_Border));
-  // a borderless child gets no WindowPadding, so both ends sit flush against the edge and clip. Inset by
-  // WindowPadding.x, which lines the text up with the content of the docked panels above (the messages table).
-  const float width = ImGui::GetContentRegionAvail().x;
-  const float pad = ImGui::GetStyle().WindowPadding.x;
+  const float width = ImGui::GetWindowWidth();
+  const float pad = contentPadding(ContentPadding::Compact).x;
   pushMonoFont(ImGui::GetStyle().FontSizeBase);
   const float fps_x = std::max(pad, width - pad - ImGui::CalcTextSize("999 FPS").x);
   popMonoFont();
@@ -832,8 +831,12 @@ void MainWindow::drawDockspace() {
   ImGui::Begin("##host", nullptr, flags);
   ImGui::PopStyleVar(3);
 
-  // the status bar sits below the dockspace: reserve its height plus the item spacing between the two,
-  // otherwise the host window is a few pixels taller than the viewport and scrolls
+  const float footer_height = paddedHeight(ImGui::GetFrameHeight(), ContentPadding::Compact) +
+                              ImGui::GetStyle().ItemSpacing.y +
+                              (playback_ ? playback_->sizeHintHeight() + ImGui::GetStyle().ItemSpacing.y : 0);
+  const ImVec2 workspace_size(0, std::max(1.0f, ImGui::GetContentRegionAvail().y - footer_height));
+  beginPaddedChild("workspace_area", workspace_size, ContentPadding::Section,
+                   ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   drawWorkspaceBar();
   if (charts_widget_) {
     charts_widget_->drawPageControls();
@@ -842,9 +845,7 @@ void MainWindow::drawDockspace() {
     video_visible_ = charts_widget_->widgetVisible("###VideoPanel");
     charts_visible_ = charts_widget_->widgetVisible("###ChartsWindow");
   }
-  const float status_height = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y +
-                              (playback_ ? playback_->sizeHintHeight() + ImGui::GetStyle().ItemSpacing.y : 0);
-  const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y - status_height);
+  const ImVec2 dock_size = ImGui::GetContentRegionAvail();
   const std::string page = charts_widget_ ? charts_widget_->activePageId() : "loading";
   using J = json11::Json;
   auto leaf = [](const J::array &names) { return J(J::object{{"panes", names}}); };
@@ -871,8 +872,9 @@ void MainWindow::drawDockspace() {
                 dock_size, reset_layout_, charts_widget_ ? charts_widget_->documentRevision() : 0);
   reset_layout_ = false;
   ImGui::PopStyleVar();
-  drawStatusBar();
+  ImGui::EndChild();
   if (playback_) playback_->drawPlayback();
+  drawStatusBar();
   ImGui::End();
 }
 
@@ -987,23 +989,28 @@ void MainWindow::importWorkspace(const std::string &path) {
 
 void MainWindow::drawWorkspaceBar() {
   if (!charts_widget_) return;
-  ImGui::AlignTextToFramePadding();
-  ImGui::TextUnformatted("Workspace");
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(220);
-  std::vector<std::string> names;
-  for (const auto &workspace : workspaces_) names.push_back(workspace["name"].string_value());
-  int selected = active_workspace_;
-  if (comboBox("##workspace", &selected, names)) nextFrame([this, selected]() { switchWorkspace(selected); });
-  ImGui::SameLine();
-  if (iconTextButton("new_workspace", icon::WINDOW_PLUS, "New blank")) nextFrame([this]() {
+  ImGui::PushID("workspace_toolbar");
+  std::vector<ToolbarItem> items;
+  const float selector_width = ImGui::CalcTextSize("Workspace").x + ImGui::GetStyle().ItemSpacing.x + 220;
+  items.push_back({selector_width, [this]() {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Workspace");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(220);
+    std::vector<std::string> names;
+    for (const auto &workspace : workspaces_) names.push_back(workspace["name"].string_value());
+    int selected = active_workspace_;
+    if (comboBox("##workspace", &selected, names)) nextFrame([this, selected]() { switchWorkspace(selected); });
+  }});
+  auto create_blank = [this]() { nextFrame([this]() {
     workspaces_.push_back(json11::Json::object{{"name", "Workspace " + std::to_string(workspaces_.size())},
                                               {"document", cabana::blankWorkspace()}});
     switchWorkspace(workspaces_.size() - 1);
-  });
-  ImGui::SameLine();
-  menuButton("add_widget_btn", "Add Widget", "add_widget");
-  if (dropdown::BeginPopup("add_widget")) {
+  }); };
+  items.push_back({iconTextButtonWidth(icon::WINDOW_PLUS, "New blank"), [create_blank]() {
+    if (iconTextButton("new_workspace", icon::WINDOW_PLUS, "New blank")) create_blank();
+  }, "New blank workspace", create_blank});
+  items.push_back(toolbarMenu("add_widget", "Add Widget", "Add Widget", [this]() {
     for (const auto &[label, id] : std::vector<std::pair<const char *, const char *>>{
       {"CAN Messages", "###MessagesPanel"}, {"Signal Details", "###CenterWidget"},
       {"Series Browser", "###ChartsWindow"}, {"Road Camera", "###VideoPanel"},
@@ -1014,11 +1021,8 @@ void MainWindow::drawWorkspaceBar() {
       }
     }
     if (dropdown::Item("Plot")) docking_.addWindow(charts_widget_->addPlot());
-    dropdown::EndPopup();
-  }
-  ImGui::SameLine();
-  menuButton("workspace_actions_btn", "Workspace", "workspace_actions");
-  if (dropdown::BeginPopup("workspace_actions")) {
+  }));
+  items.push_back(toolbarMenu("workspace_actions", "Workspace", "Workspace", [this]() {
     std::string name = workspaces_[active_workspace_]["name"].string_value();
     if (inputText("Name", &name) && !name.empty()) {
       auto item = workspaces_[active_workspace_].object_items(); item["name"] = name; workspaces_[active_workspace_] = item;
@@ -1048,8 +1052,9 @@ void MainWindow::drawWorkspaceBar() {
           nextFrame([this, path = entry.path().string()]() { importWorkspace(path); });
       dropdown::EndMenu();
     }
-    dropdown::EndPopup();
-  }
+  }));
+  drawToolbar(items, items.size());
+  ImGui::PopID();
 }
 
 void MainWindow::drawCamera(int index) {

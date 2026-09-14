@@ -7,7 +7,7 @@
 // Shared presentation for dockable Cabana panels. Always pair beginPanel with End.
 bool floatingOut();
 void setNextPanelClass();
-bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags = 0);
+bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags = 0, bool pad_content = true);
 
 #include <string>
 #include <vector>

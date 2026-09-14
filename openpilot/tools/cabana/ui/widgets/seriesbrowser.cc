@@ -14,7 +14,9 @@ void SeriesBrowser::draw(cabana::AnalysisSession &session, const std::function<v
     revision_ = session.revision();
   }
   if (clearableInput("##series_filter", &filter_, "Search fields and functions...")) tree_.filter(filter_);
+  ImGui::PushTextWrapPos();
   ImGui::TextDisabled("Double-click to plot. Drag onto a chart to overlay.");
+  ImGui::PopTextWrapPos();
   if (beginControlChild("series_tree", ImVec2(0, 0))) {
     auto expanded = expanded_;
     if (!filter_.empty()) for (const auto &node : tree_.nodes) if (node.matches) expanded.insert(node.key);
