@@ -1005,12 +1005,15 @@ void MainWindow::drawWorkspaceBar() {
       {"CAN Messages", "###MessagesPanel"}, {"Signal Details", "###CenterWidget"},
       {"Series Browser", "###ChartsWindow"}, {"Road Camera", "###VideoPanel"},
       {"Wide Camera", "###WideCameraPanel"}, {"Cabin Camera", "###CabinCameraPanel"}}) {
-      if (dropdown::Item(label, nullptr, charts_widget_->widgetVisible(id))) {
-        charts_widget_->setWidgetVisible(id, true);
-        docking_.addWindow(id);
+      bool visible = charts_widget_->widgetVisible(id);
+      if (ImGui::Checkbox(label, &visible)) {
+        charts_widget_->setWidgetVisible(id, visible);
+        if (visible) docking_.addWindow(id);
       }
     }
-    if (dropdown::Item("Plot")) docking_.addWindow(charts_widget_->addPlot());
+    ImGui::Separator();
+    if (ImGui::Button("Add empty plot")) docking_.addWindow(charts_widget_->addPlot());
+    ImGui::TextDisabled("Double-click a series to create a docked plot.");
   }));
   if (full_screen_) items.push_back(toolbarMenu("workspace_menus", "Actions", "Actions", [this]() { drawWorkspaceMenus(); }));
   charts_widget_->drawPageControls(items);

@@ -23,14 +23,14 @@ void setNextPanelClass() {
 bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags, bool pad_content) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, pad_content ? contentPadding(ContentPadding::Panel) : ImVec2(0, 0));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  const bool visible = ImGui::Begin(name, open, flags | ImGuiWindowFlags_NoCollapse);
+  const bool visible = ImGui::Begin(name, open, flags | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing);
   if (auto it = pending_tab_focus.find(ImHashStr(name)); it != pending_tab_focus.end()) {
     auto *window = ImGui::GetCurrentWindow();
     if (window->DockNode && window->DockNode->TabBar) {
       window->DockNode->SelectedTabId = window->TabId;
       window->DockNode->TabBar->SelectedTabId = window->TabId;
       window->DockNode->TabBar->NextSelectedTabId = window->TabId;
-      ImGui::FocusWindow(window);
+      if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) ImGui::FocusWindow(window);
       if (--it->second <= 0) pending_tab_focus.erase(it);
     }
   }
@@ -145,6 +145,18 @@ void Workspace::draw(const std::string &page, const std::vector<std::string> &pa
     layout["floating"] = floating;
     write(active_page_, layout);
   }
+  // Only additions to the current document are automatic. Restored floating panes stay floating.
+  if (!replaced && active_page_ == page) {
+    std::function<void(const json11::Json &)> discover = [&](const json11::Json &tree) {
+      for (const auto &pane : tree["panes"].array_items()) {
+        const auto name = identity(pane.string_value().c_str());
+        if (name.rfind("###Chart/", 0) == 0 && std::find(active_windows_.begin(), active_windows_.end(), name) == active_windows_.end() &&
+            std::none_of(pending_windows_.begin(), pending_windows_.end(), [&](const auto &pending) { return identity(pending.c_str()) == name; })) pending_windows_.push_back(name);
+      }
+      for (const auto &child : tree["children"].array_items()) discover(child);
+    };
+    discover(default_layout);
+  }
   if (reset || replaced || active_page_ != page || !ImGui::DockBuilderGetNode(root)) {
     auto layout = reset ? json11::Json() : read(page);
     restore(root, layout.is_null() ? default_layout : layout, ImGui::GetCursorScreenPos(), size);
@@ -152,11 +164,39 @@ void Workspace::draw(const std::string &page, const std::vector<std::string> &pa
     revision_ = revision;
   }
   if (!pending_windows_.empty()) {
-    auto *target = ImGui::DockBuilderGetCentralNode(root);
-    if (!target) target = ImGui::DockBuilderGetNode(root);
-    while (target && target->IsSplitNode()) target = target->ChildNodes[1];
-    if (target) for (const auto &name : pending_windows_) {
-      ImGui::DockBuilderDockWindow(name.c_str(), target->ID);
+    for (const auto &name : pending_windows_) {
+      auto *target = ImGui::DockBuilderGetNode(root);
+      const bool chart = identity(name.c_str()).rfind("###Chart/", 0) == 0;
+      ImGuiDockNode *plot_node = nullptr;
+      ImGuiDockNode *largest_leaf = nullptr;
+      std::function<void(ImGuiDockNode *)> find_plot = [&](ImGuiDockNode *node) {
+        if (!node) return;
+        if (!node->IsSplitNode() && (!largest_leaf || node->Size.x * node->Size.y > largest_leaf->Size.x * largest_leaf->Size.y)) largest_leaf = node;
+        for (const auto *window : node->Windows) {
+          if (identity(window->Name).rfind("###Chart/", 0) == 0 && (!plot_node || node->Size.y > plot_node->Size.y)) plot_node = node;
+        }
+        for (auto *child : node->ChildNodes) find_plot(child);
+      };
+      find_plot(target);
+      ImGuiID destination = root;
+      if (chart && plot_node) {
+        // Stack plots while there is useful room; use tabs rather than creating tiny slivers.
+        destination = plot_node->ID;
+        if (plot_node->Size.y >= ImGui::GetFontSize() * 18)
+          destination = ImGui::DockBuilderSplitNode(destination, ImGuiDir_Down, .5f, nullptr, nullptr);
+      } else if (target && (target->IsSplitNode() || !target->Windows.empty())) {
+        const auto id = identity(name.c_str());
+        const bool browser = id == "###ChartsWindow" || id == "###MessagesPanel";
+        // Add beside the largest pane rather than repeatedly squeezing the whole page.
+        auto *leaf = largest_leaf ? largest_leaf : target;
+        destination = leaf->ID;
+        if (leaf->Size.x >= ImGui::GetFontSize() * 40) {
+          const float ratio = browser && leaf == target ? .25f : .5f;
+          destination = ImGui::DockBuilderSplitNode(leaf->ID, browser ? ImGuiDir_Left : ImGuiDir_Right,
+                                                    ratio, nullptr, nullptr);
+        }
+      }
+      ImGui::DockBuilderDockWindow(name.c_str(), destination);
       pending_tab_focus[ImHashStr(name.c_str())] = 3;
     }
     ImGui::DockBuilderFinish(root);

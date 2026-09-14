@@ -76,6 +76,7 @@ void test_docking() {
     J::object{{"panes", J::array{"###Chart/a"}}}, J::object{{"panes", J::array{"###Chart/b", "###Chart/c"}}, {"selected", "###Chart/b"}}}}};
   std::map<std::string, J> layouts{{"one", tree}, {"two", tree}};
   std::string page = "one";
+  bool added_plot = false;
   auto frame = [&] {
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -86,6 +87,9 @@ void test_docking() {
     ImGui::End();
     for (const auto *name : {"A###Chart/a", "B###Chart/b", "C###Chart/c"}) {
       setNextPanelClass(); beginPanel(name, nullptr); ImGui::TextUnformatted("Contents"); ImGui::End();
+    }
+    if (added_plot) {
+      setNextPanelClass(); beginPanel("D###Chart/d", nullptr); ImGui::End();
     }
     ImGui::Render();
   };
@@ -110,8 +114,17 @@ void test_docking() {
   REQUIRE(b->DockNode == c->DockNode);
   docking.addWindow("###Chart/a");
   for (int i = 0; i < 5; ++i) frame();
-  REQUIRE(a->DockNode == b->DockNode);
+  REQUIRE(a->DockNode && a->DockNode != b->DockNode);
   REQUIRE(a->DockNode->SelectedTabId == a->TabId);
+  // Charts created by a browser/function action are discovered without an explicit addWindow call.
+  tree = J::object{{"panes", J::array{"###Chart/a", "###Chart/b", "###Chart/c", "###Chart/d"}}};
+  added_plot = true;
+  for (int i = 0; i < 5; ++i) frame();
+  auto *d = ImGui::FindWindowByName("###Chart/d");
+  REQUIRE(d->DockNode && d->DockNode != a->DockNode && d->DockNode != b->DockNode);
+  auto *root = d->DockNode;
+  while (root->ParentNode) root = root->ParentNode;
+  REQUIRE(root->IsDockSpace());
   ImGui::DestroyContext();
 }
 
