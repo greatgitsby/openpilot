@@ -215,8 +215,7 @@ void MainWindow::createDockWidgets() {
   playback_ = std::make_unique<PlaybackController>();
   if (auto *replay = dynamic_cast<ReplayStream *>(can))
     widget_connections_.push_back(replay->qLogLoaded.connect([this](std::shared_ptr<LogReader> qlog) {
-      camera_qlog_ = qlog;
-      if (cameras_[0]) cameras_[0]->parseQLog(qlog);
+      playback_->parseQLog(std::move(qlog));
     }));
   widget_connections_.push_back(analysis_session_->inspectionChanged.connect([this](double time) { playback_->inspect(time); }));
 }
@@ -379,7 +378,6 @@ void MainWindow::releaseStream() {
   analysis_session_.reset();
   playback_.reset();
   for (auto &camera : cameras_) camera.reset();
-  camera_qlog_.reset();
   center_widget_.clear();
   messages_widget_.reset();
   stream_connections_.clear();
@@ -1076,9 +1074,8 @@ void MainWindow::drawCamera(int index) {
   if (beginPanel(title.c_str(), &open)) {
     if (!camera) {
       camera = std::make_unique<StreamCameraView>("camerad", types[index]);
-      if (index == 0 && camera_qlog_) camera->parseQLog(camera_qlog_);
     }
-    camera->draw(ImGui::GetContentRegionAvail(), index == 0 && playback_ ? playback_->inspectionTime() : -1);
+    camera->draw(ImGui::GetContentRegionAvail());
   } else if (camera) camera->setVisible(false);
   ImGui::End();
   charts_widget_->setWidgetVisible(id, open);

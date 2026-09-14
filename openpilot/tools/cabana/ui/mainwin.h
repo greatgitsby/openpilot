@@ -104,7 +104,6 @@ private:
   std::vector<json11::Json> workspaces_;
   int active_workspace_ = 0;
   std::unique_ptr<StreamCameraView> cameras_[3];
-  std::shared_ptr<LogReader> camera_qlog_;
   std::unique_ptr<PlaybackController> playback_;
   std::unique_ptr<cabana::AnalysisSession> analysis_session_;
   std::unique_ptr<ChartsWidget> charts_widget_;

@@ -21,7 +21,6 @@ extern "C" {
 #include "tools/cabana/utils/strings.h"
 #include "tools/cabana/utils/util.h"
 
-const int MIN_VIDEO_HEIGHT = 100;
 const int THUMBNAIL_MARGIN = 3;
 const float POINT_10_FONT_SIZE = 13.0f;  // 10 pt at 96 dpi
 const float POINT_16_FONT_SIZE = 21.0f;  // 16 pt at 96 dpi
@@ -296,6 +295,7 @@ void PlaybackController::drawPlayback() {
       if (!slider_->isSliderDown()) slider_->setCurrentSecond(can->currentSec());
       slider_->draw(thumbnail_display_time_);
       updateSliderThumbnail();
+      preview_.draw(slider_->rect(), thumbnail_display_time_);
     }
     drawPlaybackController();
   }
@@ -406,16 +406,15 @@ void Slider::handleMousePress() {
   sliderReleased();
 }
 
-StreamCameraView::StreamCameraView(std::string stream_name, VisionStreamType stream_type)
-    : CameraWidget(stream_name, stream_type) {
-  big_thumbnail_texture_.mipmap = true;  // the hover thumbnail is drawn at a quarter of the stored size
+TimelinePreview::TimelinePreview() {
+  big_thumbnail_texture_.mipmap = true;  // the scrub preview is smaller than the stored image
 }
 
-StreamCameraView::~StreamCameraView() {
+TimelinePreview::~TimelinePreview() {
   for (auto &pending : pending_thumbnails_) pending.done.wait();
 }
 
-void StreamCameraView::parseQLog(std::shared_ptr<LogReader> qlog) {
+void TimelinePreview::parseQLog(std::shared_ptr<LogReader> qlog) {
   auto thumbnails = std::make_shared<std::map<uint64_t, RgbImage>>();
   auto done = ThreadPool::instance().run([qlog, thumbnails]() {
     for (const Event &e : qlog->events) {
@@ -431,7 +430,7 @@ void StreamCameraView::parseQLog(std::shared_ptr<LogReader> qlog) {
   pending_thumbnails_.push_back({std::move(done), std::move(thumbnails)});
 }
 
-void StreamCameraView::collectThumbnails() {
+void TimelinePreview::collectThumbnails() {
   for (auto it = pending_thumbnails_.begin(); it != pending_thumbnails_.end();) {
     if (it->done.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
       ++it;
@@ -442,18 +441,12 @@ void StreamCameraView::collectThumbnails() {
   }
 }
 
-void StreamCameraView::draw(const ImVec2 &size, double thumbnail_time) {
-  collectThumbnails();
+void StreamCameraView::draw(const ImVec2 &size) {
   CameraWidget::draw(size);
 
   ImDrawList *p = ImGui::GetWindowDrawList();
-  bool scrubbing = false;
-  if (thumbnail_time >= 0) {
-    scrubbing = can->isPaused();
-    scrubbing ? drawScrubThumbnail(p, thumbnail_time) : drawThumbnail(p, thumbnail_time);
-  }
-  if (auto replay = getReplay()) if (auto alert = replay->findAlertAtTime(scrubbing ? thumbnail_time : can->currentSec())) {
-    drawAlert(p, rect(), *alert, ImGui::GetFontSize(), ImGui::GetStyle().ChildRounding);
+  if (auto replay = getReplay()) if (auto alert = replay->findAlertAtTime(can->currentSec())) {
+    TimelinePreview::drawAlert(p, rect(), *alert, ImGui::GetFontSize(), ImGui::GetStyle().ChildRounding);
   }
 
   if (can->isPaused() && hasFrame()) {
@@ -466,7 +459,7 @@ void StreamCameraView::draw(const ImVec2 &size, double thumbnail_time) {
   }
 }
 
-const RgbImage *StreamCameraView::thumbnailAt(double sec) {
+const RgbImage *TimelinePreview::thumbnailAt(double sec) {
   auto it = big_thumbnails_.lower_bound(can->toMonoTime(sec));
   if (it == big_thumbnails_.end()) return nullptr;
   if (big_thumbnail_texture_.id == 0 || big_thumbnail_texture_.key != it->first) {
@@ -476,38 +469,30 @@ const RgbImage *StreamCameraView::thumbnailAt(double sec) {
   return &it->second;
 }
 
-void StreamCameraView::drawScrubThumbnail(ImDrawList *p, double sec) {
-  p->AddRectFilled(rect().Min, rect().Max, IM_COL32(0, 0, 0, 255), ImGui::GetStyle().ChildRounding);
+void TimelinePreview::draw(const ImRect &bar, double sec) {
+  collectThumbnails();
+  if (sec < 0) return;
   if (const RgbImage *image = thumbnailAt(sec)) {
-    const VideoPlacement placement = videoPlacement(rect(), (float)image->width / image->height, settings.crop_video);
-    drawVideoFrame(p, big_thumbnail_texture_.ref(), rect(), placement);
-    drawTime(p, rect(), sec);
-  }
-}
-
-void StreamCameraView::drawThumbnail(ImDrawList *p, double sec) {
-  if (const RgbImage *image = thumbnailAt(sec)) {
-    // AddImage scales the stored image to the thumbnail height, keeping the aspect ratio
-    const int h = MIN_VIDEO_HEIGHT - THUMBNAIL_MARGIN * 2;
-    const int w = std::max(1, (int)std::lround((double)image->width * h / image->height));
+    const float h = 8 * ImGui::GetFontSize();
+    const float w = std::min(bar.GetWidth(), h * image->width / image->height);
+    const float height = w * image->height / image->width;
     auto [min_sec, max_sec] = displayedTimeRange();
-    int pos = (sec - min_sec) * width() / (max_sec - min_sec);
-    const int max_x = (int)width() - w - THUMBNAIL_MARGIN + 1;
-    int x = std::clamp(pos - w / 2, THUMBNAIL_MARGIN, std::max(THUMBNAIL_MARGIN, max_x));
-    int y = height() - h - THUMBNAIL_MARGIN;
-
-    ImRect thumb_rect(ImVec2(rect().Min.x + x, rect().Min.y + y), ImVec2(rect().Min.x + x + w, rect().Min.y + y + h));
-    p->AddImageRounded(big_thumbnail_texture_.ref(), thumb_rect.Min, thumb_rect.Max, ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, ImGui::GetStyle().FrameRounding);
-    p->AddRect(thumb_rect.Min, thumb_rect.Max, IM_COL32_WHITE, ImGui::GetStyle().FrameRounding, 0, 2.0f);
-    // look up the alert at the hovered time, the thumbnail frame itself can be seconds away
-    if (auto alert = getReplay()->findAlertAtTime(sec)) {
-      drawAlert(p, thumb_rect, *alert, POINT_10_FONT_SIZE, ImGui::GetStyle().FrameRounding);
+    const float fraction = max_sec > min_sec ? std::clamp((sec - min_sec) / (max_sec - min_sec), 0.0, 1.0) : 0;
+    const float x = std::clamp(bar.Min.x + fraction * bar.GetWidth() - w / 2, bar.Min.x, bar.Max.x - w);
+    const float y = bar.Min.y - ImGui::GetStyle().ItemSpacing.y - height;
+    const ImRect thumb_rect(ImVec2(x, y), ImVec2(x + w, y + height));
+    ImDrawList *p = ImGui::GetForegroundDrawList();
+    const float rounding = ImGui::GetStyle().FrameRounding;
+    p->AddImageRounded(big_thumbnail_texture_.ref(), thumb_rect.Min, thumb_rect.Max, ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, rounding);
+    p->AddRect(thumb_rect.Min, thumb_rect.Max, ImGui::GetColorU32(ImGuiCol_Border), rounding, 0, 2.0f);
+    if (auto replay = getReplay()) if (auto alert = replay->findAlertAtTime(sec)) {
+      drawAlert(p, thumb_rect, *alert, POINT_10_FONT_SIZE, rounding);
     }
     drawTime(p, thumb_rect, sec);
   }
 }
 
-void StreamCameraView::drawTime(ImDrawList *p, const ImRect &rect, double seconds) {
+void TimelinePreview::drawTime(ImDrawList *p, const ImRect &rect, double seconds) {
   char text[32];
   snprintf(text, sizeof(text), "%.2f", seconds);
   ImFont *font = ImGui::GetFont();
@@ -517,7 +502,7 @@ void StreamCameraView::drawTime(ImDrawList *p, const ImRect &rect, double second
              IM_COL32_WHITE, text);
 }
 
-void StreamCameraView::drawAlert(ImDrawList *p, const ImRect &rect, const Timeline::Entry &alert, float font_size, float rounding) {
+void TimelinePreview::drawAlert(ImDrawList *p, const ImRect &rect, const Timeline::Entry &alert, float font_size, float rounding) {
   const ImU32 pen = IM_COL32_WHITE;
   ImU32 color = withAlpha(timeline_colors[int(alert.type)], 128);
   std::string text = alert.text1;

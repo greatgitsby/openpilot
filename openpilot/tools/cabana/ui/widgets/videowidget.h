@@ -57,10 +57,18 @@ private:
 
 class StreamCameraView : public CameraWidget {
 public:
-  StreamCameraView(std::string stream_name, VisionStreamType stream_type);
-  ~StreamCameraView();
-  void draw(const ImVec2 &size, double thumbnail_time);  // thumbnail_time < 0: no thumbnail
+  using CameraWidget::CameraWidget;
+  void draw(const ImVec2 &size);
+};
+
+class TimelinePreview {
+public:
+  TimelinePreview();
+  ~TimelinePreview();
+  void draw(const ImRect &bar, double seconds);
   void parseQLog(std::shared_ptr<LogReader> qlog);  // decodes the thumbnails on the thread pool
+
+  static void drawAlert(ImDrawList *p, const ImRect &rect, const Timeline::Entry &alert, float font_size, float rounding);
 
 private:
   struct PendingThumbnails {
@@ -70,9 +78,6 @@ private:
   void collectThumbnails();  // moves the decoded thumbnails in once a parseQLog task is done
   // the first thumbnail at or after sec, uploaded to big_thumbnail_texture_; nullptr when there is none
   const RgbImage *thumbnailAt(double sec);
-  void drawAlert(ImDrawList *p, const ImRect &rect, const Timeline::Entry &alert, float font_size, float rounding);
-  void drawThumbnail(ImDrawList *p, double sec);
-  void drawScrubThumbnail(ImDrawList *p, double sec);
   void drawTime(ImDrawList *p, const ImRect &rect, double seconds);
 
   std::map<uint64_t, RgbImage> big_thumbnails_;
@@ -85,7 +90,7 @@ public:
   PlaybackController();
   void inspect(double seconds) { showThumbnail(seconds); }
   void drawPlayback();
-  double inspectionTime() const { return thumbnail_display_time_; }
+  void parseQLog(std::shared_ptr<LogReader> qlog) { preview_.parseQLog(std::move(qlog)); }
   float sizeHintHeight() const;
   std::string whatsThis() const;
 
@@ -108,6 +113,7 @@ private:
   bool msgs_received_ = false;  // live-stream timestamps resolve when the first messages arrive
   double thumbnail_display_time_ = -1;
   std::unique_ptr<Slider> slider_;
+  TimelinePreview preview_;
   std::vector<std::unique_ptr<RouteInfoDlg>> route_info_dlgs_;
   Connections connections_;  // last: disconnected before the widgets its handlers dereference are destroyed
 };
