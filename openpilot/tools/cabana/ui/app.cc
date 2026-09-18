@@ -29,10 +29,32 @@ void keyCallback(GLFWwindow *window, int key, int scancode, int action, int mods
   if (action == GLFW_PRESS) g_key_events.push_back({key, mods});
 }
 
+#ifdef __APPLE__
+bool g_draw_data_valid = false;
+
+void viewportRefreshCallback(GLFWwindow *window) {
+  if (!g_draw_data_valid) return;
+  ImGuiViewport *viewport = ImGui::FindViewportByPlatformHandle(window);
+  if (viewport == nullptr || viewport->DrawData == nullptr || (viewport->Flags & ImGuiViewportFlags_IsMinimized)) return;
+  const ImGuiPlatformIO &platform_io = ImGui::GetPlatformIO();
+  GLFWwindow *current = glfwGetCurrentContext();
+  if (platform_io.Platform_RenderWindow) platform_io.Platform_RenderWindow(viewport, nullptr);
+  if (platform_io.Renderer_RenderWindow) platform_io.Renderer_RenderWindow(viewport, nullptr);
+  if (platform_io.Platform_SwapBuffers) platform_io.Platform_SwapBuffers(viewport, nullptr);
+  if (platform_io.Renderer_SwapBuffers) platform_io.Renderer_SwapBuffers(viewport, nullptr);
+  glfwMakeContextCurrent(current);
+}
+#endif
+
 void hookViewportCallbacks() {
   for (ImGuiViewport *viewport : ImGui::GetPlatformIO().Viewports) {
     if (viewport->PlatformHandle == nullptr || viewport == ImGui::GetMainViewport()) continue;
-    glfwSetKeyCallback((GLFWwindow *)viewport->PlatformHandle, keyCallback);
+    auto *window = (GLFWwindow *)viewport->PlatformHandle;
+    glfwSetKeyCallback(window, keyCallback);
+#ifdef __APPLE__
+    glfwSetWindowRefreshCallback(window, viewportRefreshCallback);
+    if (glfwGetWindowAttrib(window, GLFW_RESIZABLE)) glfwSetWindowAttrib(window, GLFW_RESIZABLE, GLFW_FALSE);
+#endif
   }
 }
 
@@ -64,11 +86,17 @@ void renderFrame(GLFWwindow *window, MainWindow *win) {
   int fb_w = 0, fb_h = 0;
   glfwGetFramebufferSize(window, &fb_w, &fb_h);
 
+#ifdef __APPLE__
+  g_draw_data_valid = false;
+#endif
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
   win->draw();
   ImGui::Render();
+#ifdef __APPLE__
+  g_draw_data_valid = true;
+#endif
 
   const ImVec4 &bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
   glViewport(0, 0, fb_w, fb_h);
@@ -80,6 +108,9 @@ void renderFrame(GLFWwindow *window, MainWindow *win) {
     GLFWwindow *backup_context = glfwGetCurrentContext();
     ImGui::UpdatePlatformWindows();
     hookViewportCallbacks();
+#ifdef __APPLE__
+    flushCoreAnimation();
+#endif
     ImGui::RenderPlatformWindowsDefault();
     glfwMakeContextCurrent(backup_context);
   }
@@ -134,7 +165,7 @@ public:
     ImGuiIO &io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-    io.ConfigViewportsNoDecoration = true;
+    io.ConfigViewportsNoDecoration = false;
     io.ConfigDockingTransparentPayload = true;
     io.IniFilename = nullptr;
     io.LogFilename = nullptr;

@@ -30,7 +30,7 @@ bool SignalSelector::draw() {
     show_ = true;
   }
   setNextDialogWindow(ImVec2(700.0f, 450.0f));
-  if (!ImGui::BeginPopupModal(popup_id.c_str(), nullptr, ImGuiWindowFlags_NoSavedSettings)) {
+  if (!ImGui::BeginPopupModal(popup_id.c_str(), nullptr, floatingWindowFlags(ImGuiWindowFlags_NoSavedSettings))) {
     open_ = false;
     return false;
   }

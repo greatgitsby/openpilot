@@ -20,6 +20,7 @@ struct objc_object;
 struct objc_selector;
 objc_object *glfwGetCocoaWindow(GLFWwindow *window);
 objc_selector *sel_registerName(const char *name);
+objc_object *objc_getClass(const char *name);
 void objc_msgSend(void);
 }
 #endif
@@ -282,8 +283,10 @@ ImGuiWindow *topPopupWindow() {
   return g.OpenPopupStack.Size > 0 ? g.OpenPopupStack.back().Window : nullptr;
 }
 
-bool dialogEscapePressed() {
-  return ImGui::IsKeyPressed(ImGuiKey_Escape, false) && topPopupWindow() == ImGui::GetCurrentWindow();
+bool dialogDismissed() {
+  const ImGuiWindow *window = ImGui::GetCurrentWindow();
+  if (window->ViewportOwned && window->Viewport->PlatformRequestClose) return true;
+  return ImGui::IsKeyPressed(ImGuiKey_Escape, false) && topPopupWindow() == window;
 }
 
 bool dialogButtons(const char *accept_label, bool *accepted, bool *rejected, bool accept_enabled,
@@ -308,7 +311,7 @@ bool dialogButtons(const char *accept_label, bool *accepted, bool *rejected, boo
     pressed = true;
   }
   ImGui::EndDisabled();
-  if (rejected && dialogEscapePressed()) {
+  if (rejected && dialogDismissed()) {
     *rejected = true;
     pressed = true;
   }
@@ -468,16 +471,33 @@ bool isNativeFullScreen(GLFWwindow *window) {
   return (styleMask(ns_window, sel_registerName("styleMask")) & NS_WINDOW_STYLE_MASK_FULL_SCREEN) != 0;
 }
 
+void flushCoreAnimation() {
+  auto flush = (void (*)(objc_object *, objc_selector *))objc_msgSend;
+  flush(objc_getClass("CATransaction"), sel_registerName("flush"));
+}
+
 void toggleNativeFullScreen(GLFWwindow *window) {
   auto toggle = (void (*)(objc_object *, objc_selector *, objc_object *))objc_msgSend;
   toggle(glfwGetCocoaWindow(window), sel_registerName("toggleFullScreen:"), nullptr);
 }
 #endif
 
+namespace {
+bool nativeDecorations() {
+  const ImGuiIO &io = ImGui::GetIO();
+  return (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) && !io.ConfigViewportsNoDecoration;
+}
+}  // namespace
+
 void setNextWindowFloatsOut() {
   ImGuiWindowClass window_class;
   window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+  if (nativeDecorations()) window_class.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoDecoration;
   ImGui::SetNextWindowClass(&window_class);
+}
+
+ImGuiWindowFlags floatingWindowFlags(ImGuiWindowFlags flags) {
+  return nativeDecorations() ? flags | ImGuiWindowFlags_NoTitleBar : flags;
 }
 
 void setNextDialogWindow(const ImVec2 &size) {
@@ -489,7 +509,7 @@ void setNextDialogWindow(const ImVec2 &size) {
 bool beginDialog(const char *id, PopupOwner *owner, const ImVec2 &size, ImGuiWindowFlags flags) {
   if (!owner->begin(id)) return false;
   setNextDialogWindow(size);
-  return ImGui::BeginPopupModal(id, nullptr, flags | ImGuiWindowFlags_NoSavedSettings);
+  return ImGui::BeginPopupModal(id, nullptr, floatingWindowFlags(flags | ImGuiWindowFlags_NoSavedSettings));
 }
 
 // tool bar

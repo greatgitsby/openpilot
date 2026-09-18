@@ -111,7 +111,7 @@ struct PopupOwner {
 };
 
 // Escape closes a dialog only when nothing is open above it: a combo drops its list first.
-bool dialogEscapePressed();
+bool dialogDismissed();
 
 // the window of the top-most open popup, nullptr when none is open
 ImGuiWindow *topPopupWindow();
@@ -153,6 +153,7 @@ void drawColorMarker(ImDrawList *dl, const ImVec2 &pos, ImU32 col);
 
 // the next window is a real OS window instead of being drawn inside the main one
 void setNextWindowFloatsOut();
+ImGuiWindowFlags floatingWindowFlags(ImGuiWindowFlags flags);
 #ifdef __APPLE__
 // the app menu takes its name from the main bundle, and a bare binary gets an info dictionary with its
 // file name in it. That dictionary is mutable, so the name is set before glfw brings up cocoa
@@ -160,6 +161,7 @@ void setMacAppName(const char *name);
 // the native Cocoa full screen toggle (glfw's monitor switch is not full screen on macOS)
 bool isNativeFullScreen(GLFWwindow *window);
 void toggleNativeFullScreen(GLFWwindow *window);
+void flushCoreAnimation();
 #endif
 
 // centered, floating out, sized on first appearance

@@ -305,7 +305,7 @@ bool EditMessageDialog::draw() {
   ImGui::SetNextWindowSizeConstraints(ImVec2(min_width, 0.0f), ImVec2(max_width, FLT_MAX));
   setNextDialogWindow(ImVec2(std::clamp(width_, min_width, max_width), 0.0f));
   bool open = true;
-  if (ImGui::BeginPopupModal(window_title_.c_str(), &open)) {
+  if (ImGui::BeginPopupModal(window_title_.c_str(), &open, floatingWindowFlags(0))) {
     const float label_width = ImGui::GetCursorPosX() + ImGui::CalcTextSize("Comment").x + ImGui::GetStyle().ItemSpacing.x;
     auto row = [&](const char *label) {
       ImGui::AlignTextToFramePadding();

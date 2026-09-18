@@ -28,7 +28,7 @@ protected:
     ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
     setNextWindowFloatsOut();
     began_ = true;
-    return visible_ = ImGui::Begin(title_.c_str(), &open_, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse);
+    return visible_ = ImGui::Begin(title_.c_str(), &open_, floatingWindowFlags(ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse));
   }
 
   bool end() {

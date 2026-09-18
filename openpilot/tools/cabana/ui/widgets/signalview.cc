@@ -956,7 +956,7 @@ bool ValueDescriptionDlg::draw() {
   setNextDialogWindow(ImVec2(500.0f, 0.0f));
   bool open = true;
   // not drawn while the dock is collapsed or another modal is on top; only closed once the popup is gone
-  if (!ImGui::BeginPopupModal(popup_id.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) return ImGui::IsPopupOpen(popup_id.c_str());
+  if (!ImGui::BeginPopupModal(popup_id.c_str(), &open, floatingWindowFlags(ImGuiWindowFlags_NoSavedSettings))) return ImGui::IsPopupOpen(popup_id.c_str());
 
   bool closing = false;
   if (stepButton("add", true, "Add")) {

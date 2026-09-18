@@ -267,7 +267,7 @@ void RoutesDialog::drawLogin() {
   ImGui::Separator();
   bool rejected = false;
   dialogButtons("Cancel", &rejected, nullptr, true, nullptr);
-  if (rejected || dialogEscapePressed()) {
+  if (rejected || dialogDismissed()) {
     ImGui::CloseCurrentPopup();
     finish(false);
   }

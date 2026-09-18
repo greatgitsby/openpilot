@@ -55,7 +55,7 @@ void draw() {
   const float min_width = ImGui::CalcTextSize(box.title.c_str()).x + style.FramePadding.x * 2 + style.WindowPadding.x * 2;
   ImGui::SetNextWindowSizeConstraints(ImVec2(min_width, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
   setNextDialogWindow(ImVec2(0.0f, 0.0f));
-  if (!ImGui::BeginPopupModal(popup_id.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) return;
+  if (!ImGui::BeginPopupModal(popup_id.c_str(), nullptr, floatingWindowFlags(ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))) return;
   if (first) g_show_details = false;
   bool result = false, done = false;
   ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 480.0f);
