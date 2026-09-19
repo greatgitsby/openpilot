@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import requests
 from libdatachannel import Configuration, Description, H264RtpDepacketizer, IceServer, NalUnit, PeerConnection, RtcpReceivingSession
 
+from openpilot.system.webrtc.can import CAN_PREFIX, BATCH_PREFIX, unpack_can_batch
 from openpilot.cereal import log
 from openpilot.cereal.visionipc import VisionStreamType
 from msgq.visionipc import VisionIpcServer
@@ -22,7 +23,6 @@ from openpilot.tools.camerastream.ffmpeg_decoder import Decoder, FFmpegError
 from openpilot.tools.lib.auth_config import get_token
 
 
-CAN_PREFIX = b"CAN\0"
 MAX_EVENT_SIZE = 1024 * 1024
 ICE_GATHER_DEADLINE = 8
 CAMERAS = {
@@ -142,6 +142,7 @@ async def run(dongle_id, server_name, emit, control_fd=None):
   gathered = asyncio.Event()
   opened = asyncio.Event()
   frames = asyncio.Queue(maxsize=30)
+  can_packets = asyncio.Queue()
   pc = PeerConnection(config)
   channel = pc.create_data_channel("data")
   media = Description.Video("wideRoad", Description.Direction.RecvOnly)
@@ -160,21 +161,17 @@ async def run(dongle_id, server_name, emit, control_fd=None):
         done.set_result(None)
 
   def on_message(message):
-    nonlocal received_can
     if done.done():
       return
     try:
-      data = can_event(message)
-      if data is not None:
-        if not received_can:
-          timing("first CAN")
-          received_can = True
-        emit(b'C', data)
+      if isinstance(message, bytes) and message.startswith((CAN_PREFIX, BATCH_PREFIX)):
+        # The GUI pipe can block. Drain it off the event loop so video/ICE stay live.
+        can_packets.put_nowait((b'C', message))
       else:
         payload = json.loads(message)
         if payload.get("type") == "joystickStatus":
           status = payload["data"]
-          emit(b'J', bytes([bool(status["enabled"])]) + status.get("error", "").encode())
+          can_packets.put_nowait((b'J', bytes([bool(status["enabled"])]) + status.get("error", "").encode()))
         if payload.get("type") == "disconnect":
           finish(payload.get("data", "Disconnected"))
     except (BrokenPipeError, ConnectionResetError):
@@ -213,7 +210,6 @@ async def run(dongle_id, server_name, emit, control_fd=None):
   vipc = None
   dimensions = None
   frame_id = 0
-  received_can = False
   stream_type = VisionStreamType.VISION_STREAM_WIDE_ROAD
 
   controls = ControlReader()
@@ -284,12 +280,38 @@ async def run(dongle_id, server_name, emit, control_fd=None):
         timing("first video")
       frame_id += 1
 
+  async def receive_can():
+    received_bytes = 0
+    first = True
+
+    def emit_packet(kind, packet):
+      if kind != b'C':
+        emit(kind, packet)
+        return
+      for event in unpack_can_batch(packet):
+        emit(b'C', can_event(CAN_PREFIX + event))
+
+    while True:
+      kind, packet = await can_packets.get()
+      try:
+        await asyncio.to_thread(emit_packet, kind, packet)
+      except (BrokenPipeError, ConnectionResetError):
+        finish()
+        return
+      if kind != b'C':
+        continue
+      if first:
+        timing("first CAN")
+        first = False
+      received_bytes += len(packet)
+      channel.send(json.dumps({"type": "canAck", "data": {"bytes": received_bytes}}))
+
   async def joystick_status():
     while True:
       channel.send(json.dumps({"type": "joystickMode", "data": {}}))
       await asyncio.sleep(1)
 
-  video_task = status_task = None
+  video_task = status_task = can_task = None
   try:
     pc.set_local_description(Description.Type.Offer)
     if not await wait_for_candidates(gathered, done):
@@ -305,7 +327,8 @@ async def run(dongle_id, server_name, emit, control_fd=None):
     if control_fd is not None:
       loop.add_reader(control_fd, read_controls)
     video_task = asyncio.create_task(receive_video())
-    completed, _ = await asyncio.wait([done, video_task, status_task], return_when=asyncio.FIRST_COMPLETED)
+    can_task = asyncio.create_task(receive_can())
+    completed, _ = await asyncio.wait([done, video_task, status_task, can_task], return_when=asyncio.FIRST_COMPLETED)
     for task in completed:
       task.result()
   finally:
@@ -315,7 +338,7 @@ async def run(dongle_id, server_name, emit, control_fd=None):
       done.cancel()
     elif not done.cancelled():
       done.exception()  # consume a disconnect that raced with setup/cancellation
-    for task in (video_task, status_task):
+    for task in (video_task, status_task, can_task):
       if task:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

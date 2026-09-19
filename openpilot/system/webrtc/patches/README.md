@@ -60,5 +60,6 @@ TCP TURN listener checks that the installed backend sends an Allocate request;
 this catches accidentally reinstalling the UDP-only upstream wheel.
 
 The same release also crashes when `DataChannel.buffered_amount()` is called.
-The CAN bridge avoids that binding and bounds buffering using consecutive
-buffered sends instead.
+The CAN bridge avoids that binding. Compressed CAN batches use a bounded window
+of bytes acknowledged after Cabana writes them to its reader, so buffered sends
+that are draining normally do not accumulate a false backlog.

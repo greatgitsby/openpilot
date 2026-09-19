@@ -1,9 +1,13 @@
 import asyncio
 import subprocess
 import struct
+import os
+import zlib
+import requests
+import time
 import sys
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from opendbc.car.structs import car
 from openpilot.common.params import Params, ParamKeyFlag
@@ -11,7 +15,8 @@ from openpilot.common.test import OpenpilotTestCase
 from openpilot.system.athena import athenad
 from openpilot.system.manager.process_config import managed_processes
 from openpilot.cereal import messaging
-from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy, JoystickControl
+from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy, JoystickControl, StreamSession
+from openpilot.system.webrtc.can import CAN_WINDOW, MAX_BATCH_SIZE, pack_can_batch, unpack_can_batch
 from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack
 from openpilot.tools.cabana.webrtc import ControlReader, can_event, error_message, ice_servers, wait_for_candidates, wait_for_setup
 
@@ -180,6 +185,30 @@ class TestWebRTCSetup(unittest.IsolatedAsyncioTestCase):
     done.set_result(None)
     self.assertFalse(await wait_for_setup(asyncio.Event(), done, 10, "Timed out"))
 
+  async def test_native_close_does_not_block_http_loop(self):
+    session = StreamSession.__new__(StreamSession)
+    session._cleanup_lock = asyncio.Lock()
+    session._cleanup_done = False
+    session.joystick_used = False
+    session.params = Mock()
+    session.bitrate_controller = session.outgoing_bridge = None
+    session.video_tracks = []
+    session.stream = Mock()
+    session.stream.stop = AsyncMock()
+    session.stream.peer_connection.close.side_effect = lambda: time.sleep(0.2)
+    cleanup = asyncio.create_task(session.post_run_cleanup())
+    await asyncio.sleep(0.02)
+    self.assertFalse(cleanup.done(), "native close blocked the service event loop")
+    await cleanup
+    session.stream.stop.assert_awaited_once()
+
+  def test_device_startup_retries_read_timeout(self):
+    from openpilot.system.webrtc.helpers import wait_for_webrtcd
+    with patch("openpilot.system.webrtc.helpers.requests.get", side_effect=[requests.ReadTimeout(), Mock(ok=True)]) as get, \
+         patch("openpilot.system.webrtc.helpers.time.sleep"):
+      wait_for_webrtcd()
+      self.assertEqual(get.call_count, 2)
+
   def test_empty_exception_has_fallback(self):
     self.assertEqual(error_message(TimeoutError()), "TimeoutError")
     self.assertEqual(error_message(RuntimeError("connection failed")), "connection failed")
@@ -210,35 +239,69 @@ class TestWebRTCCan(unittest.TestCase):
       sub_sock.assert_called_once_with("can", conflate=False)
       submaster.assert_called_once_with(["carState"])
 
-    received = [can_event(call.args[0]) for call in channel.send.call_args_list]
+    received = [event for call in channel.send.call_args_list for event in unpack_can_batch(call.args[0])]
     self.assertEqual(received, events)
 
-  def test_slow_reader_disconnects_instead_of_unbounded_buffering(self):
+  def test_slow_reader_applies_backpressure_then_resumes(self):
     sock = Mock()
-    sock.receive.return_value = b"x" * (1024 * 1024 - 4)
+    sock.receive.return_value = os.urandom(1024)
     channel = Mock()
     channel.is_open.return_value = True
     channel.send.return_value = False
     with patch.object(messaging, "sub_sock", return_value=sock), patch.object(messaging, "SubMaster"):
       proxy = CerealOutgoingMessageProxy(["can"])
       proxy.add_channel(channel)
+      while proxy.sent_bytes[channel] < CAN_WINDOW:
+        proxy.update()
+      count = sock.receive.call_count
+      sent = channel.send.call_count
       proxy.update()
-    channel.close.assert_called_once()
-    channel.buffered_amount.assert_not_called()
-    self.assertEqual(channel.send.call_count, 5)
-    self.assertIn("cannot keep up", channel.send.call_args.args[0])
-
-  def test_successful_send_resets_buffer_estimate(self):
-    channel = Mock()
-    channel.send.side_effect = [False, False, True, False]
-    with patch.object(messaging, "SubMaster"):
-      proxy = CerealOutgoingMessageProxy([])
-    proxy.add_channel(channel)
-    for expected in (10, 20, 0, 10):
-      self.assertTrue(proxy.send(channel, b"x" * 10))
-      self.assertEqual(proxy.pending_bytes[channel], expected)
+      self.assertEqual(sock.receive.call_count, count)
+      self.assertEqual(channel.send.call_count, sent)
+      proxy.acknowledge(channel, proxy.sent_bytes[channel])
+      proxy.update()
+      self.assertGreater(channel.send.call_count, sent)
     channel.close.assert_not_called()
     channel.buffered_amount.assert_not_called()
+
+  def test_buffered_sends_can_drain_without_ever_returning_true(self):
+    channel = Mock()
+    channel.is_open.return_value = True
+    channel.send.return_value = False
+    sock = Mock()
+    with patch.object(messaging, "sub_sock", return_value=sock), patch.object(messaging, "SubMaster"):
+      proxy = CerealOutgoingMessageProxy(["can"])
+      proxy.add_channel(channel)
+      for _ in range(100):
+        sock.receive.side_effect = [os.urandom(60000), None]
+        proxy.update()
+        proxy.acknowledge(channel, proxy.sent_bytes[channel])
+      self.assertGreater(proxy.sent_bytes[channel], 4 * 1024 * 1024)
+      self.assertEqual(channel.send.call_count, 100)
+      proxy.acknowledge(channel, proxy.sent_bytes[channel] + 1)
+      proxy.acknowledge(channel, -1)
+      self.assertEqual(proxy.acked_bytes[channel], proxy.sent_bytes[channel])
+    channel.close.assert_not_called()
+
+  def test_batch_boundaries_preserve_events(self):
+    events = [os.urandom(32000) for _ in range(3)]
+    sock, channel = Mock(), Mock()
+    channel.is_open.return_value = True
+    sock.receive.side_effect = [*events, None]
+    with patch.object(messaging, "sub_sock", return_value=sock), patch.object(messaging, "SubMaster"):
+      proxy = CerealOutgoingMessageProxy(["can"])
+      proxy.add_channel(channel)
+      proxy.update()
+      proxy.update()
+      proxy.update()
+    self.assertEqual([e for call in channel.send.call_args_list for e in unpack_can_batch(call.args[0])], events)
+
+  def test_reject_invalid_compressed_batches(self):
+    for message in (b'CANZbad', b'CANZ'+zlib.compress(b'x'*(MAX_BATCH_SIZE+1)),
+                    b'CANZ'+zlib.compress(b'\x00'), b'CANZ'+zlib.compress(struct.pack('!I', 8)),
+                    pack_can_batch([b'x'*8])[:-1]):
+      with self.assertRaises((ValueError, zlib.error)):
+        unpack_can_batch(message)
 
   def test_reject_invalid_binary_events(self):
     self.assertIsNone(can_event('{"type":"carState"}'))

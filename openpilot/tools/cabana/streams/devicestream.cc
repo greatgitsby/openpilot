@@ -93,6 +93,7 @@ void DeviceStream::start() {
       ::dup2(output[1], STDIN_FILENO);
       ::close(output[1]);
       if (::chdir(root.c_str()) == 0) {
+        ::setenv("PWD", root.c_str(), 1);
         execlp("python3", "python3", "-m", "openpilot.tools.cabana.webrtc", dongle_id_.c_str(),
                "--server", camera_server_.c_str(), static_cast<char *>(nullptr));
       }

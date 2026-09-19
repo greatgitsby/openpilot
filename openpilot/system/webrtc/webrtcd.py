@@ -21,6 +21,7 @@ from typing import Any
 
 from openpilot.system.webrtc.helpers import StreamRequestBody
 from openpilot.system.webrtc.schema import generate_field
+from openpilot.system.webrtc.can import CAN_WINDOW, MAX_BATCH_SIZE, pack_can_batch
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.cereal import messaging, log
@@ -76,23 +77,53 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
     self.services = [s for s in services if s != "can"]
     self.sm = messaging.SubMaster(self.services)
     self.channels = []
-    self.pending_bytes = {}
+    self.sent_bytes = {}
+    self.acked_bytes = {}
+    self.pending_can = None
     self._enabled = enabled
 
   def add_channel(self, channel):
     self.channels.append(channel)
-    self.pending_bytes[channel] = 0
+    self.sent_bytes[channel] = 0
+    self.acked_bytes[channel] = 0
+
+  def acknowledge(self, channel, received):
+    if type(received) is int and self.acked_bytes.get(channel, 0) <= received <= self.sent_bytes.get(channel, 0):
+      self.acked_bytes[channel] = received
 
   def send(self, channel, message):
-    # buffered_amount() segfaults in libdatachannel-py's inherited Channel binding.
-    # send() returns True only after flushing the queue and sending this message.
-    # Count consecutive buffered sends as a conservative upper bound instead.
-    if self.pending_bytes[channel] + len(message) > 4 * 1024 * 1024:
-      channel.send(json.dumps({"type": "disconnect", "data": "CAN receiver cannot keep up; reconnect."}))
-      channel.close()
+    # False means accepted into SCTP's queue, not that previous bytes remain there.
+    try:
+      channel.send(message)
+      return True
+    except RuntimeError:
+      if channel.is_open():
+        raise
       return False
-    self.pending_bytes[channel] = 0 if channel.send(message) else self.pending_bytes[channel] + len(message)
-    return True
+
+  def send_can(self):
+    channels = [ch for ch in self.channels if ch.is_open()]
+    if not channels or any(self.sent_bytes[ch] - self.acked_bytes[ch] >= CAN_WINDOW for ch in channels):
+      return
+    events, size = [], 0
+    # Batch one tick's events, retaining the first event that doesn't fit.
+    for _ in range(256):
+      data = self.pending_can if self.pending_can is not None else self.can_sock.receive(non_blocking=True)
+      self.pending_can = None
+      if data is None:
+        break
+      if len(data) + 4 > MAX_BATCH_SIZE:
+        raise ValueError("CAN event exceeds batch limit")
+      if size + len(data) + 4 > MAX_BATCH_SIZE:
+        self.pending_can = data
+        break
+      events.append(data)
+      size += len(data) + 4
+    if events:
+      packet = pack_can_batch(events)
+      for ch in channels:
+        if self.send(ch, packet):
+          self.sent_bytes[ch] += len(packet)
 
   def enable(self, enable: bool):
     self._enabled = enable
@@ -112,15 +143,7 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
   def update(self):
     # this is blocking in async context...
     if self.can_sock is not None:
-      # Bound each tick so a busy CAN bus cannot starve video/session handling.
-      for _ in range(256):
-        data = self.can_sock.receive(non_blocking=True)
-        if data is None:
-          break
-        for channel in self.channels:
-          if channel.is_open():
-            if not self.send(channel, b"CAN\0" + data):
-              return
+      self.send_can()
     self.sm.update(0)
     for service, updated in self.sm.updated.items():
       if not updated:
@@ -344,6 +367,9 @@ class StreamSession:
         msg_type = payload.get("type")
 
         match msg_type:
+          case "canAck":
+            if self.outgoing_bridge is not None:
+              self.outgoing_bridge.acknowledge(self.stream.get_messaging_channel(), payload["data"]["bytes"])
           case "joystickMode":
             if "testJoystick" in self.incoming_bridge_services:
               self.stream.get_messaging_channel().send(json.dumps(self.joystick.mode(payload["data"])))
@@ -439,6 +465,8 @@ class StreamSession:
       for track in self.video_tracks:
         track.stop()
       self.video_tracks.clear()
+      # The binding waits for native close (up to 30s). Keep HTTP and callbacks live.
+      await asyncio.to_thread(self.stream.peer_connection.close)
       await self.stream.stop()
 
 
