@@ -22,6 +22,23 @@ the next iteration receives the latest available frame rather than a backlog.
 The new prompt, image size, constrained vocabulary, and token budget invalidate
 the old hello-world cache. Startup preparation must run once for this graph.
 
+### Direction-stream device validation
+
+On the comma four/tinychestnut, eight live-camera stdout records passed an
+exact `W\n` / `A\n` / `S\n` / `D\n` check (all eight were `W` in the observed
+scene). This validates the stream format and camera integration, not navigation
+correctness. The output projection uses only the four allowed vocabulary rows;
+the initial full-vocabulary projection exhausted GPU memory during capture.
+
+With 256x160 input, warm receipt-to-stdout latency was **3623–3672 ms** and
+capture-to-stdout latency **3693–3736 ms**, skipping 72–73 frames per result.
+The first live inference took 4440 ms. **The 200 ms target remains unmet.**
+
+The new artifact contains 3,673,788,944 buffer bytes. A fresh cached process
+measured GPU initialization 0.985 s, upload 40.970 s, deserialization 1.193 s,
+linking 0.795 s, ready at 45.343 s, and first live response at 49.811 s.
+One-time preparation took 441.513 s plus 73.886 s to save the artifact.
+
 ## Historical hello-world baseline
 
 `gemmad` runs only with comma body. It reads the latest road-camera frame,
