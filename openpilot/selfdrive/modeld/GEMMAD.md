@@ -114,7 +114,7 @@ responses. Example live samples measured 1593–1630 ms from receipt and
 1625–1695 ms from capture, skipping 31–32 intervening frames. This confirms
 complete-response execution but fails both the latency and each-frame targets.
 
-## Benchmark the current direction stream
+## Benchmark the current five-second plans
 
 Do not run the benchmark while gemmad or another process owns chestnut. On a
 test device with camerad running and gemmad stopped:
@@ -126,8 +126,8 @@ TC_OPT=2 python -m openpilot.selfdrive.modeld.benchmark_qwen3vl --runs 10 --fp16
 
 These are two different matrix execution paths. The benchmark prints warmup
 times, each response, per-frame timing/completion records and a summary.
-It now uses the navigation prompt and constrained one-token response, matching
-the daemon; the 16-token timings above describe the earlier hello-world graph.
+It now uses the navigation prompt and constrained five-token plan, matching
+the daemon; the one-token and 16-token timings above describe older graphs.
 CPU regression tests live in the tinygrad fork at `test/unit/test_qwen3vl.py`.
 
 ## Startup cache
