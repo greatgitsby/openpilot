@@ -22,7 +22,7 @@ Options:
   --panda                   read can messages from panda
   --panda-serial <serial>   read can messages from panda with given serial
   --socketcan <device>      read can messages from given SocketCAN device
-  --webrtc <dongle-id>      live CAN and wide-road video over Athena/WebRTC
+  --webrtc <dongle-id>      live CAN and switchable camera video over Athena/WebRTC
   --data_dir <dir>          local directory with routes
   --no-vipc                 do not output video
   --no-cache                turn off the local route file cache
@@ -73,7 +73,10 @@ Use the 16-character device ID from comma Connect. You can also select
 **Device > Athena / WebRTC** in the stream selector. Remote ZMQ (`--zmq`) has
 been replaced; `--msgq` still reads local CAN.
 
-The connection carries raw CAN and wide-road video. It is available onroad and
+The connection carries raw CAN and video from the selected camera tab: Road,
+Driver, or Wide Road. All three tabs are available for live streams without
+`--dcam` or `--ecam`; only the selected camera's video is transmitted. Switching
+tabs keeps the same connection and does not interrupt CAN. It is available onroad and
 offroad, survives ignition changes, and has no five-minute session limit.
 Camera processes start on demand offroad; the WebRTC daemon is always available
 and the streaming encoder runs onroad. Only one viewer is supported: a new

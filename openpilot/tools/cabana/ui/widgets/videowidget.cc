@@ -119,6 +119,15 @@ VideoWidget::VideoWidget() {
     createCameraWidget();
   } else if (auto *device = dynamic_cast<DeviceStream *>(can); device && device->remote()) {
     cam_widget_ = std::make_unique<StreamCameraView>(device->cameraServer(), VISION_STREAM_WIDE_ROAD);
+    camera_tab_ = std::make_unique<TabBar>();
+    vipcAvailableStreamsUpdated({VISION_STREAM_NARROW_ROAD, VISION_STREAM_CABIN, VISION_STREAM_WIDE_ROAD});
+    camera_tab_->setCurrentIndex(2);
+    connections_.push_back(camera_tab_->currentChanged.connect([this, device](int index) {
+      if (index < 0) return;
+      auto type = (VisionStreamType)camera_tab_->tabData(index);
+      device->setCamera(type);
+      cam_widget_->setStreamType(type);
+    }));
   }
 
   createSpeedDropdown();
@@ -374,6 +383,7 @@ void VideoWidget::draw() {
     drawCameraWidget();
   } else if (cam_widget_) {
     ImGui::TextUnformatted("LIVE CAMERA (CAN playback is independent)");
+    camera_tab_->draw();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     cam_widget_->CameraWidget::draw(ImVec2(avail.x, std::max(1.0f, avail.y - toolbarHeight())));
   }

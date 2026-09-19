@@ -74,10 +74,23 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
     self.services = [s for s in services if s != "can"]
     self.sm = messaging.SubMaster(self.services)
     self.channels = []
+    self.pending_bytes = {}
     self._enabled = enabled
 
   def add_channel(self, channel):
     self.channels.append(channel)
+    self.pending_bytes[channel] = 0
+
+  def send(self, channel, message):
+    # buffered_amount() segfaults in libdatachannel-py's inherited Channel binding.
+    # send() returns True only after flushing the queue and sending this message.
+    # Count consecutive buffered sends as a conservative upper bound instead.
+    if self.pending_bytes[channel] + len(message) > 4 * 1024 * 1024:
+      channel.send(json.dumps({"type": "disconnect", "data": "CAN receiver cannot keep up; reconnect."}))
+      channel.close()
+      return False
+    self.pending_bytes[channel] = 0 if channel.send(message) else self.pending_bytes[channel] + len(message)
+    return True
 
   def enable(self, enable: bool):
     self._enabled = enable
@@ -104,11 +117,8 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
           break
         for channel in self.channels:
           if channel.is_open():
-            if channel.buffered_amount() > 4 * 1024 * 1024:
-              channel.send(json.dumps({"type": "disconnect", "data": "CAN receiver cannot keep up; reconnect."}))
-              channel.close()
+            if not self.send(channel, b"CAN\0" + data):
               return
-            channel.send(b"CAN\0" + data)
     self.sm.update(0)
     for service, updated in self.sm.updated.items():
       if not updated:
@@ -120,7 +130,7 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
       for channel in self.channels:
         if not channel.is_open():
           continue
-        channel.send(encoded_msg)
+        self.send(channel, encoded_msg)
 
   async def run(self):
     while True:

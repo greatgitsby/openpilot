@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tools/cabana/streams/livestream.h"
+#include "openpilot/cereal/visionstream.h"
 
 #include <string>
 #include <sys/types.h>
@@ -14,6 +15,7 @@ public:
   }
   bool remote() const { return !dongle_id_.empty(); }
   const std::string &cameraServer() const { return camera_server_; }
+  void setCamera(VisionStreamType type);
 
 protected:
   void start() override;

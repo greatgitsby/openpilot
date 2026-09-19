@@ -11,6 +11,7 @@
 #include <thread>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
 
 #include "openpilot/cereal/services.h"
 #include "tools/cabana/utils/util.h"
@@ -21,6 +22,18 @@ DeviceStream::DeviceStream(std::string dongle_id)
 DeviceStream::~DeviceStream() {
   stop();
   stopBridge();
+}
+
+void DeviceStream::setCamera(VisionStreamType type) {
+  if (bridge_fd_ < 0 || type > VISION_STREAM_WIDE_ROAD) return;
+  const uint8_t camera = type;
+  int flags = MSG_DONTWAIT;
+#ifdef MSG_NOSIGNAL
+  flags |= MSG_NOSIGNAL;
+#endif
+  if (::send(bridge_fd_, &camera, sizeof(camera), flags) < 0) {
+    error(std::string("Failed to switch camera: ") + strerror(errno));
+  }
 }
 
 void DeviceStream::stopBridge() {
@@ -47,7 +60,7 @@ void DeviceStream::stopBridge() {
 void DeviceStream::start() {
   if (remote()) {
     int output[2];
-    if (::pipe(output) != 0) {
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, output) != 0) {
       error(std::string("Failed to start WebRTC: ") + strerror(errno));
       return;
     }
@@ -56,6 +69,7 @@ void DeviceStream::start() {
     if (bridge_pid == 0) {
       ::close(output[0]);
       ::dup2(output[1], STDOUT_FILENO);
+      ::dup2(output[1], STDIN_FILENO);
       ::close(output[1]);
       if (::chdir(root.c_str()) == 0) {
         execlp("python3", "python3", "-m", "openpilot.tools.cabana.webrtc", dongle_id_.c_str(),
@@ -70,6 +84,10 @@ void DeviceStream::start() {
       return;
     }
     bridge_fd_ = output[0];
+#ifdef SO_NOSIGPIPE
+    int no_sigpipe = 1;
+    ::setsockopt(bridge_fd_, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
+#endif
     ::fcntl(bridge_fd_, F_SETFD, FD_CLOEXEC);
   }
   LiveStream::start();

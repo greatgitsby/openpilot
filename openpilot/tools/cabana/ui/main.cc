@@ -59,7 +59,7 @@ void printUsage(const char *argv0) {
 #ifdef __linux__
           "  --socketcan <device>      read can messages from given SocketCAN device\n"
 #endif
-          "  --webrtc <dongle-id>      live CAN and wide-road video over Athena/WebRTC\n"
+          "  --webrtc <dongle-id>      live CAN and switchable camera video over Athena/WebRTC\n"
           "  --data_dir <dir>          local directory with routes\n"
           "  --no-vipc                 do not output video\n"
           "  --no-cache                turn off the local route file cache\n"

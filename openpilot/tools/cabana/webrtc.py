@@ -23,6 +23,30 @@ from openpilot.tools.lib.auth_config import get_token
 
 CAN_PREFIX = b"CAN\0"
 MAX_EVENT_SIZE = 1024 * 1024
+CAMERAS = {
+  VisionStreamType.VISION_STREAM_NARROW_ROAD: "road",
+  VisionStreamType.VISION_STREAM_CABIN: "driver",
+  VisionStreamType.VISION_STREAM_WIDE_ROAD: "wideRoad",
+}
+
+
+def error_message(error):
+  return str(error).strip() or type(error).__name__
+
+
+async def wait_for_setup(event, done, timeout, message):  # noqa: ASYNC109 # Race readiness, disconnect, and the setup deadline.
+  waiter = asyncio.create_task(event.wait())
+  try:
+    completed, _ = await asyncio.wait([waiter, done], timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+    if done in completed:
+      done.result()
+      return False
+    if waiter not in completed:
+      raise TimeoutError(message)
+    return True
+  finally:
+    waiter.cancel()
+    await asyncio.gather(waiter, return_exceptions=True)
 
 
 def can_event(message):
@@ -55,7 +79,7 @@ def ice_servers(session):
   return servers
 
 
-async def run(dongle_id, server_name, emit):
+async def run(dongle_id, server_name, emit, control_fd=None):
   token = get_token()
   if not token:
     raise RuntimeError("Authenticate first: python -m openpilot.tools.lib.auth")
@@ -102,7 +126,7 @@ async def run(dongle_id, server_name, emit):
         if payload.get("type") == "disconnect":
           finish(payload.get("data", "Disconnected"))
     except Exception as e:
-      finish(str(e))
+      finish(error_message(e))
 
   def on_frame(data):
     if frames.full():
@@ -131,6 +155,27 @@ async def run(dongle_id, server_name, emit):
   vipc = None
   dimensions = None
   frame_id = 0
+  stream_type = VisionStreamType.VISION_STREAM_WIDE_ROAD
+
+  def select_camera():
+    nonlocal stream_type
+    commands = os.read(control_fd, 256)
+    if not commands:
+      loop.remove_reader(control_fd)
+      finish()
+      return
+    selected = commands[-1]
+    if selected not in CAMERAS or selected == stream_type:
+      return
+    try:
+      channel.send(json.dumps({"type": "livestreamCameraSwitch", "data": {"camera": CAMERAS[selected]}}))
+      stream_type = selected
+      while not frames.empty():
+        frames.get_nowait()
+      decoder.reset()
+      track.request_keyframe()
+    except Exception as e:
+      finish(error_message(e))
 
   def negotiate():
     response = session.post("https://athena.comma.ai/" + dongle_id, json={
@@ -162,27 +207,34 @@ async def run(dongle_id, server_name, emit):
         vipc = None
         vipc = VisionIpcServer(server_name)
         width, height = size
-        vipc.create_buffers_with_sizes(VisionStreamType.VISION_STREAM_WIDE_ROAD, 4,
-                                       width, height, width * height * 3 // 2, width, width * height)
+        for camera in CAMERAS:
+          vipc.create_buffers_with_sizes(camera, 4, width, height, width * height * 3 // 2, width, width * height)
         vipc.start_listener()
         dimensions = size
       now = time.monotonic_ns()
-      vipc.send(VisionStreamType.VISION_STREAM_WIDE_ROAD, image, frame_id, now, now)
+      vipc.send(stream_type, image, frame_id, now, now)
       frame_id += 1
 
   video_task = None
   try:
     pc.set_local_description(Description.Type.Offer)
-    await asyncio.wait_for(gathered.wait(), 15)
+    # Unreachable TURN servers can take over 20 seconds to finish gathering.
+    if not await wait_for_setup(gathered, done, 45, "Timed out gathering WebRTC network candidates. Check your network and TURN connectivity."):
+      return
     answer = await asyncio.to_thread(negotiate)
     pc.set_remote_description(Description(answer, Description.Type.Answer))
-    await asyncio.wait_for(opened.wait(), 20)
+    if not await wait_for_setup(opened, done, 20, "Timed out connecting to the device's WebRTC data channel. Check device and network connectivity."):
+      return
     track.request_keyframe()
+    if control_fd is not None:
+      loop.add_reader(control_fd, select_camera)
     video_task = asyncio.create_task(receive_video())
     completed, _ = await asyncio.wait([done, video_task], return_when=asyncio.FIRST_COMPLETED)
     for task in completed:
       task.result()
   finally:
+    if control_fd is not None:
+      loop.remove_reader(control_fd)
     if not done.done():
       done.cancel()
     elif not done.cancelled():
@@ -218,9 +270,11 @@ def main():
   try:
     if not re.fullmatch(r"[0-9a-fA-F]{16}", args.dongle_id):
       raise ValueError("Enter a 16-character device dongle ID, not an IP address.")
-    asyncio.run(run(args.dongle_id, args.server, emit))
+    asyncio.run(run(args.dongle_id, args.server, emit, sys.stdin.fileno()))
   except Exception as e:
-    emit(b'E', str(e).encode())
+    message = error_message(e)
+    print(message, file=sys.stderr)
+    emit(b'E', message.encode())
     status = 1
   output.close()
   # Avoid libdatachannel Python callback destruction races during interpreter shutdown.
