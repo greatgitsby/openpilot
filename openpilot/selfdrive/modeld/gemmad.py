@@ -3,6 +3,10 @@
 
 import os
 import time
+import argparse
+import hashlib
+import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +23,7 @@ VISION_MODEL = MODEL_DIR / "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
 # so this produces a 2x2 (four-token) visual grid from the live road frame.
 IMAGE_HEIGHT, IMAGE_WIDTH = 64, 64
 PROMPT = "Reply with exactly: Hello world!"
+MAX_TOKENS = 16
 
 
 def extract_rgb(buf: VisionBuf) -> np.ndarray:
@@ -58,20 +63,7 @@ def connect_road_camera() -> VisionIpcClient:
   return client
 
 
-def main() -> None:
-  missing = [str(path) for path in (TEXT_MODEL, VISION_MODEL) if not path.is_file()]
-  if missing:
-    raise FileNotFoundError(f"missing Qwen3-VL model file(s): {', '.join(missing)}")
-
-  client = connect_road_camera()
-  while (frame := client.recv()) is None:
-    pass
-  image = prepare_image(frame)
-
-  # tinygrad reads its default device while importing, so configure chestnut first.
-  os.environ["DEV"] = "USB+AMD:LLVM"
-  os.environ["GMMU"] = "0"
-  os.environ.setdefault("HCQDEV_WAIT_TIMEOUT_MS", "3000")
+def build_program():
   from tinygrad import Tensor
   from tinygrad.llm.cli import SimpleTokenizer
   from tinygrad.llm.model import Transformer
@@ -93,12 +85,74 @@ def main() -> None:
   image_token = tokenizer._special_tokens["<|image_pad|>"]
   tokens = prefix + [image_token] * image_tokens + suffix
 
-  runner = Qwen3VLRunner(model, vision, tokens, (len(prefix), len(prefix)+image_tokens), grid, max_new_tokens=16)
+  runner = Qwen3VLRunner(model, vision, tokens, (len(prefix), len(prefix)+image_tokens), grid, max_new_tokens=MAX_TOKENS)
+  # Cache construction never needs or persists a real camera image.
+  image = np.zeros((1, 3, IMAGE_HEIGHT, IMAGE_WIDTH), dtype=np.float16)
   for i in range(2):
     cloudlog.warning(f"gemmad graph warmup {i+1}/2")
     runner(Tensor(image).realize()).tolist()
+  return {"run": runner.jit, "tokenizer": tokenizer}
+
+
+def cache_path(arch: str) -> Path:
+  import tinygrad
+  root = Path(tinygrad.__file__).parent
+  digest = hashlib.sha256()
+  for source in sorted(root.rglob("*.py")):
+    digest.update(str(source.relative_to(root)).encode())
+    digest.update(source.read_bytes())
+  settings = {"version": 1, "arch": arch, "python": list(sys.version_info[:2]), "prompt": PROMPT,
+              "shape": [IMAGE_HEIGHT, IMAGE_WIDTH], "tokens": MAX_TOKENS, "context": 128,
+              "models": [(str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in (TEXT_MODEL, VISION_MODEL)],
+              "env": {k: os.getenv(k) for k in ("DEV", "GMMU", "TC_OPT", "TC_MIN_GLOBALS", "FLOAT16", "HCQ2")}}
+  digest.update(json.dumps(settings, sort_keys=True).encode())
+  return MODEL_DIR / "compiled" / digest.hexdigest()
+
+
+def main() -> None:
+  startup = time.monotonic()
+  parser = argparse.ArgumentParser(description=__doc__)
+  parser.add_argument("--prepare-cache", action="store_true", help="build/load the local artifact without connecting to camerad")
+  args = parser.parse_args()
+  missing = [str(path) for path in (TEXT_MODEL, VISION_MODEL) if not path.is_file()]
+  if missing:
+    raise FileNotFoundError(f"missing Qwen3-VL model file(s): {', '.join(missing)}")
+  # tinygrad reads its default device while importing, so configure chestnut first.
+  os.environ["DEV"] = "USB+AMD:LLVM"
+  os.environ["GMMU"] = "0"
+  os.environ.setdefault("HCQDEV_WAIT_TIMEOUT_MS", "3000")
+  from tinygrad import Tensor, Device
+  from tinygrad.llm.artifact import load_artifact, save_artifact
+  imported = time.monotonic()
+  device = Device[Device.DEFAULT]
+  initialized = time.monotonic()
+  path = cache_path(device.arch)
+  print(f"gemmad startup imports_s={imported-startup:.3f} gpu_init_s={initialized-imported:.3f} " +
+        f"cache_key_s={time.monotonic()-initialized:.3f}", flush=True)
+  if path.exists():
+    program, timings = load_artifact(path)
+    print(f"gemmad cache hit {path.name} {json.dumps(timings)}", flush=True)
+  else:
+    cloudlog.warning(f"gemmad cache miss {path.name}; preparing once")
+    build_start = time.monotonic()
+    program = build_program()
+    built = time.monotonic()
+    save_artifact(program, path)
+    print(f"gemmad cache saved build_s={built-build_start:.3f} save_s={time.monotonic()-built:.3f}", flush=True)
+  runner, tokenizer = program["run"], program["tokenizer"]
+  link_start = time.monotonic()
+  _ = runner.captured.linear
+  print(f"gemmad startup link_s={time.monotonic()-link_start:.3f} ready_s={time.monotonic()-startup:.3f}", flush=True)
+  if args.prepare_cache:
+    result = runner(Tensor(np.zeros((1, 3, IMAGE_HEIGHT, IMAGE_WIDTH), dtype=np.float16)).realize()).tolist()[0]
+    end = next((i for i, token in enumerate(result) if tokenizer.is_end(token)), len(result))
+    print(f"gemmad cache smoke response: {tokenizer.decode(result[:end])} complete={end < len(result)}", flush=True)
+    print(f"gemmad startup first_response_s={time.monotonic()-startup:.3f}", flush=True)
+    return
+  client = connect_road_camera()
   cloudlog.warning("gemmad ready for fresh road frames")
   previous_frame = None
+  first_response = True
   while True:
     if (frame := client.recv()) is None:
       continue
@@ -111,6 +165,9 @@ def main() -> None:
     end = next((i for i, token in enumerate(result) if tokenizer.is_end(token)), len(result))
     response = tokenizer.decode(result[:end])
     print(f"gemmad Qwen3-VL frame={frame_id}: {response}", flush=True)
+    if first_response:
+      print(f"gemmad startup first_response_s={time.monotonic()-startup:.3f}", flush=True)
+      first_response = False
     elapsed_ms = (time.monotonic_ns()-start)/1e6
     capture_ms = (time.clock_gettime_ns(time.CLOCK_BOOTTIME)-capture_ns)/1e6 if capture_ns else None
     complete = end < len(result)

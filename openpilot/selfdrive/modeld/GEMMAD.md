@@ -42,6 +42,11 @@ The FP16-input/FP32-accumulation experiment with `TC_OPT=2` was slightly slower
 (about 1493–1519 ms per frame). It remains available in the benchmark but is
 not enabled in the managed daemon.
 
+After deployment, the exact-greeting prompt produced complete `Hello world!`
+responses. Example live samples measured 1593–1630 ms from receipt and
+1625–1695 ms from capture, skipping 31–32 intervening frames. This confirms
+complete-response execution but fails both the latency and each-frame targets.
+
 ## Reproduce
 
 Do not run the benchmark while gemmad or another process owns chestnut. On a
@@ -55,3 +60,27 @@ TC_OPT=2 python -m openpilot.selfdrive.modeld.benchmark_qwen3vl --runs 10 --fp16
 These are two different matrix execution paths. The benchmark prints warmup
 times, each response, per-frame timing/completion records and a summary.
 CPU regression tests live in the tinygrad fork at `test/unit/test_qwen3vl.py`.
+
+## Startup cache
+
+`gemmad --prepare-cache` can prepare the program without camerad. The first run
+decodes the weights, captures the graph using a synthetic image, and publishes
+an immutable artifact under `/data/models/qwen3vl/compiled/<fingerprint>/`.
+Normal startup uses the same cache automatically. No real camera image is used
+to build it. Run preparation only when no other process owns chestnut.
+
+```sh
+python -m openpilot.selfdrive.modeld.gemmad --prepare-cache
+```
+
+The fingerprint includes tinygrad Python sources, model paths/sizes/mtimes,
+GPU architecture, prompt, image size, token budget and relevant runtime options.
+Changed inputs generate a different artifact; old artifacts are not deleted.
+Artifacts contain executable Python pickle data and must only come from this
+trusted local build. Publication is atomic, and truncated files are rejected.
+
+Cached startup separately reports imports, GPU initialization, cache fingerprint,
+buffer upload, graph deserialization, runtime linking, and time to first output
+(from entry to `main`). Cache hits do not parse GGUF, construct the model or
+perform capture warmups. GPU initialization and the VRAM upload remain necessary
+in a new process. The predecoded cache occupies several GB on disk.
