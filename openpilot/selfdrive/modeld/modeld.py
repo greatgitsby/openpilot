@@ -225,10 +225,14 @@ class ModelState:
 def main(demo=False):
   cloudlog.warning("modeld init")
 
-  CHESTNUT = chestnut_present() and chestnut_compiled()
+  params = Params()
+  cp_raw = params.get("CarParams")
+  is_body = cp_raw is not None and messaging.log_from_bytes(cp_raw, car.CarParams).brand == "body"
+  # chestnut is exclusively locked by one process. On comma body, leave it to gemmad
+  # and keep the driving model on the built-in Qualcomm GPU.
+  CHESTNUT = chestnut_present() and chestnut_compiled() and not is_body
   if CHESTNUT:
     os.environ['HCQDEV_WAIT_TIMEOUT_MS'] = '3000'
-  params = Params()
   params.put_bool("ChestnutLoading", CHESTNUT)
   params.remove("ChestnutActive")
 

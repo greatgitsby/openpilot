@@ -18,6 +18,9 @@ def notcar(started: bool, params: Params, CP: car.CarParams) -> bool:
 def iscar(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and not CP.notCar
 
+def body(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return started and CP.brand == "body"
+
 def logging(started: bool, params: Params, CP: car.CarParams) -> bool:
   run = (not CP.notCar) or not params.get_bool("DisableLogging")
   return started and run
@@ -83,6 +86,7 @@ procs = [
   PythonProcess("timed", "openpilot.system.timed", always_run, enabled=not PC),
 
   PythonProcess("modeld", "openpilot.selfdrive.modeld.modeld", only_onroad),
+  PythonProcess("gemmad", "openpilot.selfdrive.modeld.gemmad", body),
   PythonProcess("dmonitoringmodeld", "openpilot.selfdrive.modeld.dmonitoringmodeld", driverview, enabled=(WEBCAM or not PC)),
 
   PythonProcess("sensord", "openpilot.system.sensord.sensord", only_onroad, enabled=not PC),
