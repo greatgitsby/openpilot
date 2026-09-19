@@ -17,13 +17,14 @@ from tinygrad import Tensor, Device
 from tinygrad.llm.cli import SimpleTokenizer
 from tinygrad.llm.model import Transformer
 from tinygrad.llm.qwen3vl import Qwen3Vision, Qwen3VLRunner, materialize_weights
-from openpilot.selfdrive.modeld.gemmad import TEXT_MODEL, VISION_MODEL, PROMPT, DIRECTIONS, MAX_CONTEXT, connect_road_camera, prepare_image
+from openpilot.selfdrive.modeld.gemmad import (TEXT_MODEL, VISION_MODEL, PROMPT, DIRECTIONS, MAX_CONTEXT, MAX_TOKENS,
+                                             connect_road_camera, prepare_image, format_plan)
 
 
 def main():
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument('--runs', type=int, default=10)
-  parser.add_argument('--tokens', type=int, choices=[1], default=1)
+  parser.add_argument('--tokens', type=int, choices=[MAX_TOKENS], default=MAX_TOKENS)
   parser.add_argument('--fp16-compute', action='store_true', help='FP16 matrix inputs with float32 accumulation')
   args = parser.parse_args()
   if args.runs < 1:
@@ -71,11 +72,11 @@ def main():
     start_ns = time.monotonic_ns()
     result = runner(Tensor(prepare_image(frame)).realize()).tolist()[0]
     end = next((j for j, token in enumerate(result) if tokenizer.is_end(token)), len(result))
-    response = tokenizer.decode(result[:end])
+    response = json.dumps(format_plan(result, dict(zip([ids[0] for ids in encoded], DIRECTIONS, strict=True))))
     print(f'gemmad response frame={frame_id}: {response}', flush=True)
     elapsed = (time.monotonic_ns()-start_ns)/1e6
     capture_ms = (time.clock_gettime_ns(time.CLOCK_BOOTTIME)-capture_ns)/1e6 if capture_ns else None
-    complete = len(result) == 1 and response in DIRECTIONS
+    complete = len(result) == MAX_TOKENS
     measurements.append(elapsed)
     capture_measurements.append(capture_ms)
     complete_responses.append(complete)

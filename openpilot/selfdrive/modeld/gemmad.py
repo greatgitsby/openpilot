@@ -25,10 +25,25 @@ IMAGE_HEIGHT, IMAGE_WIDTH = 160, 256
 PROMPT = ("You are viewing the robot's front wide camera. Navigate through the scene without hitting people or obstacles. Steer clear! " +
           "Choose W=forward only when the path directly ahead is clear. Otherwise choose A=turn left or D=turn right toward clear space. " +
           "S=backward; rear clearance is unknown from this image. Avoid moving toward nearby people, furniture, walls, or other obstacles. " +
-          "Reply with exactly one letter: W, A, S, or D. No explanation.")
-MAX_TOKENS = 1
+          "Plan the next five seconds. Reply with exactly five letters using only W, A, S, D, one letter per second in order. " +
+          "For example AWWWW means turn left for one second then forward for four seconds. No spaces or explanation.")
+MAX_TOKENS = 5
 DIRECTIONS = ("W", "A", "S", "D")
 MAX_CONTEXT = 256
+
+
+def format_plan(result: list[int], directions: dict[int, str]) -> list[dict]:
+  """Five constrained tokens represent five one-second slots; merge adjacent slots."""
+  if len(result) != MAX_TOKENS or any(token not in directions or directions[token] not in DIRECTIONS for token in result):
+    raise ValueError(f"invalid direction plan: {result}")
+  plan: list[dict] = []
+  for token in result:
+    command = directions[token]
+    if plan and plan[-1]["command"] == command:
+      plan[-1]["seconds"] += 1
+    else:
+      plan.append({"command": command, "seconds": 1})
+  return plan
 
 
 def extract_rgb(buf: VisionBuf) -> np.ndarray:
@@ -155,9 +170,7 @@ def run(output) -> None:
   print(f"gemmad startup link_s={time.monotonic()-link_start:.3f} ready_s={time.monotonic()-startup:.3f}", flush=True)
   if args.prepare_cache:
     result = runner(Tensor(np.zeros((1, 3, IMAGE_HEIGHT, IMAGE_WIDTH), dtype=np.float16)).realize()).tolist()[0]
-    if len(result) != 1 or result[0] not in directions:
-      raise ValueError(f"invalid direction result: {result}")
-    print(f"gemmad cache smoke direction: {directions[result[0]]}", flush=True)
+    print(f"gemmad cache smoke plan: {json.dumps(format_plan(result, directions))}", flush=True)
     print(f"gemmad startup first_response_s={time.monotonic()-startup:.3f}", flush=True)
     return
   client = connect_road_camera()
@@ -173,9 +186,7 @@ def run(output) -> None:
     skipped = 0 if previous_frame is None else max(0, frame_id-previous_frame-1)
     previous_frame = frame_id
     result = runner(Tensor(prepare_image(frame)).realize()).tolist()[0]
-    if len(result) != 1 or result[0] not in directions:
-      raise ValueError(f"invalid direction result: {result}")
-    print(directions[result[0]], file=output, flush=True)
+    print(json.dumps(format_plan(result, directions)), file=output, flush=True)
     if first_response:
       print(f"gemmad startup first_response_s={time.monotonic()-startup:.3f}", flush=True)
       first_response = False
@@ -187,7 +198,7 @@ def run(output) -> None:
 
 
 def main() -> None:
-  # All library/startup diagnostics go to stderr; stdout is the advisory letter stream only.
+  # All library/startup diagnostics go to stderr; stdout is advisory JSON plans only.
   output = sys.stdout
   with contextlib.redirect_stdout(sys.stderr):
     run(output)

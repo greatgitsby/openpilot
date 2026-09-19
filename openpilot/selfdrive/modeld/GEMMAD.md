@@ -1,6 +1,26 @@
-# Qwen3-VL direction-stream experiment
+# Qwen3-VL five-second plan experiment
 
-Current `gemmad` consumes the latest **wide** road-camera frame (conflated VisionIPC),
+## Current output
+
+Each latest wide-camera frame produces an advisory five-second plan, one JSON
+array per stdout line, for example:
+
+```json
+[{"command":"A","seconds":1},{"command":"W","seconds":4}]
+```
+
+The VLM generates five constrained direction tokens, one per one-second slot.
+Adjacent identical slots are merged; durations are positive whole seconds and
+always total five. W=forward, A=left, S=backward, D=right. There is no stop
+command. Each new plan replaces the preceding suggestion; there is no command
+queue, timer, or actuation. A single image cannot verify rear clearance or
+predict five seconds of motion. Do not execute these unvalidated plans blindly.
+Diagnostics and frame age remain on stderr. The new five-token prompt requires
+a new startup cache; timings below are historical single-letter measurements.
+
+## Historical single-letter output
+
+The previous `gemmad` consumes the latest **wide** road-camera frame (conflated VisionIPC),
 resizes it to 256x160, and asks the VLM which direction leads through visible
 clear space while avoiding obstacles. It emits exactly one uppercase letter
 per inference, followed by a newline, to **stdout**:
