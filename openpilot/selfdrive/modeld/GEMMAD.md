@@ -1,6 +1,6 @@
 # Qwen3-VL direction-stream experiment
 
-Current `gemmad` consumes the latest road-camera frame (conflated VisionIPC),
+Current `gemmad` consumes the latest **wide** road-camera frame (conflated VisionIPC),
 resizes it to 256x160, and asks the VLM which direction leads through visible
 clear space while avoiding obstacles. It emits exactly one uppercase letter
 per inference, followed by a newline, to **stdout**:
@@ -9,6 +9,12 @@ per inference, followed by a newline, to **stdout**:
 - `A`: turn left
 - `S`: backward
 - `D`: turn right
+
+It waits for the wide stream rather than substituting the narrow camera, which
+can see mostly floor on the Body. The prompt explicitly requests navigating
+without hitting people or obstacles, choosing forward only when directly ahead
+is clear, and turning toward clear space otherwise. This is an instruction to
+the VLM, not a verified collision-avoidance guarantee.
 
 Decoding is constrained to the four corresponding vocabulary tokens, rather
 than parsing a free-form explanation. Each letter is a complete one-token

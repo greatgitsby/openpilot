@@ -22,8 +22,9 @@ TEXT_MODEL = MODEL_DIR / "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
 VISION_MODEL = MODEL_DIR / "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
 # Forty visual tokens, preserving more scene detail than the hello-world demo.
 IMAGE_HEIGHT, IMAGE_WIDTH = 160, 256
-PROMPT = ("You are viewing the robot's front camera. Choose a direction to navigate through visible clear space, avoiding obstacles. " +
-          "W=forward, A=turn left, S=backward, D=turn right. The rear is not visible. " +
+PROMPT = ("You are viewing the robot's front wide camera. Navigate through the scene without hitting people or obstacles. Steer clear! " +
+          "Choose W=forward only when the path directly ahead is clear. Otherwise choose A=turn left or D=turn right toward clear space. " +
+          "S=backward; rear clearance is unknown from this image. Avoid moving toward nearby people, furniture, walls, or other obstacles. " +
           "Reply with exactly one letter: W, A, S, or D. No explanation.")
 MAX_TOKENS = 1
 DIRECTIONS = ("W", "A", "S", "D")
@@ -56,14 +57,14 @@ def prepare_image(buf: VisionBuf) -> np.ndarray:
 
 
 def connect_road_camera() -> VisionIpcClient:
-  while not (streams := VisionIpcClient.available_streams("camerad", block=False)):
+  stream = VisionStreamType.VISION_STREAM_WIDE_ROAD
+  # Never silently substitute narrow: the Body's narrow view can show mostly floor.
+  while stream not in VisionIpcClient.available_streams("camerad", block=False):
     time.sleep(0.1)
-  stream = VisionStreamType.VISION_STREAM_NARROW_ROAD if VisionStreamType.VISION_STREAM_NARROW_ROAD in streams \
-    else VisionStreamType.VISION_STREAM_WIDE_ROAD
   client = VisionIpcClient("camerad", stream, True)
   while not client.connect(False):
     time.sleep(0.1)
-  cloudlog.warning(f"gemmad connected to {stream}: {client.width}x{client.height}")
+  cloudlog.warning(f"gemmad connected to wide road ({stream}): {client.width}x{client.height}")
   return client
 
 
