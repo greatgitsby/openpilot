@@ -90,6 +90,20 @@ While streaming from the device, Cabana will log the CAN messages to a local dir
 
 After disconnecting from the device, you can replay the logged CAN messages from the stream selector dialog -> browse local route.
 
+### Joystick controls over WebRTC
+
+The Joystick dock appears beside Charts. Drag its title bar to move or float it;
+use View → Joystick to reopen it. Its position and visibility are saved.
+
+For a car, enable **Device joystick mode** while offroad, then start the car.
+Comma body uses its existing joystick mode. Select **Arm controls** in the dock,
+then hold **W/S** for gas/brake and **A/D** for left/right steering, or drag the
+mouse pad. Keyboard output is ±1.0 and the mouse pad ranges up to ±1.0, with a 0.20 minimum
+for a displaced axis, matching Connect. The output limit defaults to 100%. Releasing the keys or mouse centers
+the controls; Escape, focus loss, or hiding the dock disarms them. Arming is
+never saved across sessions. Commands use Connect's `testJoystick` protocol at
+20 Hz. The device must run the accompanying Athena and webrtcd changes.
+
 ### Streaming CAN Messages from Panda
 
 To read CAN messages from a connected Panda, use the following command:

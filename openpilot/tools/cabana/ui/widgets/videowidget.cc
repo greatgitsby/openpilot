@@ -211,8 +211,10 @@ void VideoWidget::drawPlaybackController() {
     return item;
   };
   const char *aspect_ratio_icon = settings.crop_video ? icon::ASPECT_RATIO_FILL : icon::ASPECT_RATIO;
-  if (!can->liveStreaming()) {
+  if (cam_widget_) {
     items.push_back(toolbarAction("crop_video", aspect_ratio_icon, "Crop to fill", [this]() { cropVideoClicked(); }));
+  }
+  if (!can->liveStreaming()) {
     items.push_back(separator());
     items.push_back(toolbarAction("loop", loop_icon, "Loop playback", [this]() { loopPlaybackClicked(); }));
     items.push_back(toolbarMenu("speed_btn", speed_text_, "Speed", [this]() { drawSpeedMenuItems(); }, true, speed_width));
@@ -382,7 +384,6 @@ void VideoWidget::draw() {
   if (!can->liveStreaming()) {
     drawCameraWidget();
   } else if (cam_widget_) {
-    ImGui::TextUnformatted("LIVE CAMERA (CAN playback is independent)");
     camera_tab_->draw();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     cam_widget_->CameraWidget::draw(ImVec2(avail.x, std::max(1.0f, avail.y - toolbarHeight())));

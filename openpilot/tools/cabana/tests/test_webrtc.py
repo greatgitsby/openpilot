@@ -1,4 +1,7 @@
 import asyncio
+import subprocess
+import struct
+import sys
 import unittest
 from unittest.mock import Mock, patch
 
@@ -8,12 +11,117 @@ from openpilot.common.test import OpenpilotTestCase
 from openpilot.system.athena import athenad
 from openpilot.system.manager.process_config import managed_processes
 from openpilot.cereal import messaging
-from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy
+from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy, JoystickControl
 from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack
-from openpilot.tools.cabana.webrtc import can_event, error_message, ice_servers, wait_for_setup
+from openpilot.tools.cabana.webrtc import ControlReader, can_event, error_message, ice_servers, wait_for_candidates, wait_for_setup
+
+
+class TestJoystickControl(unittest.TestCase):
+  def test_fragmented_and_combined_commands(self):
+    reader = ControlReader()
+    self.assertEqual(reader.feed(b'J\x19'), [])
+    self.assertEqual(reader.feed(b'\xe7\x00\x01M\x01'), [
+      ("testJoystick", {"axes": [0.25, -0.25], "buttons": [False]}),
+      ("camera", 1), ("joystickMode", {"enabled": True}),
+    ])
+    self.assertEqual(reader.feed(b'J\x00\x00\x00'), [
+      ("testJoystick", {"axes": [0, 0], "buttons": [False]}),
+    ])
+
+  def test_invalid_commands_are_not_forwarded(self):
+    reader = ControlReader()
+    self.assertEqual(reader.feed(b'M\x05' + b'J' + struct.pack('bbB', 127, 0, 0)), [])
+    self.assertEqual(reader.feed(b'\x02'), [("camera", 2)])
+
+  def controller(self, onroad=False, enabled=False, body=False):
+    cp = car.CarParams.new_message()
+    cp.notCar = body
+    params = Mock()
+    params.get.return_value = cp.to_bytes()
+    values = {"IsOffroad": not onroad, "JoystickDebugMode": enabled}
+    params.get_bool.side_effect = lambda key: values[key]
+    params.put_bool.side_effect = lambda key, value, **kwargs: values.update({key: value})
+    return JoystickControl(params), params
+
+  def test_mode_changes_only_offroad(self):
+    control, params = self.controller(onroad=True)
+    self.assertIn("Turn the car off", control.mode({"enabled": True})["data"]["error"])
+    params.put_bool.assert_not_called()
+    self.assertFalse(control.enabled())
+    control, params = self.controller()
+    self.assertTrue(control.mode({"enabled": True})["data"]["enabled"])
+    self.assertFalse(control.mode({"enabled": False})["data"]["enabled"])
+
+  def test_controls_require_mode_and_finite_normalized_axes(self):
+    control, _ = self.controller()
+    self.assertFalse(control.valid({"axes": [0, 0], "buttons": [False]}))
+    control.mode({"enabled": True})
+    self.assertTrue(control.valid({"axes": [1, -1], "buttons": [False]}))
+    for axes in ([float('nan'), 0], [float('inf'), 0], [1.1, 0], [0], [True, 0]):
+      self.assertFalse(control.valid({"axes": axes, "buttons": [False]}))
+
+  def test_body_does_not_change_car_debug_mode(self):
+    control, params = self.controller(body=True, onroad=True)
+    self.assertTrue(control.mode({})["data"]["enabled"])
+    self.assertTrue(control.valid({"axes": [0.25, -0.25], "buttons": [False]}))
+    params.put_bool.assert_not_called()
+
+
+class TestWebRTCExit(unittest.TestCase):
+  def run_helper(self, closed, failure):
+    script = f'''
+import os
+import sys
+from openpilot.tools.cabana import webrtc
+if {closed!r}:
+  reader, writer = os.pipe()
+  os.close(reader)
+  os.dup2(writer, sys.stdout.fileno())
+  os.close(writer)
+async def run(dongle_id, server, emit, control_fd):
+  if {failure!r}:
+    raise RuntimeError("connection failed")
+  emit(b'C', b'can event')
+webrtc.run = run
+sys.argv = ['webrtc', '0123456789abcdef', '--server', 'test']
+webrtc.main()
+'''
+    return subprocess.run([sys.executable, "-c", script], capture_output=True, timeout=10)
+
+  def test_gui_closes_during_can_write(self):
+    result = self.run_helper(closed=True, failure=False)
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertEqual(result.stderr, b"")
+
+  def test_gui_closes_before_error_report(self):
+    result = self.run_helper(closed=True, failure=True)
+    self.assertEqual(result.returncode, 0, result.stderr)
+    self.assertEqual(result.stderr, b"")
+
+  def test_connection_failure_is_still_reported(self):
+    result = self.run_helper(closed=False, failure=True)
+    self.assertEqual(result.returncode, 1)
+    self.assertEqual(result.stdout, b'\x00\x00\x00\x12Econnection failed')
+    self.assertEqual(result.stderr, b'connection failed\n')
 
 
 class TestWebRTCSetup(unittest.IsolatedAsyncioTestCase):
+  async def test_gathering_deadline_allows_partial_offer(self):
+    done = asyncio.get_running_loop().create_future()
+    with patch("openpilot.tools.cabana.webrtc.ICE_GATHER_DEADLINE", 0):
+      self.assertTrue(await wait_for_candidates(asyncio.Event(), done))
+
+  async def test_candidate_ready_sends_offer_without_waiting(self):
+    ready = asyncio.Event()
+    ready.set()
+    done = asyncio.get_running_loop().create_future()
+    self.assertTrue(await asyncio.wait_for(wait_for_candidates(ready, done), 0.1))
+
+  async def test_gathering_disconnect_does_not_send_offer(self):
+    done = asyncio.get_running_loop().create_future()
+    done.set_result(None)
+    self.assertFalse(await wait_for_candidates(asyncio.Event(), done))
+
   async def test_keyframe_callback_defers_parameter_write(self):
     msg = messaging.new_message("livestreamWideRoadEncodeData")
     with patch.object(LiveStreamVideoStreamTrack, "_make_sock"), \
@@ -175,6 +283,13 @@ class TestWebRTCLifecycle(OpenpilotTestCase):
       athenad.startStream("offer", True, can=True)
       self.assertEqual(post.call_args.args[0].bridge_services_out, ["carState", "deviceState", "can"])
       self.assertTrue(Params().get_bool("IsLiveStreaming"))
+      cp = car.CarParams.new_message()
+      cp.notCar = False
+      Params().put("CarParamsPersistent", cp.to_bytes())
+      athenad.startStream("offer", True, joystick=True)
+      self.assertEqual(post.call_args.args[0].bridge_services_in, ["testJoystick"])
+      athenad.startStream("offer", True)
+      self.assertEqual(post.call_args.args[0].bridge_services_in, [])
 
 
 if __name__ == "__main__":

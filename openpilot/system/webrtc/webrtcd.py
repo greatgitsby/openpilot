@@ -12,6 +12,7 @@ import contextlib
 import json
 import uuid
 import logging
+import math
 import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +24,7 @@ from openpilot.system.webrtc.schema import generate_field
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.cereal import messaging, log
+from opendbc.car.structs import car
 
 
 # ice candidate parser for logging
@@ -247,6 +249,38 @@ class LivestreamBitrateController(AsyncTaskRunner):
       self._auto = True
 
 
+class JoystickControl:
+  def __init__(self, params):
+    self.params = params
+    self.is_body = False
+    cp = params.get("CarParamsPersistent")
+    if cp:
+      with car.CarParams.from_bytes(cp) as parsed:
+        self.is_body = parsed.notCar
+
+  def enabled(self):
+    return self.is_body or self.params.get_bool("JoystickDebugMode")
+
+  def mode(self, data):
+    error = ""
+    if "enabled" in data and not self.is_body:
+      if not self.params.get_bool("IsOffroad"):
+        error = "Turn the car off before changing joystick mode."
+      elif type(data["enabled"]) is not bool:
+        error = "Invalid joystick mode."
+      else:
+        self.params.put_bool("JoystickDebugMode", data["enabled"], block=True)
+    return {"type": "joystickStatus", "data": {
+      "enabled": self.enabled(), "body": self.is_body, "error": error,
+    }}
+
+  def valid(self, data):
+    axes = data.get("axes", [])
+    buttons = data.get("buttons", [])
+    return (self.enabled() and len(axes) == 2 and len(buttons) == 1 and type(buttons[0]) is bool
+            and all(type(x) in (float, int) and math.isfinite(x) and -1 <= x <= 1 for x in axes))
+
+
 class StreamSession:
   shared_pub_master = DynamicPubMaster([])
 
@@ -266,7 +300,9 @@ class StreamSession:
       builder.add_video_stream(camera, track)
     self.stream = builder.stream()
 
-    self.is_body = "testJoystick" in body.bridge_services_in
+    self.joystick = JoystickControl(self.params)
+    self.joystick_used = False
+    self.is_body = self.joystick.is_body
 
     self.incoming_bridge: CerealIncomingMessageProxy | None = None
     self.incoming_bridge_services = body.bridge_services_in
@@ -308,6 +344,13 @@ class StreamSession:
         msg_type = payload.get("type")
 
         match msg_type:
+          case "joystickMode":
+            if "testJoystick" in self.incoming_bridge_services:
+              self.stream.get_messaging_channel().send(json.dumps(self.joystick.mode(payload["data"])))
+          case "testJoystick":
+            if "testJoystick" in self.incoming_bridge_services and self.joystick.valid(payload["data"]):
+              self.incoming_bridge.send(message)
+              self.joystick_used = True
           case "livestreamCameraSwitch":
             # only needed for 1 track stream
             if len(self.video_tracks) == 1:
@@ -386,6 +429,8 @@ class StreamSession:
       if self._cleanup_done:
         return
       self._cleanup_done = True
+      if self.joystick_used and self.incoming_bridge is not None:
+        self.incoming_bridge.send(json.dumps({"type": "testJoystick", "data": {"axes": [0, 0], "buttons": [False]}}))
       self.params.put("LivestreamRequestKeyframe", False)
       if self.bitrate_controller is not None:
         await self.bitrate_controller.stop()

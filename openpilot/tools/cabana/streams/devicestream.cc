@@ -1,6 +1,8 @@
 #include "tools/cabana/streams/devicestream.h"
 
 #include <arpa/inet.h>
+#include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <chrono>
 #include <csignal>
@@ -27,13 +29,32 @@ DeviceStream::~DeviceStream() {
 void DeviceStream::setCamera(VisionStreamType type) {
   if (bridge_fd_ < 0 || type > VISION_STREAM_WIDE_ROAD) return;
   const uint8_t camera = type;
+  sendControl(&camera, sizeof(camera));
+}
+
+bool DeviceStream::sendJoystick(float gas, float steer, bool cancel) {
+  const int8_t command[] = {'J', (int8_t)std::lround(std::clamp(gas, -1.0f, 1.0f) * 100),
+                           (int8_t)std::lround(std::clamp(steer, -1.0f, 1.0f) * 100), (int8_t)cancel};
+  return sendControl(command, sizeof(command));
+}
+
+void DeviceStream::setJoystickMode(bool enabled) {
+  const uint8_t command[] = {'M', (uint8_t)enabled};
+  sendControl(command, sizeof(command));
+}
+
+bool DeviceStream::sendControl(const void *data, size_t size) {
+  if (bridge_fd_ < 0) return false;
   int flags = MSG_DONTWAIT;
 #ifdef MSG_NOSIGNAL
   flags |= MSG_NOSIGNAL;
 #endif
-  if (::send(bridge_fd_, &camera, sizeof(camera), flags) < 0) {
-    error(std::string("Failed to switch camera: ") + strerror(errno));
-  }
+  if (::send(bridge_fd_, data, size, flags) == (ssize_t)size) return true;
+  // Never continue on a partially written control frame.
+  ::shutdown(bridge_fd_, SHUT_RDWR);
+  joystick_ready = false;
+  joystick_status = "Control connection closed. Reconnect to continue.";
+  return false;
 }
 
 void DeviceStream::stopBridge() {
@@ -121,6 +142,15 @@ void DeviceStream::streamThread() {
       char kind;
       if (!readPipe(&kind, 1)) break;
       --length;
+      if (kind == 'J' && length >= 1) {
+        std::string status(length, '\0');
+        if (!readPipe(status.data(), length)) break;
+        postToMainThread([this, status]() {
+          joystick_ready = status[0] != 0;
+          joystick_status = status.substr(1);
+        });
+        continue;
+      }
       if (kind == 'E') {
         failure.resize(length);
         readPipe(failure.data(), length);
@@ -136,7 +166,7 @@ void DeviceStream::streamThread() {
         break;
       }
     }
-    if (!exit_) postToMainThread([this, failure]() { error(failure); });
+    if (!exit_) postToMainThread([this, failure]() { joystick_ready = false; joystick_status = failure; error(failure); });
     return;
   }
 

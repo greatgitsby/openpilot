@@ -5,6 +5,35 @@ import unittest
 
 
 class TestNativeWebRTC(unittest.TestCase):
+  def test_turn_tcp_is_supported(self):
+    # A local TURN listener verifies the installed backend actually attempts TCP.
+    # The upstream libjuice build silently ignores this transport.
+    result = subprocess.run([sys.executable, "-c", r'''
+import os
+import socket
+from libdatachannel import Configuration, PeerConnection, IceServer
+
+listener = socket.socket()
+listener.bind(("127.0.0.1", 0))
+listener.listen()
+listener.settimeout(5)
+config = Configuration()
+config.ice_servers = [IceServer("127.0.0.1", listener.getsockname()[1], "user", "password", IceServer.RelayType.TurnTcp)]
+pc = PeerConnection(config)
+channel = pc.create_data_channel("data")
+connection, _ = listener.accept()
+connection.settimeout(5)
+header = b""
+while len(header) < 20:
+  data = connection.recv(20 - len(header))
+  assert data, "TURN connection closed before Allocate request"
+  header += data
+assert header[:2] == b"\x00\x03", "Expected TURN Allocate request"
+assert header[4:8] == b"\x21\x12\xa4\x42", "Expected STUN magic cookie"
+os._exit(0)
+'''], capture_output=True, text=True, timeout=10)
+    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
   def test_send_during_keyframe_callback(self):
     # Isolate native crashes/deadlocks and the binding's interpreter teardown.
     result = subprocess.run([sys.executable, "-c", r'''

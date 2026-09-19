@@ -62,7 +62,7 @@ std::vector<DeviceInfo> parseDevices(const std::string &json) {
   auto doc = json11::Json::parse(json, err);
   if (err.empty() && doc.is_array()) {
     for (const auto &device : doc.array_items()) {
-      devices.push_back({device["dongle_id"].string_value()});
+      devices.push_back({device["dongle_id"].string_value(), device["alias"].string_value()});
     }
   }
   return devices;

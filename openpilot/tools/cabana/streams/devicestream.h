@@ -16,11 +16,16 @@ public:
   bool remote() const { return !dongle_id_.empty(); }
   const std::string &cameraServer() const { return camera_server_; }
   void setCamera(VisionStreamType type);
+  bool sendJoystick(float gas, float steer, bool cancel = false);
+  void setJoystickMode(bool enabled);
+  bool joystick_ready = false;
+  std::string joystick_status = "Connecting to device...";
 
 protected:
   void start() override;
   void streamThread() override;
   void stopBridge();
+  bool sendControl(const void *data, size_t size);
   bool readPipe(void *data, size_t size);
   pid_t bridge_pid = -1;
   int bridge_fd_ = -1;

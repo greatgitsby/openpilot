@@ -63,13 +63,21 @@ private:
 
 class OpenDeviceWidget : public AbstractOpenStreamWidget {
 public:
+  OpenDeviceWidget();
   const char *title() const override { return "Device"; }
   void draw() override;
   std::unique_ptr<AbstractStream> open() override;
+  bool openEnabled() const override { return mode_ == 0 || (!loading_ && !devices_.empty()); }
 
 private:
-  int mode_ = 1;  // 0 = local MSGQ, 1 = Athena/WebRTC
-  std::string dongle_id_;
+  void refreshDevices();
+  int mode_ = 1;  // 0 = local MSGQ, 1 = Athena
+  int device_index_ = 0;
+  bool loading_ = false;
+  std::string error_;
+  std::vector<routes::DeviceInfo> devices_;
+  std::vector<std::string> device_labels_;
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
 #ifdef __linux__

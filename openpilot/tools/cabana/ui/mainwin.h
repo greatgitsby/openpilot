@@ -18,6 +18,7 @@
 #include "tools/cabana/ui/widgets/detailwidget.h"
 #include "tools/cabana/ui/widgets/messageswidget.h"
 #include "tools/cabana/ui/widgets/videowidget.h"
+#include "tools/cabana/ui/widgets/joystickwidget.h"
 
 struct GLFWwindow;
 
@@ -94,6 +95,7 @@ private:
   std::unique_ptr<MessagesWidget> messages_widget_;
   CenterWidget center_widget_;
   std::unique_ptr<VideoWidget> video_widget_;
+  std::unique_ptr<JoystickWidget> joystick_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;
   SettingsDialog settings_dialog_;
@@ -105,6 +107,7 @@ private:
   bool messages_visible_ = true;
   bool video_visible_ = true;
   bool charts_visible_ = true;
+  bool joystick_visible_ = true;
   bool reset_layout_ = false;
   bool full_screen_ = false;
 #ifndef __APPLE__
