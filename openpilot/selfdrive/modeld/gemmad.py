@@ -15,7 +15,9 @@ from msgq.visionipc import VisionIpcClient, VisionBuf
 MODEL_DIR = Path(os.getenv("QWEN3_VL_MODEL_DIR", "/data/models/qwen3vl"))
 TEXT_MODEL = MODEL_DIR / "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
 VISION_MODEL = MODEL_DIR / "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
-IMAGE_HEIGHT, IMAGE_WIDTH = 256, 416
+# Keep the hello-world path intentionally small. Qwen's patch/merge factor is 32,
+# so this produces a 2x2 (four-token) visual grid from the live road frame.
+IMAGE_HEIGHT, IMAGE_WIDTH = 64, 64
 
 
 def extract_rgb(buf: VisionBuf) -> np.ndarray:
@@ -91,13 +93,14 @@ def main() -> None:
   image_token = tokenizer._special_tokens["<|image_pad|>"]
   tokens = prefix + [image_token] * image_tokens + suffix
 
-  print("gemmad Qwen3-VL response: ", end="", flush=True)
   decoder = tokenizer.stream_decoder()
-  for token in model.generate_vision(tokens, (len(prefix), len(prefix)+image_tokens), image_embeds, deepstack, grid):
+  response = []
+  for token in model.generate_vision(tokens, (len(prefix), len(prefix)+image_tokens), image_embeds, deepstack, grid, max_new_tokens=16):
     if tokenizer.is_end(token):
       break
-    print(decoder(token), end="", flush=True)
-  print(decoder(), flush=True)
+    response.append(decoder(token))
+  response.append(decoder())
+  print(f"gemmad Qwen3-VL response: {''.join(response)}", flush=True)
 
   # Keep the managed process alive after the one-shot hello-world inference.
   while True:
