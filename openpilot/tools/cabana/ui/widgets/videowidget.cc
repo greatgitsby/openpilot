@@ -16,6 +16,7 @@ extern "C" {
 #include <capnp/serialize.h>
 
 #include "tools/cabana/settings.h"
+#include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/ui/threadpool.h"
 #include "tools/cabana/ui/util.h"
 #include "tools/cabana/utils/strings.h"
@@ -114,8 +115,11 @@ static bool decodeJpeg(const uint8_t *data, size_t size, RgbImage *out) {
 }
 
 VideoWidget::VideoWidget() {
-  if (!can->liveStreaming())
+  if (!can->liveStreaming()) {
     createCameraWidget();
+  } else if (auto *device = dynamic_cast<DeviceStream *>(can); device && device->remote()) {
+    cam_widget_ = std::make_unique<StreamCameraView>(device->cameraServer(), VISION_STREAM_WIDE_ROAD);
+  }
 
   createSpeedDropdown();
 
@@ -359,15 +363,20 @@ float VideoWidget::sizeHintHeight() const {
 
 // Keep the pane's default proportions stable as frames arrive or cameras change.
 float VideoWidget::defaultHeight(float width) const {
-  if (!cam_widget_) return ImGui::GetFrameHeight();  // live streams have no camera or slider
+  if (!cam_widget_) return ImGui::GetFrameHeight();  // CAN-only streams have no camera or slider
   const float cam_height = std::max((float)MIN_VIDEO_HEIGHT, width / DEFAULT_CAMERA_ASPECT_RATIO);
-  const float tab_height = camera_tab_->count() >= 2 ? ImGui::GetFrameHeight() : 0.0f;
-  return cam_height + tab_height + SLIDER_HEIGHT + toolbarHeight();
+  const float tab_height = camera_tab_ && camera_tab_->count() >= 2 ? ImGui::GetFrameHeight() : 0.0f;
+  return cam_height + tab_height + (slider_ ? SLIDER_HEIGHT : 0) + toolbarHeight();
 }
 
 void VideoWidget::draw() {
-  if (!can->liveStreaming())
+  if (!can->liveStreaming()) {
     drawCameraWidget();
+  } else if (cam_widget_) {
+    ImGui::TextUnformatted("LIVE CAMERA (CAN playback is independent)");
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    cam_widget_->CameraWidget::draw(ImVec2(avail.x, std::max(1.0f, avail.y - toolbarHeight())));
+  }
 
   drawPlaybackController();
 

@@ -187,23 +187,22 @@ std::unique_ptr<AbstractStream> OpenPandaWidget::open() {
 }
 
 void OpenDeviceWidget::draw() {
-  ImGui::RadioButton("MSGQ", &mode_, 0);
-  ImGui::RadioButton("ZMQ", &mode_, 1);
-  // the radio buttons are the label column, the ip address is the field column
-  const float label_width = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-                            std::max(ImGui::CalcTextSize("MSGQ").x, ImGui::CalcTextSize("ZMQ").x) +
-                            ImGui::GetStyle().ItemInnerSpacing.x;
-  ImGui::SameLine(label_width);
+  ImGui::RadioButton("Local CAN", &mode_, 0);
+  ImGui::SameLine();
+  ImGui::RadioButton("Athena / WebRTC", &mode_, 1);
   ImGui::BeginDisabled(mode_ != 1);
   ImGui::SetNextItemWidth(-1.0f);
-  validatedText("##ip", &ip_address_, validateIpAddress, "Enter device IP address", ipValidator);
+  inputText("##dongle", &dongle_id_, "Device dongle ID (16 hex characters)");
   ImGui::EndDisabled();
+  ImGui::TextUnformatted("Wide-road video + CAN. One viewer. Camera stays live when CAN is paused.");
 }
 
 std::unique_ptr<AbstractStream> OpenDeviceWidget::open() {
-  std::string ip = ip_address_.empty() ? "127.0.0.1" : ip_address_;
-  bool msgq = mode_ == 0;
-  return std::make_unique<DeviceStream>(msgq ? "" : ip);
+  if (mode_ == 1 && (dongle_id_.size() != 16 || dongle_id_.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)) {
+    MessageBox::warning("Invalid device", "Enter the 16-character dongle ID from comma Connect.");
+    return nullptr;
+  }
+  return std::make_unique<DeviceStream>(mode_ == 0 ? "" : dongle_id_);
 }
 
 #ifdef __linux__

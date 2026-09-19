@@ -22,7 +22,7 @@ Options:
   --panda                   read can messages from panda
   --panda-serial <serial>   read can messages from panda with given serial
   --socketcan <device>      read can messages from given SocketCAN device
-  --zmq <ip-address>        read can messages from zmq at the specified ip-address
+  --webrtc <dongle-id>      live CAN and wide-road video over Athena/WebRTC
   --data_dir <dir>          local directory with routes
   --no-vipc                 do not output video
   --no-cache                turn off the local route file cache
@@ -58,20 +58,30 @@ cabana "5beb9b58bd12b691/0000010a--a51155e496" --cabin --wide-road
 
 ### Streaming CAN Messages from a comma Device
 
-[SSH into your device](https://github.com/commaai/openpilot/wiki/SSH) and start the bridge with the following command:
+Install this branch on the comma device and restart openpilot so manager and Athena
+pick up the streaming changes. On the computer, activate the openpilot Python
+environment (including the submodule and tools dependencies), then run from the
+repository root:
 
 ```shell
-cd /data/openpilot
-./openpilot/cereal/messaging/bridge &
+python -m openpilot.tools.lib.auth
+scons -j8 openpilot/tools/cabana/cabana
+openpilot/tools/cabana/cabana --webrtc <dongle-id>
 ```
 
-Then Run Cabana with the device's IP address:
+Use the 16-character device ID from comma Connect. You can also select
+**Device > Athena / WebRTC** in the stream selector. Remote ZMQ (`--zmq`) has
+been replaced; `--msgq` still reads local CAN.
 
-```shell
-cabana --zmq <ipaddress>
-```
+The connection carries raw CAN and wide-road video. It is available onroad and
+offroad, survives ignition changes, and has no five-minute session limit.
+Camera processes start on demand offroad; the WebRTC daemon is always available
+and the streaming encoder runs onroad. Only one viewer is supported: a new
+connection replaces an existing viewer, including comma Connect.
 
-Replace &lt;ipaddress&gt; with your comma device's IP address.
+Video always shows the live camera, even when CAN playback is paused or rewound.
+Only CAN is recorded. Reopen the stream after a network disconnect. See
+[TODO.md](../../../TODO.md) for hackathon caveats and follow-up work.
 
 While streaming from the device, Cabana will log the CAN messages to a local directory. By default, this directory is ~/cabana_live_stream/. You can change the log directory in Cabana by navigating to menu -> tools -> settings.
 

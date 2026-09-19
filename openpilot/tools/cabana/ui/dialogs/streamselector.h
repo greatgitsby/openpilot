@@ -68,8 +68,8 @@ public:
   std::unique_ptr<AbstractStream> open() override;
 
 private:
-  int mode_ = 1;  // 0 = MSGQ, 1 = ZMQ
-  std::string ip_address_;
+  int mode_ = 1;  // 0 = local MSGQ, 1 = Athena/WebRTC
+  std::string dongle_id_;
 };
 
 #ifdef __linux__

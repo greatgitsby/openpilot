@@ -24,8 +24,6 @@ from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.cereal import messaging, log
 
-SESSION_TIMEOUT_SECONDS = 300
-
 
 # ice candidate parser for logging
 def _ice_candidates(sdp: str) -> list[str]:
@@ -71,7 +69,9 @@ class AsyncTaskRunner:
 class CerealOutgoingMessageProxy(AsyncTaskRunner):
   def __init__(self, services: list[str], enabled: bool = True):
     super().__init__()
-    self.services = list(services)
+    # CAN must retain every event and arbitrary bytes; SubMaster conflates updates.
+    self.can_sock = messaging.sub_sock("can", conflate=False) if "can" in services else None
+    self.services = [s for s in services if s != "can"]
     self.sm = messaging.SubMaster(self.services)
     self.channels = []
     self._enabled = enabled
@@ -96,6 +96,19 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
 
   def update(self):
     # this is blocking in async context...
+    if self.can_sock is not None:
+      # Bound each tick so a busy CAN bus cannot starve video/session handling.
+      for _ in range(256):
+        data = self.can_sock.receive(non_blocking=True)
+        if data is None:
+          break
+        for channel in self.channels:
+          if channel.is_open():
+            if channel.buffered_amount() > 4 * 1024 * 1024:
+              channel.send(json.dumps({"type": "disconnect", "data": "CAN receiver cannot keep up; reconnect."}))
+              channel.close()
+              return
+            channel.send(b"CAN\0" + data)
     self.sm.update(0)
     for service, updated in self.sm.updated.items():
       if not updated:
@@ -320,14 +333,7 @@ class StreamSession:
       self.logger.exception("Cereal incoming proxy failure")
 
   async def run_normal_session(self):
-    try:
-      await asyncio.wait_for(self.stream.wait_for_disconnection(), timeout=SESSION_TIMEOUT_SECONDS)
-    except TimeoutError:
-      self.logger.warning("Stream session (%s) timed out after %d s", self.identifier, SESSION_TIMEOUT_SECONDS)
-      try:
-        self.stream.get_messaging_channel().send(json.dumps({"type": "disconnect", "data": "Session timed out"}))
-      except Exception:
-        pass
+    await self.stream.wait_for_disconnection()
 
   async def run_body_session(self):
     await self.stream.wait_for_disconnection()

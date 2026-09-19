@@ -15,6 +15,7 @@
 #include "json11/json11.hpp"
 #include "tools/cabana/commands.h"
 #include "tools/cabana/settings.h"
+#include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/ui/app.h"
 #include "tools/cabana/ui/dialogs/filedialog.h"
 #include "tools/cabana/ui/dialogs/messagebox.h"
@@ -379,7 +380,8 @@ void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::
 
     stream_connections_.push_back(can->eventsMerged.connect([this](const MessageEventsMap &) { eventsMerged(); }));
 
-    if (hasStream()) {
+    auto *device = dynamic_cast<DeviceStream *>(can);
+    if (hasStream() && !(device && device->remote())) {
       wait_dlg_.text = can->liveStreaming() ? "Waiting for the live stream to start..." : "Loading segment data...";
       wait_dlg_.value = 0;
       wait_dlg_.open = true;
