@@ -79,7 +79,9 @@ def main() -> None:
   vision = Qwen3Vision.from_gguf(VISION_MODEL)
   tokenizer = SimpleTokenizer.from_gguf_kv(kv)
 
-  image_embeds, deepstack, grid = vision(Tensor(image, device="USB+AMD:LLVM"))
+  # USB+AMD resolves to the underlying AMD compute device; use that canonical default
+  # so camera inputs and GGUF weights share one tinygrad device.
+  image_embeds, deepstack, grid = vision(Tensor(image))
   image_tokens = image_embeds.shape[0]
   prefix = tokenizer.encode("<|im_start|>user\n<|vision_start|>")
   suffix = tokenizer.encode(
