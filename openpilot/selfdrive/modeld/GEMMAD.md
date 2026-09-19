@@ -84,3 +84,29 @@ buffer upload, graph deserialization, runtime linking, and time to first output
 (from entry to `main`). Cache hits do not parse GGUF, construct the model or
 perform capture warmups. GPU initialization and the VRAM upload remain necessary
 in a new process. The predecoded cache occupies several GB on disk.
+
+Measured fresh managed-process startup on comma four (disk artifact present;
+not a device reboot, and excluding openpilot's separate build step):
+
+| Phase | Seconds |
+| --- | ---: |
+| tinygrad imports | 0.405 |
+| GPU initialization | 0.699 |
+| Cache fingerprint | 0.126 |
+| Upload 4.272 GB | 46.543 |
+| Deserialize program | 2.248 |
+| Runtime linking | 5.832 |
+| Ready, cumulative | 55.992 |
+| First complete live-camera response, cumulative | 58.456 |
+
+The original cached linker took 20.1 seconds. Profiling found about 47,700 tiny
+USB writes. The tinygrad fork now batches link-time patches in a host shadow,
+but only for freshly allocated command/argument buffers, never live rings or
+signals. Standalone linking dropped to 4.7 seconds, with all 16 output token IDs
+unchanged. The first artifact was explicitly validated and reused for this
+linker-only change; unknown future source changes still invalidate the cache.
+
+The one-time build took 626.6 seconds, followed by a 97.0-second cache save.
+The artifact contains 4,271,811,328 buffer bytes and 7,723,471 program bytes.
+The latest managed run continued to print complete greetings at roughly
+1.6 seconds per frame; startup caching does not satisfy the 200 ms frame target.
