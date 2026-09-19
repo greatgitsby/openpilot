@@ -17,20 +17,20 @@ from tinygrad import Tensor, Device
 from tinygrad.llm.cli import SimpleTokenizer
 from tinygrad.llm.model import Transformer
 from tinygrad.llm.qwen3vl import Qwen3Vision, Qwen3VLRunner, materialize_weights
-from openpilot.selfdrive.modeld.gemmad import TEXT_MODEL, VISION_MODEL, PROMPT, connect_road_camera, prepare_image
+from openpilot.selfdrive.modeld.gemmad import TEXT_MODEL, VISION_MODEL, PROMPT, DIRECTIONS, MAX_CONTEXT, connect_road_camera, prepare_image
 
 
 def main():
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument('--runs', type=int, default=10)
-  parser.add_argument('--tokens', type=int, default=16)
+  parser.add_argument('--tokens', type=int, choices=[1], default=1)
   parser.add_argument('--fp16-compute', action='store_true', help='FP16 matrix inputs with float32 accumulation')
   args = parser.parse_args()
-  if args.runs < 1 or not 1 <= args.tokens <= 16:
-    parser.error('runs must be positive and tokens must be between 1 and 16')
+  if args.runs < 1:
+    parser.error('runs must be positive')
   start = time.perf_counter()
   print('loading text weights', flush=True)
-  model, kv = Transformer.from_gguf(TEXT_MODEL, max_context=128)
+  model, kv = Transformer.from_gguf(TEXT_MODEL, max_context=MAX_CONTEXT)
   materialize_weights(model, fp16_compute=args.fp16_compute)
   print(f'device={Device.DEFAULT} arch={Device[Device.DEFAULT].arch} fp16_compute={args.fp16_compute}', flush=True)
   print(f'text resident after {time.perf_counter()-start:.1f}s', flush=True)
@@ -47,7 +47,11 @@ def main():
   prefix = tokenizer.encode('<|im_start|>user\n<|vision_start|>')
   suffix = tokenizer.encode(f'<|vision_end|>\n{PROMPT}<|im_end|>\n<|im_start|>assistant\n')
   tokens = prefix + [tokenizer._special_tokens['<|image_pad|>']]*count + suffix
-  runner = Qwen3VLRunner(model, vision, tokens, (len(prefix), len(prefix)+count), grid, args.tokens)
+  encoded = [tokenizer.encode(letter) for letter in DIRECTIONS]
+  if any(len(ids) != 1 for ids in encoded):
+    raise ValueError('direction letters must be single tokens')
+  runner = Qwen3VLRunner(model, vision, tokens, (len(prefix), len(prefix)+count), grid, args.tokens,
+                        allowed_tokens=[ids[0] for ids in encoded])
   for i in range(2):
     warm = time.perf_counter()
     print(f'warmup {i+1} starting', flush=True)
@@ -71,7 +75,7 @@ def main():
     print(f'gemmad response frame={frame_id}: {response}', flush=True)
     elapsed = (time.monotonic_ns()-start_ns)/1e6
     capture_ms = (time.clock_gettime_ns(time.CLOCK_BOOTTIME)-capture_ns)/1e6 if capture_ns else None
-    complete = end < len(result)
+    complete = len(result) == 1 and response in DIRECTIONS
     measurements.append(elapsed)
     capture_measurements.append(capture_ms)
     complete_responses.append(complete)

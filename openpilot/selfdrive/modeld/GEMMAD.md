@@ -1,4 +1,28 @@
-# Qwen3-VL hello-world experiment
+# Qwen3-VL direction-stream experiment
+
+Current `gemmad` consumes the latest road-camera frame (conflated VisionIPC),
+resizes it to 256x160, and asks the VLM which direction leads through visible
+clear space while avoiding obstacles. It emits exactly one uppercase letter
+per inference, followed by a newline, to **stdout**:
+
+- `W`: forward
+- `A`: turn left
+- `S`: backward
+- `D`: turn right
+
+Decoding is constrained to the four corresponding vocabulary tokens, rather
+than parsing a free-form explanation. Each letter is a complete one-token
+response, so EOS is not required. Startup and frame diagnostics go to stderr.
+There are no commands, CAN messages, controller inputs, or actuation connections.
+These outputs are unvalidated advisory suggestions: a front image cannot show
+rear clearance, and this four-letter alphabet has no stop/abstain action. Do not
+wire it directly to actuation. Slow inference drops intervening camera frames;
+the next iteration receives the latest available frame rather than a backlog.
+
+The new prompt, image size, constrained vocabulary, and token budget invalidate
+the old hello-world cache. Startup preparation must run once for this graph.
+
+## Historical hello-world baseline
 
 `gemmad` runs only with comma body. It reads the latest road-camera frame,
 resizes it to 64x64 RGB, and asks Qwen3-VL-2B-Instruct to reply `Hello world!`.
@@ -17,7 +41,7 @@ Weights must already exist in `/data/models/qwen3vl`:
 - `Qwen3VL-2B-Instruct-Q4_K_M.gguf`
 - `mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf`
 
-## Acceptance criteria and measurement
+### Historical acceptance criteria and measurement
 
 The requested target is a **complete response of up to 16 tokens within
 200 ms for each new camera frame**, not time to first token. Startup/compilation
@@ -47,7 +71,7 @@ responses. Example live samples measured 1593–1630 ms from receipt and
 1625–1695 ms from capture, skipping 31–32 intervening frames. This confirms
 complete-response execution but fails both the latency and each-frame targets.
 
-## Reproduce
+## Benchmark the current direction stream
 
 Do not run the benchmark while gemmad or another process owns chestnut. On a
 test device with camerad running and gemmad stopped:
@@ -59,6 +83,8 @@ TC_OPT=2 python -m openpilot.selfdrive.modeld.benchmark_qwen3vl --runs 10 --fp16
 
 These are two different matrix execution paths. The benchmark prints warmup
 times, each response, per-frame timing/completion records and a summary.
+It now uses the navigation prompt and constrained one-token response, matching
+the daemon; the 16-token timings above describe the earlier hello-world graph.
 CPU regression tests live in the tinygrad fork at `test/unit/test_qwen3vl.py`.
 
 ## Startup cache
@@ -85,7 +111,7 @@ buffer upload, graph deserialization, runtime linking, and time to first output
 perform capture warmups. GPU initialization and the VRAM upload remain necessary
 in a new process. The predecoded cache occupies several GB on disk.
 
-Measured fresh managed-process startup on comma four (disk artifact present;
+Historical hello-world measured fresh managed-process startup (disk artifact present;
 not a device reboot, and excluding openpilot's separate build step):
 
 | Phase | Seconds |

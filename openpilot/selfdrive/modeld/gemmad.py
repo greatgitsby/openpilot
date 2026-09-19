@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import sys
+import contextlib
 from pathlib import Path
 
 import numpy as np
@@ -19,11 +20,14 @@ from msgq.visionipc import VisionIpcClient, VisionBuf
 MODEL_DIR = Path(os.getenv("QWEN3_VL_MODEL_DIR", "/data/models/qwen3vl"))
 TEXT_MODEL = MODEL_DIR / "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
 VISION_MODEL = MODEL_DIR / "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
-# Keep the hello-world path intentionally small. Qwen's patch/merge factor is 32,
-# so this produces a 2x2 (four-token) visual grid from the live road frame.
-IMAGE_HEIGHT, IMAGE_WIDTH = 64, 64
-PROMPT = "Reply with exactly: Hello world!"
-MAX_TOKENS = 16
+# Forty visual tokens, preserving more scene detail than the hello-world demo.
+IMAGE_HEIGHT, IMAGE_WIDTH = 160, 256
+PROMPT = ("You are viewing the robot's front camera. Choose a direction to navigate through visible clear space, avoiding obstacles. " +
+          "W=forward, A=turn left, S=backward, D=turn right. The rear is not visible. " +
+          "Reply with exactly one letter: W, A, S, or D. No explanation.")
+MAX_TOKENS = 1
+DIRECTIONS = ("W", "A", "S", "D")
+MAX_CONTEXT = 256
 
 
 def extract_rgb(buf: VisionBuf) -> np.ndarray:
@@ -70,7 +74,7 @@ def build_program():
   from tinygrad.llm.qwen3vl import Qwen3Vision, Qwen3VLRunner, materialize_weights
 
   cloudlog.warning("gemmad loading Qwen3-VL")
-  model, kv = Transformer.from_gguf(TEXT_MODEL, max_context=128)
+  model, kv = Transformer.from_gguf(TEXT_MODEL, max_context=MAX_CONTEXT)
   materialize_weights(model)
   vision = Qwen3Vision.from_gguf(VISION_MODEL)
   materialize_weights(vision)
@@ -85,13 +89,18 @@ def build_program():
   image_token = tokenizer._special_tokens["<|image_pad|>"]
   tokens = prefix + [image_token] * image_tokens + suffix
 
-  runner = Qwen3VLRunner(model, vision, tokens, (len(prefix), len(prefix)+image_tokens), grid, max_new_tokens=MAX_TOKENS)
+  encoded = [tokenizer.encode(letter) for letter in DIRECTIONS]
+  if any(len(ids) != 1 for ids in encoded):
+    raise ValueError("direction letters must each encode to one token")
+  allowed_tokens = [ids[0] for ids in encoded]
+  runner = Qwen3VLRunner(model, vision, tokens, (len(prefix), len(prefix)+image_tokens), grid,
+                        max_new_tokens=MAX_TOKENS, allowed_tokens=allowed_tokens)
   # Cache construction never needs or persists a real camera image.
   image = np.zeros((1, 3, IMAGE_HEIGHT, IMAGE_WIDTH), dtype=np.float16)
   for i in range(2):
     cloudlog.warning(f"gemmad graph warmup {i+1}/2")
     runner(Tensor(image).realize()).tolist()
-  return {"run": runner.jit, "tokenizer": tokenizer}
+  return {"run": runner.jit, "tokenizer": tokenizer, "directions": dict(zip(allowed_tokens, DIRECTIONS, strict=True))}
 
 
 def cache_path(arch: str) -> Path:
@@ -101,15 +110,15 @@ def cache_path(arch: str) -> Path:
   for source in sorted(root.rglob("*.py")):
     digest.update(str(source.relative_to(root)).encode())
     digest.update(source.read_bytes())
-  settings = {"version": 1, "arch": arch, "python": list(sys.version_info[:2]), "prompt": PROMPT,
-              "shape": [IMAGE_HEIGHT, IMAGE_WIDTH], "tokens": MAX_TOKENS, "context": 128,
+  settings = {"version": 2, "arch": arch, "python": list(sys.version_info[:2]), "prompt": PROMPT,
+              "shape": [IMAGE_HEIGHT, IMAGE_WIDTH], "tokens": MAX_TOKENS, "context": MAX_CONTEXT, "directions": DIRECTIONS,
               "models": [(str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in (TEXT_MODEL, VISION_MODEL)],
               "env": {k: os.getenv(k) for k in ("DEV", "GMMU", "TC_OPT", "TC_MIN_GLOBALS", "FLOAT16", "HCQ2")}}
   digest.update(json.dumps(settings, sort_keys=True).encode())
   return MODEL_DIR / "compiled" / digest.hexdigest()
 
 
-def main() -> None:
+def run(output) -> None:
   startup = time.monotonic()
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument("--prepare-cache", action="store_true", help="build/load the local artifact without connecting to camerad")
@@ -139,14 +148,15 @@ def main() -> None:
     built = time.monotonic()
     save_artifact(program, path)
     print(f"gemmad cache saved build_s={built-build_start:.3f} save_s={time.monotonic()-built:.3f}", flush=True)
-  runner, tokenizer = program["run"], program["tokenizer"]
+  runner, directions = program["run"], program["directions"]
   link_start = time.monotonic()
   _ = runner.captured.linear
   print(f"gemmad startup link_s={time.monotonic()-link_start:.3f} ready_s={time.monotonic()-startup:.3f}", flush=True)
   if args.prepare_cache:
     result = runner(Tensor(np.zeros((1, 3, IMAGE_HEIGHT, IMAGE_WIDTH), dtype=np.float16)).realize()).tolist()[0]
-    end = next((i for i, token in enumerate(result) if tokenizer.is_end(token)), len(result))
-    print(f"gemmad cache smoke response: {tokenizer.decode(result[:end])} complete={end < len(result)}", flush=True)
+    if len(result) != 1 or result[0] not in directions:
+      raise ValueError(f"invalid direction result: {result}")
+    print(f"gemmad cache smoke direction: {directions[result[0]]}", flush=True)
     print(f"gemmad startup first_response_s={time.monotonic()-startup:.3f}", flush=True)
     return
   client = connect_road_camera()
@@ -162,18 +172,24 @@ def main() -> None:
     skipped = 0 if previous_frame is None else max(0, frame_id-previous_frame-1)
     previous_frame = frame_id
     result = runner(Tensor(prepare_image(frame)).realize()).tolist()[0]
-    end = next((i for i, token in enumerate(result) if tokenizer.is_end(token)), len(result))
-    response = tokenizer.decode(result[:end])
-    print(f"gemmad Qwen3-VL frame={frame_id}: {response}", flush=True)
+    if len(result) != 1 or result[0] not in directions:
+      raise ValueError(f"invalid direction result: {result}")
+    print(directions[result[0]], file=output, flush=True)
     if first_response:
       print(f"gemmad startup first_response_s={time.monotonic()-startup:.3f}", flush=True)
       first_response = False
     elapsed_ms = (time.monotonic_ns()-start)/1e6
     capture_ms = (time.clock_gettime_ns(time.CLOCK_BOOTTIME)-capture_ns)/1e6 if capture_ns else None
-    complete = end < len(result)
-    meets_deadline = complete and capture_ms is not None and 0 <= capture_ms < 200
-    print(f"gemmad receipt_to_stdout_ms={elapsed_ms:.2f} capture_to_stdout_ms={capture_ms} " +
-          f"complete={complete} skipped_frames={skipped} meets_200ms={meets_deadline}", flush=True)
+    meets_deadline = capture_ms is not None and 0 <= capture_ms < 200
+    print(f"gemmad frame={frame_id} receipt_to_stdout_ms={elapsed_ms:.2f} capture_to_stdout_ms={capture_ms} " +
+          f"skipped_frames={skipped} meets_200ms={meets_deadline}", flush=True)
+
+
+def main() -> None:
+  # All library/startup diagnostics go to stderr; stdout is the advisory letter stream only.
+  output = sys.stdout
+  with contextlib.redirect_stdout(sys.stderr):
+    run(output)
 
 
 if __name__ == "__main__":
