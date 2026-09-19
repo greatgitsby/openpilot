@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a one-shot Qwen3-VL road-camera prompt on the chestnut eGPU."""
+"""Run Qwen3-VL on fresh road-camera frames using a resident chestnut GPU graph."""
 
 import os
 import time
@@ -18,6 +18,7 @@ VISION_MODEL = MODEL_DIR / "mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf"
 # Keep the hello-world path intentionally small. Qwen's patch/merge factor is 32,
 # so this produces a 2x2 (four-token) visual grid from the live road frame.
 IMAGE_HEIGHT, IMAGE_WIDTH = 64, 64
+PROMPT = "Reply with exactly: Hello world!"
 
 
 def extract_rgb(buf: VisionBuf) -> np.ndarray:
@@ -40,8 +41,8 @@ def extract_rgb(buf: VisionBuf) -> np.ndarray:
 
 def prepare_image(buf: VisionBuf) -> np.ndarray:
   image = extract_rgb(buf) / 255.0
-  mean = np.array([0.48145466, 0.45782750, 0.40821073], dtype=np.float32)
-  std = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32)
+  mean = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+  std = np.array([0.5, 0.5, 0.5], dtype=np.float32)
   return ((image - mean) / std).transpose(2, 0, 1)[None].astype(np.float16)
 
 
@@ -74,37 +75,48 @@ def main() -> None:
   from tinygrad import Tensor
   from tinygrad.llm.cli import SimpleTokenizer
   from tinygrad.llm.model import Transformer
-  from tinygrad.llm.qwen3vl import Qwen3Vision
+  from tinygrad.llm.qwen3vl import Qwen3Vision, Qwen3VLRunner, materialize_weights
 
   cloudlog.warning("gemmad loading Qwen3-VL")
-  model, kv = Transformer.from_gguf(TEXT_MODEL, max_context=512)
+  model, kv = Transformer.from_gguf(TEXT_MODEL, max_context=128)
+  materialize_weights(model)
   vision = Qwen3Vision.from_gguf(VISION_MODEL)
+  materialize_weights(vision)
   tokenizer = SimpleTokenizer.from_gguf_kv(kv)
 
-  # USB+AMD resolves to the underlying AMD compute device; use that canonical default
-  # so camera inputs and GGUF weights share one tinygrad device.
-  image_embeds, deepstack, grid = vision(Tensor(image))
-  image_tokens = image_embeds.shape[0]
+  grid = (1, IMAGE_HEIGHT//16, IMAGE_WIDTH//16)
+  image_tokens = grid[1]*grid[2]//4
   prefix = tokenizer.encode("<|im_start|>user\n<|vision_start|>")
   suffix = tokenizer.encode(
-    "<|vision_end|>\nSay hello and briefly acknowledge that you received this road camera frame." +
-    "<|im_end|>\n<|im_start|>assistant\n"
+    f"<|vision_end|>\n{PROMPT}<|im_end|>\n<|im_start|>assistant\n"
   )
   image_token = tokenizer._special_tokens["<|image_pad|>"]
   tokens = prefix + [image_token] * image_tokens + suffix
 
-  decoder = tokenizer.stream_decoder()
-  response = []
-  for token in model.generate_vision(tokens, (len(prefix), len(prefix)+image_tokens), image_embeds, deepstack, grid, max_new_tokens=16):
-    if tokenizer.is_end(token):
-      break
-    response.append(decoder(token))
-  response.append(decoder())
-  print(f"gemmad Qwen3-VL response: {''.join(response)}", flush=True)
-
-  # Keep the managed process alive after the one-shot hello-world inference.
+  runner = Qwen3VLRunner(model, vision, tokens, (len(prefix), len(prefix)+image_tokens), grid, max_new_tokens=16)
+  for i in range(2):
+    cloudlog.warning(f"gemmad graph warmup {i+1}/2")
+    runner(Tensor(image).realize()).tolist()
+  cloudlog.warning("gemmad ready for fresh road frames")
+  previous_frame = None
   while True:
-    client.recv()
+    if (frame := client.recv()) is None:
+      continue
+    start = time.monotonic_ns()
+    frame_id = client.frame_id
+    capture_ns = client.timestamp_eof
+    skipped = 0 if previous_frame is None else max(0, frame_id-previous_frame-1)
+    previous_frame = frame_id
+    result = runner(Tensor(prepare_image(frame)).realize()).tolist()[0]
+    end = next((i for i, token in enumerate(result) if tokenizer.is_end(token)), len(result))
+    response = tokenizer.decode(result[:end])
+    print(f"gemmad Qwen3-VL frame={frame_id}: {response}", flush=True)
+    elapsed_ms = (time.monotonic_ns()-start)/1e6
+    capture_ms = (time.clock_gettime_ns(time.CLOCK_BOOTTIME)-capture_ns)/1e6 if capture_ns else None
+    complete = end < len(result)
+    meets_deadline = complete and capture_ms is not None and 0 <= capture_ms < 200
+    print(f"gemmad receipt_to_stdout_ms={elapsed_ms:.2f} capture_to_stdout_ms={capture_ms} " +
+          f"complete={complete} skipped_frames={skipped} meets_200ms={meets_deadline}", flush=True)
 
 
 if __name__ == "__main__":
