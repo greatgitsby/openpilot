@@ -226,8 +226,8 @@ def main(demo=False):
   cloudlog.warning("modeld init")
 
   params = Params()
-  cp_raw = params.get("CarParams")
-  is_body = cp_raw is not None and messaging.log_from_bytes(cp_raw, car.CarParams).brand == "body"
+  cp_raw = params.get("CarParams", block=True)
+  is_body = messaging.log_from_bytes(cp_raw, car.CarParams).brand == "body"
   # chestnut is exclusively locked by one process. On comma body, leave it to gemmad
   # and keep the driving model on the built-in Qualcomm GPU.
   CHESTNUT = chestnut_present() and chestnut_compiled() and not is_body
