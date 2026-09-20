@@ -163,16 +163,19 @@ void MainWindow::drawMenuBar() {
   }
 
   drawWorkspaceMenu();
-  if (dropdown::BeginMenu("Analysis")) {
-    charts_widget_->drawAnalysisMenu();
-    dropdown::EndMenu();
-  }
+  drawSourcesMenu();
+  drawPanelToggles();
 
   if (dropdown::BeginMenu("View")) {
     if (dropdown::Item("Full Screen", shortcut("F11").c_str())) toggleFullScreen();
     ImGui::Separator();
     dropdown::Item("Timeline", nullptr, &playback_visible_);
     if (dropdown::Item("Arrange widgets")) reset_layout_ = true;
+    dropdown::EndMenu();
+  }
+
+  if (dropdown::BeginMenu("Analysis")) {
+    charts_widget_->drawAnalysisMenu();
     dropdown::EndMenu();
   }
 
@@ -187,8 +190,6 @@ void MainWindow::drawMenuBar() {
     dropdown::EndMenu();
   }
   ImGui::PopStyleVar();
-  drawSourcesMenu();
-  drawPanelToggles();
   const ImVec2 min = ImGui::GetWindowPos();
   const ImVec2 max(min.x + ImGui::GetWindowWidth(), min.y + ImGui::GetWindowHeight());
   ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(min.x, max.y - 1.0f), max, ImGui::GetColorU32(ImGuiCol_Border));
