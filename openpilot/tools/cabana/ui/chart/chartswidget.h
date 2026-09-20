@@ -15,6 +15,7 @@
 #include "tools/cabana/ui/chart/signalselector.h"
 #include "tools/cabana/ui/chart/signaltree.h"
 #include "tools/cabana/commands.h"
+#include "tools/cabana/ui/chart/zoomcommand.h"
 #include "tools/cabana/core/source.h"
 #include "tools/cabana/analysis/equations.h"
 #include "tools/cabana/dbc/dbcmanager.h"
@@ -119,6 +120,7 @@ private:
     std::string errors;
     size_t revision = 0;
     std::string source_id;
+    std::weak_ptr<bool> source_alive;
   };
   std::shared_ptr<EquationResult> equation_result_;
   std::future<void> equation_task_;
@@ -152,14 +154,3 @@ private:
 
 // Compatibility for route-specific browser and inspector clients.
 using ChartsWidget = ChartManager;
-
-class ZoomCommand : public UndoCommand {
-public:
-  ZoomCommand(std::pair<double, double> range) : ZoomCommand(range, can->timeRange()) {}
-  ZoomCommand(std::pair<double, double> range, std::optional<std::pair<double, double>> previous)
-      : prev_range(previous), range(range), source_id_(can ? can->source_id : "") {}
-  void undo() override { if (auto *source = sourceById(source_id_)) source->setTimeRange(prev_range); }
-  void redo() override { if (auto *source = sourceById(source_id_)) source->setTimeRange(range); }
-  std::optional<std::pair<double, double>> prev_range, range;
-  std::string source_id_;
-};

@@ -4,6 +4,7 @@
 #include "tools/cabana/commands.h"
 #include "tools/cabana/core/source.h"
 #include "tools/cabana/streams/abstractstream.h"
+#include "tools/cabana/ui/chart/zoomcommand.h"
 
 namespace {
 class TestSource : public DummyStream {
@@ -93,6 +94,15 @@ void test_source_isolation() {
   auto old = std::make_unique<TestSource>();
   old->source_id = "replaceable";
   registerSource(old.get());
+  std::unique_ptr<ZoomCommand> zoom;
+  {
+    SourceScope scope(old.get());
+    zoom = std::make_unique<ZoomCommand>(std::make_pair(10.0, 20.0));
+    zoom->redo();
+    REQUIRE(old->timeRange() == std::make_optional(std::make_pair(10.0, 20.0)));
+    zoom->undo();
+    REQUIRE(!old->timeRange());
+  }
   bool stale_called = false;
   auto bound = bindSource(old.get(), [&]() { stale_called = true; });
   std::thread enqueue([&]() {
@@ -105,6 +115,11 @@ void test_source_isolation() {
   replacement.source_id = "replaceable";
   registerSource(&replacement);
   REQUIRE(sourceById("replaceable") == &replacement);
+  replacement.setTimeRange(std::make_pair(30.0, 40.0), false);
+  zoom->redo();
+  REQUIRE(replacement.timeRange() == std::make_optional(std::make_pair(30.0, 40.0)));
+  zoom->undo();
+  REQUIRE(replacement.timeRange() == std::make_optional(std::make_pair(30.0, 40.0)));
   bound();
   utils::drainMainThreadQueue();
   REQUIRE(!stale_called);

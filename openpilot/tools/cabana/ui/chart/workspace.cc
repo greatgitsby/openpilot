@@ -141,7 +141,7 @@ void ChartManager::pollFields() {
   if (equation_task_.valid()) {
     if (equation_task_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
     equation_task_.get();
-    if (equation_result_->revision == equation_revision_ && sourceById(equation_result_->source_id)) {
+    if (equation_result_->revision == equation_revision_ && !equation_result_->source_alive.expired() && sourceById(equation_result_->source_id)) {
       source_calculated_[equation_result_->source_id].swap(equation_result_->values);
       equation_errors_ = std::move(equation_result_->errors);
       for (auto &c : charts_) c->updateFields();
@@ -168,6 +168,7 @@ void ChartManager::pollFields() {
   equation_result_ = std::make_shared<EquationResult>();
   equation_result_->revision = equation_revision_;
   equation_result_->source_id = source_id;
+  equation_result_->source_alive = source->lifetime();
   equation_task_ = ThreadPool::instance().run([equations = equations_, snapshot = std::move(snapshot), result = equation_result_]() mutable {
     std::vector<const cabana::Equation *> pending;
     for (const auto &e : equations) pending.push_back(&e);
