@@ -30,9 +30,14 @@ public:
   void alignCurrentPositions();
 
 private:
+  AbstractStream *source(const std::string &id) const;
   AbstractStream *selected() const;
   std::vector<AbstractStream *> controlled() const;
+  std::vector<AbstractStream *> controlled(AbstractStream *master) const;
   std::pair<double, double> groupRange() const;
+  std::pair<double, double> groupRange(AbstractStream *master) const;
+  void seekGroup(AbstractStream *master, double route_seconds);
+  bool loopApplies(AbstractStream *master) const;
   void drawSettings();
   void drawTrack(AbstractStream *source);
   void setSpeed(float speed);
@@ -41,6 +46,8 @@ private:
   std::string selected_id_;
   VisionStreamType selected_camera_ = VISION_STREAM_NARROW_ROAD;
   std::set<std::string> linked_;
+  std::string linked_master_id_;
+  std::string loop_source_id_;
   std::map<std::string, Slider> sliders_;
   std::map<std::string, std::unique_ptr<RouteFilmstrip>> filmstrips_;
   std::map<std::string, Connection> slider_connections_;

@@ -4,6 +4,13 @@
 #include "tools/cabana/core/playback.h"
 
 void test_playback_ranges() {
+  using cabana::playback::linkedMaster;
+  // A/B keep their playback clock when C becomes the toolbar target. Removing
+  // the clock source elects a surviving member, never the unrelated selection.
+  REQUIRE(linkedMaster("A", "C", {"A", "B"}) == "A");
+  REQUIRE(linkedMaster("A", "C", {"B"}) == "B");
+  REQUIRE(linkedMaster("", "B", {"A", "B"}) == "B");
+  REQUIRE(linkedMaster("A", "C", {}).empty());
   using cabana::playback::sharedRange;
   using cabana::playback::loopRange;
   REQUIRE(!sharedRange({}));

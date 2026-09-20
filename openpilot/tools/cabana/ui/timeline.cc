@@ -67,18 +67,24 @@ void PlaybackTimeline::setSources(const std::vector<AbstractStream *> &sources) 
   }
 }
 
-AbstractStream *PlaybackTimeline::selected() const {
-  for (auto *source : sources_) if (source->source_id == selected_id_) return source;
+AbstractStream *PlaybackTimeline::source(const std::string &id) const {
+  for (auto *member : sources_) if (member->source_id == id) return member;
   return nullptr;
 }
+
+AbstractStream *PlaybackTimeline::selected() const { return source(selected_id_); }
 
 void PlaybackTimeline::selectSource(const std::string &id, VisionStreamType camera) {
   selected_id_ = id;
   selected_camera_ = camera;
+  if (linked_.count(id)) linked_master_id_ = id;
 }
 
 std::vector<AbstractStream *> PlaybackTimeline::controlled() const {
-  auto *master = selected();
+  return controlled(selected());
+}
+
+std::vector<AbstractStream *> PlaybackTimeline::controlled(AbstractStream *master) const {
   if (!master) return {};
   if (!linked_.count(master->source_id) || master->liveStreaming()) return {master};
   std::vector<AbstractStream *> result;
@@ -89,20 +95,25 @@ std::vector<AbstractStream *> PlaybackTimeline::controlled() const {
 }
 
 std::pair<double, double> PlaybackTimeline::groupRange() const {
+  return groupRange(selected());
+}
+
+std::pair<double, double> PlaybackTimeline::groupRange(AbstractStream *master) const {
   std::vector<std::pair<double, double>> ranges;
-  for (auto *source : controlled()) {
+  for (auto *source : controlled(master)) {
     ranges.emplace_back(source->minSeconds() + source->timeline_offset, source->maxSeconds() + source->timeline_offset);
   }
   return cabana::playback::sharedRange(ranges).value_or(std::make_pair(1., 0.));
 }
 
-void PlaybackTimeline::seek(double route_seconds) {
-  auto *master = selected();
+void PlaybackTimeline::seek(double route_seconds) { seekGroup(selected(), route_seconds); }
+
+void PlaybackTimeline::seekGroup(AbstractStream *master, double route_seconds) {
   if (!master) return;
-  auto [begin, end] = groupRange();
+  auto [begin, end] = groupRange(master);
   if (begin > end) { status_ = "Linked routes do not overlap. Align their current positions."; return; }
   const double time = std::clamp(route_seconds + master->timeline_offset, begin, end);
-  for (auto *source : controlled()) {
+  for (auto *source : controlled(master)) {
     SourceScope scope(source);
     source->seekTo(time - source->timeline_offset);
   }
@@ -171,31 +182,54 @@ void PlaybackTimeline::setSpeed(float speed) {
   for (auto *source : controlled()) { SourceScope scope(source); source->setSpeed(speed); }
 }
 
+bool PlaybackTimeline::loopApplies(AbstractStream *master) const {
+  if (!loop_ || !master) return false;
+  return master->source_id == loop_source_id_ ||
+         (linked_.count(master->source_id) && linked_.count(loop_source_id_));
+}
+
 void PlaybackTimeline::tick() {
-  auto *master = selected();
-  if (!master || master->liveStreaming() || ImGui::GetTime() - last_sync_ < 0.20) return;
+  if (ImGui::GetTime() - last_sync_ < 0.20) return;
   last_sync_ = ImGui::GetTime();
-  auto range = groupRange();
-  if (range.first > range.second) return;
-  const double time = master->currentSec() + master->timeline_offset;
-  if (!master->isPaused()) {
-    const auto interval = loop_ ? cabana::playback::loopRange(loop_start_, loop_end_, range) : std::nullopt;
-    if (interval && (time >= interval->second || time < interval->first)) {
-      seek(interval->first - master->timeline_offset);
-      return;
-    }
-    if (time >= range.second - 0.001) {
-      for (auto *source : controlled()) { SourceScope scope(source); source->pause(true); }
-      return;
-    }
+  std::vector<std::string> linked_members;
+  for (auto *member : sources_) {
+    if (!member->liveStreaming() && linked_.count(member->source_id)) linked_members.push_back(member->source_id);
   }
-  for (auto *source : controlled()) {
-    if (source == master) continue;
-    SourceScope scope(source);
-    if (source->isPaused() != master->isPaused()) source->pause(master->isPaused());
-    if (std::abs(source->getSpeed() - master->getSpeed()) > 0.001) source->setSpeed(master->getSpeed());
-    const double target = std::clamp(time - source->timeline_offset, source->minSeconds(), source->maxSeconds());
-    if (std::abs(source->currentSec() - target) > (master->isPaused() ? 0.002 : 0.15)) source->seekTo(target);
+  linked_master_id_ = cabana::playback::linkedMaster(linked_master_id_, selected_id_, linked_members);
+  auto *linked_master = source(linked_master_id_);
+  // Selection controls toolbar actions. Every running group retains its own
+  // clock and loop when the user inspects or controls an unrelated source.
+  for (auto *master : sources_) {
+    if (master->liveStreaming() || (linked_.count(master->source_id) && master != linked_master)) continue;
+    const auto members = controlled(master);
+    const auto range = groupRange(master);
+    if (range.first > range.second) {
+      for (auto *member : members) {
+        if (!member->isPaused()) { SourceScope scope(member); member->pause(true); }
+      }
+      status_ = "Linked routes do not overlap. Align their current positions.";
+      continue;
+    }
+    const double time = master->currentSec() + master->timeline_offset;
+    if (!master->isPaused()) {
+      const auto interval = loopApplies(master) ? cabana::playback::loopRange(loop_start_, loop_end_, range) : std::nullopt;
+      if (interval && (time >= interval->second || time < interval->first)) {
+        seekGroup(master, interval->first - master->timeline_offset);
+        continue;
+      }
+      if (time >= range.second - 0.001) {
+        for (auto *member : members) { SourceScope scope(member); member->pause(true); }
+        continue;
+      }
+    }
+    for (auto *member : members) {
+      if (member == master) continue;
+      SourceScope scope(member);
+      if (member->isPaused() != master->isPaused()) member->pause(master->isPaused());
+      if (std::abs(member->getSpeed() - master->getSpeed()) > 0.001) member->setSpeed(master->getSpeed());
+      const double target = std::clamp(time - member->timeline_offset, member->minSeconds(), member->maxSeconds());
+      if (std::abs(member->currentSec() - target) > (master->isPaused() ? 0.002 : 0.15)) member->seekTo(target);
+    }
   }
 }
 
@@ -217,7 +251,10 @@ void PlaybackTimeline::drawSettings() {
   if (dropdown::Item("Align current positions", nullptr, false, sources_.size() > 1)) alignCurrentPositions();
   if (dropdown::Item("Unlink all routes", nullptr, false, !linked_.empty())) linked_.clear();
   ImGui::Separator();
-  if (dropdown::Item("Loop selected interval", nullptr, loop_)) loop_ = !loop_;
+  if (dropdown::Item("Loop selected interval", nullptr, loopApplies(selected()))) {
+    loop_ = !loopApplies(selected());
+    if (loop_) loop_source_id_ = selected_id_;
+  }
   if (dropdown::Item("Loop next 10 seconds")) {
     if (auto *master = selected()) {
       const auto range = groupRange();
@@ -226,6 +263,7 @@ void PlaybackTimeline::drawSettings() {
       loop_start_input_ = decimal(loop_start_);
       loop_end_input_ = decimal(loop_end_);
       loop_ = loop_end_ > loop_start_;
+      loop_source_id_ = master->source_id;
     }
   }
   ImGui::Separator();
@@ -291,7 +329,7 @@ void PlaybackTimeline::drawTrack(AbstractStream *source) {
   if (!slider.isSliderDown()) slider.setCurrentSecond(source->currentSec());
   slider.drawFilmstrip(track_width, 68, [&](ImDrawList *draw, ImVec2 min, ImVec2 max) {
     filmstrip->draw(draw, min, max);
-    if (loop_ && (active || (linked_.count(source->source_id) && linked_.count(selected_id_))) && duration > 0) {
+    if (loopApplies(source) && duration > 0) {
       const auto x = [&](double seconds) { return min.x + float(std::clamp((seconds - source->timeline_offset - source->minSeconds()) / duration, 0., 1.)) * (max.x - min.x); };
       const float left = x(loop_start_), right = x(loop_end_);
       if (right > left) {
@@ -339,7 +377,7 @@ void PlaybackTimeline::draw() {
       if (dropdown::Item(label, nullptr, std::abs(master->getSpeed() - speed) < .001)) setSpeed(speed);
     }
   }));
-  items.push_back(toolbarMenu("timeline-settings", loop_ ? "Timeline · Loop on" : "Timeline", "Synchronization and loop interval", [this]() { drawSettings(); }));
+  items.push_back(toolbarMenu("timeline-settings", loopApplies(master) ? "Timeline · Loop on" : "Timeline", "Synchronization and loop interval", [this]() { drawSettings(); }));
   drawToolbar(items, 3);
   if (!status_.empty()) {
     ImGui::TextDisabled("%s", status_.c_str());
@@ -362,7 +400,8 @@ json11::Json PlaybackTimeline::snapshot() const {
     if (linked_.count(source->source_id)) linked.push_back(source->source_id);
   }
   return json11::Json::object{{"selected", selected_id_}, {"camera", (int)selected_camera_}, {"linked", linked},
-                            {"positions", positions}, {"offsets", offsets}, {"loop", loop_}, {"loop_start", loop_start_}, {"loop_end", loop_end_}};
+                            {"positions", positions}, {"offsets", offsets}, {"linked_master", linked_master_id_},
+                            {"loop_source", loop_source_id_}, {"loop", loop_}, {"loop_start", loop_start_}, {"loop_end", loop_end_}};
 }
 
 void PlaybackTimeline::restore(const json11::Json &state) {
@@ -382,6 +421,8 @@ void PlaybackTimeline::restore(const json11::Json &state) {
       source->seekTo(std::clamp(position.number_value(), source->minSeconds(), source->maxSeconds()));
     }
   }
+  linked_master_id_ = state["linked_master"].is_string() ? state["linked_master"].string_value() : selected_id_;
+  loop_source_id_ = state["loop_source"].is_string() ? state["loop_source"].string_value() : selected_id_;
   offset_inputs_.clear();
   loop_start_ = state["loop_start"].number_value();
   loop_end_ = state["loop_end"].is_number() ? state["loop_end"].number_value() : 10;

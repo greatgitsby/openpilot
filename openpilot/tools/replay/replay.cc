@@ -171,6 +171,9 @@ void Replay::pause(bool pause) {
       user_paused_ = pause;
       return pause ? events_ready_ : true;
     });
+    // Events sharing a timestamp can straddle the pause. Resolve the paused
+    // camera frame at the consumed cursor before the next frame-step action.
+    if (pause) requestCameraPreview();
   }
 }
 
@@ -416,11 +419,15 @@ std::vector<Event>::const_iterator Replay::publishEvents(std::vector<Event>::con
   for (; !interrupt_requested_ && first != last; ++first) {
     const Event &evt = *first;
 
-    int segment = toSeconds(evt.mono_time) / 60;
-    if (current_segment_.load(std::memory_order_relaxed) != segment) {
-      current_segment_.store(segment, std::memory_order_relaxed);
-      seg_mgr_->setCurrentSegment(segment);
-    }
+    const int segment = toSeconds(evt.mono_time) / 60;
+    auto advance_cursor = [&]() {
+      if (current_segment_.load(std::memory_order_relaxed) != segment) {
+        current_segment_.store(segment, std::memory_order_relaxed);
+        seg_mgr_->setCurrentSegment(segment);
+      }
+      cur_mono_time_ = evt.mono_time;
+      cur_which_ = evt.which;
+    };
 
     // Track segment completion for benchmark timeline
     if (hasFlag(REPLAY_FLAG_BENCHMARK) && segment != last_processed_segment) {
@@ -439,11 +446,12 @@ std::vector<Event>::const_iterator Replay::publishEvents(std::vector<Event>::con
       last_processed_segment = segment;
     }
 
-    cur_mono_time_ = evt.mono_time;
-    cur_which_ = evt.which;
-
-    // Skip events if socket is not present
-    if (!sockets_[evt.which]) continue;
+    // A filtered event is consumed immediately. For published events, retain
+    // the previous cursor while sleeping so pause/resume cannot skip this event.
+    if (!sockets_[evt.which]) {
+      advance_cursor();
+      continue;
+    }
 
     const uint64_t current_nanos = nanos_since_boot();
     const int64_t time_diff = (evt.mono_time - evt_start_ts) / speed_ - (current_nanos - loop_start_ts);
@@ -470,6 +478,7 @@ std::vector<Event>::const_iterator Replay::publishEvents(std::vector<Event>::con
       }
       publishFrame(&evt);
     }
+    advance_cursor();
   }
 
   return first;
