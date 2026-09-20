@@ -32,6 +32,7 @@ struct Layout {
   std::vector<std::vector<LayoutChart>> tabs;
   std::vector<std::string> tab_names;
   std::vector<cabana::Equation> equations;
+  int active_tab = 0;
 };
 
 inline std::optional<Layout> parseLayout(const std::string &contents) {
@@ -95,6 +96,10 @@ inline std::optional<Layout> parseLayout(const std::string &contents) {
       equation.additional.push_back(source.string_value());
     }
     result.equations.push_back(std::move(equation));
+  }
+  if (!doc["active_tab"].is_null()) {
+    if (!integer(doc["active_tab"], 0, result.tabs.size() - 1)) return std::nullopt;
+    result.active_tab = doc["active_tab"].int_value();
   }
   return result;
 }

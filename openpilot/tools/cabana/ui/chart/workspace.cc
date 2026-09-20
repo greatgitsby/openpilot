@@ -63,7 +63,7 @@ std::string ChartsWidget::serializeLayout() const {
                                    {"function", e.function}, {"additional", additional}});
   }
   return Json(Json::object{{"cabana_layout", 3}, {"columns", column_count_},
-    {"range", max_chart_range_}, {"tabs", tabs}, {"tab_names", names}, {"equations", equations}}).dump();
+    {"active_tab", tabbar_.currentIndex()}, {"range", max_chart_range_}, {"tabs", tabs}, {"tab_names", names}, {"equations", equations}}).dump();
 }
 
 static bool writeFile(const std::string &path, const std::string &contents) {
@@ -142,7 +142,7 @@ ChartsWidget::LayoutStatus ChartsWidget::restoreLayout(const std::string &conten
       }
     }
   }
-  tabbar_.setCurrentIndex(0);
+  tabbar_.setCurrentIndex(layout->active_tab);
   setColumnCount(layout->columns);
   setMaxChartRange(std::min(layout->range, range_slider_.maximum()));
   range_slider_.setValue(max_chart_range_);

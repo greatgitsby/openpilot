@@ -189,9 +189,17 @@ window of 10 samples. openpilot message fields need only a `path`; CAN signals n
 
 Custom signal expressions use Python.
 
-**Layout → Save Layout** saves the workspace as Cabana JSON, including equations, tabs,
+Use **Workspace: Default** in the menu bar to select or create a named workspace. The menu also
+lets you rename, duplicate, or delete workspaces (the first workspace is kept). Each workspace
+remembers its docked and floating panels, panel visibility, chart tabs and selected tab, signals,
+and equations. Workspaces are saved when switching or exiting; **Save workspaces** saves immediately.
+**Open...** imports a workspace JSON file and **Save As...** exports the selected workspace for reuse.
+Workspaces contain no route data or DBC definitions. When a workspace needs a CAN definition that
+is not loaded yet, its charts are restored once the matching DBC is loaded.
+
+**Layout → Save Layout** saves just the chart layout as Cabana JSON, including equations, tabs,
 chart grouping, colors, limits, signal visibility, transforms, column count, and window duration.
-The workspace also restores when Cabana restarts. Layouts contain no route data and can be reused
+The selected workspace also restores when Cabana restarts. Layouts contain no route data and can be reused
 on another route. Missing openpilot fields remain visible as **No data** until their data arrives;
 older layouts may reference fields no longer logged by current openpilot. PlotJuggler's optional
 CAN-parser diagnostic fields are not produced by Cabana. Layouts with decoded CAN curves require

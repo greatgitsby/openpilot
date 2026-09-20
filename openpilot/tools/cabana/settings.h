@@ -20,6 +20,7 @@ public:
 
   // UI layout state (dock layout, window geometry, table state), owned by the imgui frontend
   std::string ui_state;
+  std::string workspaces;
 
   Observable<> changed;
 };

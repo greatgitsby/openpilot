@@ -68,6 +68,16 @@ private:
   void toggleFullScreen();
   void updateWindowTitle();
   void eventsMerged();
+  void initializeWorkspaces();
+  void captureWorkspace();
+  void persistWorkspaces();
+  void switchWorkspace(int index, bool capture_current = true);
+  void drawWorkspaceMenu();
+  void importWorkspace(const std::string &path);
+  json11::Json::array workspaces_;
+  int active_workspace_ = 0;
+  std::string pending_workspace_layout_;
+
   void saveSessionState();
   void restoreSessionState();
   void finishClose();

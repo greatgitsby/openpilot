@@ -163,6 +163,8 @@ void MainWindow::drawMenuBar() {
     dropdown::EndMenu();
   }
 
+  drawWorkspaceMenu();
+
   if (dropdown::BeginMenu("View")) {
     if (dropdown::Item("Full Screen", shortcut("F11").c_str())) toggleFullScreen();
     ImGui::Separator();
@@ -210,6 +212,7 @@ void MainWindow::createDockWidgets() {
     log_messages_visible_ = true;
     selectPanelTab(LOG_MESSAGES_PANEL);
   }));
+  initializeWorkspaces();
   video_widget_ = std::make_unique<VideoWidget>();
   widget_connections_.push_back(charts_widget_->chartAdded.connect([this]() {
     charts_visible_ = true;
@@ -366,6 +369,7 @@ MainWindow::~MainWindow() {
 // pointer to the replay, so the dialogs go first and the widgets before the stream; the stream's destructor
 // joins the threads that read the global `can`
 void MainWindow::releaseStream() {
+  captureWorkspace();
   tool_dialogs_.clear();
   wait_dlg_.connection.disconnect();
   wait_dlg_.open = false;
@@ -679,6 +683,8 @@ void MainWindow::toggleFullScreen() {
 }
 
 void MainWindow::saveSessionState() {
+  captureWorkspace();
+  persistWorkspaces();
   settings.recent_dbc_file = "";
   settings.active_msg_id = "";
   settings.selected_msg_ids.clear();
@@ -695,9 +701,16 @@ void MainWindow::saveSessionState() {
 
 void MainWindow::restoreSessionState() {
   if (!charts_widget_) return;
+  if (!pending_workspace_layout_.empty()) {
+    if (charts_widget_->restoreLayout(pending_workspace_layout_, true) == ChartsWidget::LayoutStatus::Restored)
+      pending_workspace_layout_.clear();
+  }
   // CAN layouts may need the DBC loaded by eventsMerged(). dbcFileChanged() retries while definitions are missing.
   if (!startup_layout_.empty()) {
-    if (charts_widget_->openLayout(startup_layout_, true) != ChartsWidget::LayoutStatus::MissingCan) startup_layout_.clear();
+    if (charts_widget_->openLayout(startup_layout_, true) != ChartsWidget::LayoutStatus::MissingCan) {
+      startup_layout_.clear();
+      pending_workspace_layout_.clear();
+    }
   }
   if (settings.recent_dbc_file.empty() || dbc()->nonEmptyDBCCount() == 0) return;
 

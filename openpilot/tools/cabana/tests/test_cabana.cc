@@ -24,6 +24,7 @@
 #include "tools/cabana/streams/livestream.h"
 #include "tools/cabana/settings.h"
 #include "tools/cabana/ui/qtstate.h"
+#include "tools/cabana/ui/workspace.h"
 #include "tools/cabana/ui/threadpool.h"
 #include "tools/cabana/ui/chart/downsample.h"
 #include "tools/cabana/ui/chart/analysis.h"
@@ -503,6 +504,35 @@ void test_chart_analysis() {
   REQUIRE(chart::csvField("signal, \"left\"\n") == "\"signal, \"\"left\"\"\n\"");
 }
 
+void test_workspace() {
+  using json11::Json;
+  Json::object doc{{"cabana_workspace", 1}, {"name", "Steering"}, {"ui", "[Docking][Data]\n"},
+    {"panels", Json::object{{"messages", true}, {"logs", false}, {"charts", true},
+                           {"video", false}, {"details", true}, {"playback", true}}},
+    {"charts", Json::object{{"cabana_layout", 3}, {"columns", 2}, {"range", 60},
+                           {"tabs", Json::array{Json::array{}}}}}};
+  REQUIRE(cabana::validWorkspace(doc));
+  std::string error;
+  const auto restored = Json::parse(Json(doc).dump(), error);
+  REQUIRE(error.empty());
+  REQUIRE(cabana::validWorkspace(restored));
+  REQUIRE(restored == Json(doc));
+  for (const char *key : {"cabana_workspace", "name", "ui", "panels", "charts"}) {
+    auto invalid = doc;
+    invalid.erase(key);
+    REQUIRE(!cabana::validWorkspace(invalid));
+  }
+  auto invalid = doc;
+  invalid["cabana_workspace"] = 2;
+  REQUIRE(!cabana::validWorkspace(invalid));
+  invalid = doc;
+  invalid["charts"] = Json::object{{"cabana_layout", 3}};
+  REQUIRE(!cabana::validWorkspace(invalid));
+  invalid = doc;
+  invalid["name"] = "";
+  REQUIRE(!cabana::validWorkspace(invalid));
+}
+
 void test_chart_layout() {
   using json11::Json;
   Json::object signal{{"message", "2:1AF"}, {"signal", "Speed"}, {"visible", false}, {"transform", 3},
@@ -515,6 +545,15 @@ void test_chart_layout() {
   REQUIRE(layout.has_value());
   REQUIRE(layout->tabs.size() == 2);
   REQUIRE(layout->tabs[1].empty());
+  REQUIRE(layout->active_tab == 0);
+  std::string parse_error;
+  auto selected_tab = Json::parse(document(signal), parse_error).object_items();
+  selected_tab["active_tab"] = 1;
+  REQUIRE(chart::parseLayout(Json(selected_tab).dump())->active_tab == 1);
+  selected_tab["active_tab"] = 2;
+  REQUIRE(!chart::parseLayout(Json(selected_tab).dump()));
+  selected_tab["active_tab"] = -1;
+  REQUIRE(!chart::parseLayout(Json(selected_tab).dump()));
   const auto &s = layout->tabs[0][0].signals[0];
   REQUIRE(s.id.source == 2);
   REQUIRE(s.id.address == 0x1af);
@@ -844,6 +883,7 @@ void test_cabana_core() {
   test_live_fields();
   test_chart_analysis();
   test_chart_layout();
+  test_workspace();
   test_format_seconds();
   test_to_hex();
   test_message_id_parsing();
