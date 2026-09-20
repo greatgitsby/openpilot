@@ -130,4 +130,44 @@ void test_chart_workspaces() {
   REQUIRE(!cabana::validWorkspace(bad));
 }
 
+// Built-ins stay session-local; persistent selection indexes only custom entries.
+{
+  const Json factory = Json::object{{"builtin", "default"}, {"builtin_initialized", true}, {"name", "Default"}, {"ui", "mutated docking"}};
+  const Json live = Json::object{{"builtin", "live"}, {"name", "Live"}};
+  const Json first = Json::object{{"name", "Road analysis"}, {"default", true}};
+  const Json second = Json::object{{"name", "Default"}};
+  const Json::array workspaces{factory, first, live, second};
+  auto library = cabana::workspaceLibrary(workspaces, 3);
+  REQUIRE(library["workspaces"].array_items().size() == 2);
+  REQUIRE(library["workspaces"][0] == first);
+  REQUIRE(library["workspaces"][1] == second);
+  REQUIRE(library["active"] == 1);
+  REQUIRE(library["active_builtin"] == "");
+  library = cabana::workspaceLibrary(workspaces, 2);
+  REQUIRE(library["active"] == -1);
+  REQUIRE(library["active_builtin"] == "live");
+  REQUIRE(library.dump().find("mutated docking") == std::string::npos);
+  REQUIRE(cabana::workspaceLibrary({factory, live}, 0)["workspaces"].array_items().empty());
+  const auto exported = cabana::customWorkspace(factory);
+  REQUIRE(!cabana::isBuiltinWorkspace(exported));
+  REQUIRE(exported["builtin_initialized"].is_null());
+  REQUIRE(exported["ui"] == factory["ui"]);
+  REQUIRE(cabana::workspaceLibrary({exported}, 0)["workspaces"].array_items().size() == 1);
+}
+
+// Legacy renamed/default-derived workspaces and saved data must survive migration.
+{
+  Json::object legacy{{"name", "Default"}, {"default", true}, {"sources", Json::array{}},
+    {"charts", Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", Json::array{}}}}};
+  REQUIRE(cabana::legacyBuiltinWorkspace(legacy) == "default");
+  legacy["name"] = "My Default";
+  REQUIRE(cabana::legacyBuiltinWorkspace(legacy).empty());
+  legacy["name"] = "Default";
+  legacy["sources"] = Json::array{Json::object{{"id", "source1"}, {"route", "saved-route"}}};
+  REQUIRE(cabana::legacyBuiltinWorkspace(legacy).empty());
+  legacy["sources"] = Json::array{};
+  legacy["timeline"] = Json::object{{"loop", true}};
+  REQUIRE(cabana::legacyBuiltinWorkspace(legacy).empty());
+}
+
 }

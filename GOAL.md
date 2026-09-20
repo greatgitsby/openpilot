@@ -26,11 +26,14 @@ Restructure Cabana around sources, independent widgets, a shared timeline, and p
 - Selecting a workspace and opening its saved routes are separate actions. Including route references is optional.
 - Shared files store references only. Do not bundle logs or video; referenced data is loaded separately.
 - New workspaces start blank. The Default workspace resembles traditional Cabana.
+- Built-in workspaces can be reset to their original layouts. Their edits stay in memory and are not saved to disk; duplicate one to keep a custom version.
 - Live streaming should have an appropriate default widget set. Whether it needs additional dedicated widgets remains open.
 
 ## Timeline experience
 
 Make route tracks feel like a video editor such as Final Cut Pro or iMovie: taller video bars, actual thumbnails, a readable time ruler, clear playheads, and event-color ribbons overlaid on the clips. Scrubbing and frame stepping should update video responsively. Generate and cache thumbnails asynchronously.
+
+The timeline lives in a resizable bottom drawer that expands or collapses while keeping playback controls available. Custom workspaces remember its expanded height and collapsed state. Long source names elide and remain vertically centered when selected, with the full name shown once in the tooltip.
 
 ## Implementation and delivery
 

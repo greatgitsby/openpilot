@@ -36,22 +36,87 @@ static Json remapSource(const Json &input, const std::string &old_id, const std:
   return remapped;
 }
 
+static Json builtinWorkspace(const std::string &key, const std::string &name) {
+  return Json::object{{"cabana_workspace", 2}, {"builtin", key}, {"name", name}, {"ui", ""},
+    {"sources", Json::array{}}, {"widgets", Json::array{}}, {"timeline", Json::object{}},
+    {"charts", Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", Json::array{}}}}};
+}
+
 void MainWindow::initializeWorkspaces() {
+  workspaces_ = {builtinWorkspace("default", "Default"), builtinWorkspace("live", "Live")};
+  std::error_code file_error;
+  std::vector<std::filesystem::path> presets;
+  for (const auto &entry : std::filesystem::directory_iterator(executableDir() / "layouts", file_error))
+    if (entry.path().extension() == ".json") presets.push_back(entry.path());
+  std::sort(presets.begin(), presets.end());
+  for (const auto &path : presets) workspaces_.push_back(builtinWorkspace("layout:" + path.filename().string(), path.stem().string()));
   std::string error;
   const auto library = Json::parse(settings.workspaces, error);
   const auto &saved = library["workspaces"].array_items();
+  std::string active_builtin = library["active_builtin"].string_value();
   for (int i = 0; i < (int)saved.size(); ++i) {
     if (!cabana::validWorkspace(saved[i])) continue;
+    const auto legacy = library["workspace_library"] == 2 ? std::string() : cabana::legacyBuiltinWorkspace(saved[i]);
+    if (cabana::isBuiltinWorkspace(saved[i]) || !legacy.empty()) {
+      if (i == library["active"].int_value()) active_builtin = legacy.empty() ? saved[i]["builtin"].string_value() : legacy;
+      continue;
+    }
+    auto document = cabana::customWorkspace(saved[i]).object_items();
+    if (library["workspace_library"] != 2 && (document["name"] == "Default" || document["name"] == "Live"))
+      document["name"] = document["name"].string_value() + " (saved)";
     if (i == library["active"].int_value()) active_workspace_ = workspaces_.size();
-    workspaces_.push_back(saved[i]);
+    workspaces_.push_back(document);
   }
-  if (workspaces_.empty()) {
-    workspaces_.push_back(Json::object{{"name", "Default"}, {"default", true}});
-    makeDefaultWidgets();
-    captureWorkspace();
-  } else {
-    applyWorkspace(workspaces_[active_workspace_]);
+  if (!active_builtin.empty()) for (int i = 0; i < (int)workspaces_.size(); ++i)
+    if (workspaces_[i]["builtin"] == active_builtin) { active_workspace_ = i; break; }
+  if (cabana::isBuiltinWorkspace(workspaces_[active_workspace_])) resetBuiltinWorkspace();
+  else applyWorkspace(workspaces_[active_workspace_]);
+}
+
+void MainWindow::resetBuiltinWorkspace() {
+  const auto key = workspaces_[active_workspace_]["builtin"].string_value();
+  if (key.empty()) return;
+  const bool live = key == "live";
+  auto doc = builtinWorkspace(key, workspaces_[active_workspace_]["name"].string_value()).object_items();
+  doc["builtin_initialized"] = true;
+  doc["default"] = key == "default";
+  doc["include_routes"] = false;
+  doc["timeline_visible"] = true;
+  doc["timeline_expanded"] = true;
+  doc["timeline_height"] = 0;
+  Json::array slots;
+  for (const auto &view : source_views_) slots.push_back(Json::object{{"id", view->stream->source_id}, {"label", view->stream->source_label}});
+  std::string target = selected_source_;
+  if (live) {
+    target.clear();
+    for (const auto &view : source_views_) if (view->stream->liveStreaming() && !dynamic_cast<DummyStream *>(view->stream.get())) {
+      target = view->stream->source_id;
+      break;
+    }
+    if (target.empty()) for (const auto &view : source_views_)
+      if (dynamic_cast<DummyStream *>(view->stream.get()) && view->stream->source_label == "Live source") { target = view->stream->source_id; break; }
+    if (target.empty()) {
+      do { target = "source" + std::to_string(next_source_id_++); } while (sourceById(target));
+      slots.push_back(Json::object{{"id", target}, {"label", "Live source"}});
+    }
   }
+  doc["sources"] = slots;
+  doc["timeline"] = Json::object{{"selected", target}};
+  if (key.rfind("layout:", 0) == 0) {
+    std::string error;
+    const auto layout = Json::parse(util::read_file((executableDir() / "layouts" / key.substr(7)).string()), error);
+    if (!chart::parseLayout(layout.dump())) { MessageBox::warning("Workspace preset", "Unsupported preset."); return; }
+    doc["charts"] = layout;
+  }
+  workspaces_[active_workspace_] = doc;
+  applyWorkspace(doc);
+  selectSource(target);
+  if (live) {
+    auto &view = currentSource();
+    view.messages_visible = view.logs_visible = view.inspector_visible = true;
+    charts_widget_->newChart();
+    reset_layout_ = true;
+  } else makeDefaultWidgets();
 }
 
 void MainWindow::captureWorkspace() {
@@ -116,7 +181,7 @@ void MainWindow::captureWorkspace() {
 }
 
 void MainWindow::persistWorkspaces() {
-  if (!workspaces_.empty()) settings.workspaces = Json(Json::object{{"active", active_workspace_}, {"workspaces", workspaces_}}).dump();
+  if (!workspaces_.empty()) settings.workspaces = cabana::workspaceLibrary(workspaces_, active_workspace_).dump();
 }
 
 void MainWindow::applyWorkspace(const Json &saved_document) {
@@ -225,7 +290,8 @@ void MainWindow::switchWorkspace(int index, bool capture_current) {
   if (index < 0 || index >= (int)workspaces_.size() || (capture_current && index == active_workspace_)) return;
   if (capture_current) captureWorkspace();
   active_workspace_ = index;
-  applyWorkspace(workspaces_[index]);
+  if (cabana::isBuiltinWorkspace(workspaces_[index]) && !workspaces_[index]["builtin_initialized"].bool_value()) resetBuiltinWorkspace();
+  else applyWorkspace(workspaces_[index]);
   persistWorkspaces();
   settings.save();
 }
@@ -237,7 +303,7 @@ void MainWindow::importWorkspace(const std::string &path) {
     MessageBox::warning("Open Workspace", "This is not a supported Cabana workspace.");
     return;
   }
-  workspaces_.push_back(doc);
+  workspaces_.push_back(cabana::customWorkspace(doc));
   switchWorkspace(workspaces_.size() - 1);
 }
 
@@ -354,17 +420,11 @@ void MainWindow::openWorkspaceRoutes(const Json &document) {
 }
 
 void MainWindow::loadWorkspacePreset(const std::string &path) {
-  std::string error;
-  auto layout = Json::parse(util::read_file(path), error);
-  if (!chart::parseLayout(layout.dump())) { MessageBox::warning("Workspace preset", "Unsupported preset."); return; }
-  captureWorkspace();
-  auto doc = workspaces_[active_workspace_].object_items();
-  doc["name"] = std::filesystem::path(path).stem().string();
-  doc["charts"] = layout;
-  doc["ui"] = "";
-  doc["default"] = false;
-  workspaces_.push_back(doc);
-  switchWorkspace(workspaces_.size() - 1);
+  const auto key = "layout:" + std::filesystem::path(path).filename().string();
+  for (int i = 0; i < (int)workspaces_.size(); ++i) if (workspaces_[i]["builtin"] == key) {
+    switchWorkspace(i);
+    return;
+  }
 }
 
 void MainWindow::drawWorkspaceMenu() {
@@ -372,18 +432,26 @@ void MainWindow::drawWorkspaceMenu() {
   const auto label = "Workspace: " + workspaces_[active_workspace_]["name"].string_value() + "###WorkspaceMenu";
   if (!dropdown::BeginMenu(label.c_str())) return;
   for (int i = 0; i < (int)workspaces_.size(); ++i) {
+    if (workspaces_[i]["builtin"].string_value().rfind("layout:", 0) == 0 && !workspaces_[i]["builtin_initialized"].bool_value()) continue;
     ImGui::PushID(i);
     if (dropdown::Item(workspaces_[i]["name"].string_value().c_str(), nullptr, i == active_workspace_)) nextFrame([this, i]() { switchWorkspace(i); });
     ImGui::PopID();
   }
   ImGui::Separator();
+  const bool builtin = cabana::isBuiltinWorkspace(workspaces_[active_workspace_]);
   std::string name = workspaces_[active_workspace_]["name"].string_value();
+  ImGui::BeginDisabled(builtin);
   if (inputText("Name", &name) && !name.empty()) {
     auto doc = workspaces_[active_workspace_].object_items(); doc["name"] = name; workspaces_[active_workspace_] = doc;
   }
+  ImGui::EndDisabled();
+  if (builtin) {
+    ImGui::TextDisabled("Built-in changes last for this session. Duplicate to keep them.");
+    if (dropdown::Item("Reset built-in workspace")) nextFrame([this]() { resetBuiltinWorkspace(); });
+  }
   if (dropdown::Item("New blank workspace")) nextFrame([this]() {
     captureWorkspace();
-    auto doc = workspaces_[active_workspace_].object_items();
+    auto doc = cabana::customWorkspace(workspaces_[active_workspace_]).object_items();
     doc["name"] = "Workspace " + std::to_string(workspaces_.size() + 1);
     doc["ui"] = ""; doc["widgets"] = Json::array{}; doc["default"] = false; doc["include_routes"] = false;
     doc["timeline"] = Json::object{};
@@ -394,54 +462,19 @@ void MainWindow::drawWorkspaceMenu() {
     workspaces_.push_back(doc); switchWorkspace(workspaces_.size() - 1);
   });
   if (dropdown::Item("Duplicate workspace")) nextFrame([this]() {
-    captureWorkspace(); auto doc = workspaces_[active_workspace_].object_items();
+    captureWorkspace(); auto doc = cabana::customWorkspace(workspaces_[active_workspace_]).object_items();
     doc["name"] = doc["name"].string_value() + " copy";
     workspaces_.push_back(doc); switchWorkspace(workspaces_.size() - 1);
   });
-  if (dropdown::Item("Delete workspace", nullptr, false, active_workspace_ != 0)) nextFrame([this]() {
+  if (dropdown::Item("Delete workspace", nullptr, false, !builtin)) nextFrame([this]() {
     const int removed = active_workspace_; switchWorkspace(0);
     workspaces_.erase(workspaces_.begin() + removed); persistWorkspaces(); settings.save();
   });
   if (dropdown::BeginMenu("Presets")) {
-    for (const bool live : {false, true}) if (dropdown::Item(live ? "Live" : "Default")) nextFrame([this, live]() {
-      captureWorkspace();
-      auto doc = workspaces_[active_workspace_].object_items();
-      doc["name"] = live ? "Live" : "Default";
-      doc["ui"] = "";
-      doc["widgets"] = Json::array{};
-      doc["default"] = !live;
-      doc["include_routes"] = false;
-      doc["timeline"] = Json::object{};
-      doc["charts"] = Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", Json::array{}}};
-      Json::array slots;
-      for (const auto &source : doc["sources"].array_items()) slots.push_back(Json::object{{"id", source["id"]}, {"label", source["label"]}});
-      std::string live_source;
-      if (live) {
-        for (const auto &view : source_views_) if (view->stream->liveStreaming() && !dynamic_cast<DummyStream *>(view->stream.get())) {
-          live_source = view->stream->source_id;
-          break;
-        }
-        if (live_source.empty()) {
-          do { live_source = "source" + std::to_string(next_source_id_++); } while (sourceById(live_source));
-          slots.push_back(Json::object{{"id", live_source}, {"label", "Live source"}});
-        }
-      }
-      doc["sources"] = slots;
-      workspaces_.push_back(doc);
-      switchWorkspace(workspaces_.size() - 1);
-      if (live) {
-        selectSource(live_source);
-        auto &view = currentSource();
-        view.messages_visible = view.logs_visible = view.inspector_visible = true;
-        charts_widget_->newChart();
-        reset_layout_ = true;
-        showStatusMessage("Add a Device, Panda, or SocketCAN source to start live inspection.", 5000);
-      } else makeDefaultWidgets();
-    });
-    ImGui::Separator();
-    std::error_code error;
-    for (const auto &entry : std::filesystem::directory_iterator(executableDir() / "layouts", error)) if (entry.path().extension() == ".json")
-      if (dropdown::Item(entry.path().stem().c_str())) nextFrame([this, path = entry.path().string()]() { loadWorkspacePreset(path); });
+    for (int i = 0; i < (int)workspaces_.size(); ++i) if (cabana::isBuiltinWorkspace(workspaces_[i])) {
+      if (dropdown::Item(workspaces_[i]["name"].string_value().c_str(), nullptr, i == active_workspace_))
+        nextFrame([this, i]() { switchWorkspace(i); });
+    }
     dropdown::EndMenu();
   }
   ImGui::Separator();
@@ -456,7 +489,7 @@ void MainWindow::drawWorkspaceMenu() {
   if (dropdown::Item("Save As...")) {
     captureWorkspace();
     FileDialog::getSaveFileName("Save Workspace", settings.last_dir + "/workspace.json", ".json",
-      [contents = workspaces_[active_workspace_].dump() + '\n'](const std::string &path) {
+      [contents = cabana::customWorkspace(workspaces_[active_workspace_]).dump() + '\n'](const std::string &path) {
         if (path.empty()) return;
         std::ofstream out(path); out << contents; out.close();
         if (!out) MessageBox::warning("Save Workspace", "Could not write " + path);

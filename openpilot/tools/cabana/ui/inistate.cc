@@ -161,4 +161,15 @@ std::string save() {
   return std::string(ImGui::SaveIniSettingsToMemory());
 }
 
+std::string saveWindowGeometry() {
+  ImGuiTextBuffer buf;
+  buf.append("[Cabana][MainWindow]\n");
+  if (main_window.has_geometry) {
+    buf.appendf("Pos=%d,%d\n", main_window.pos[0], main_window.pos[1]);
+    buf.appendf("Size=%d,%d\n", main_window.size[0], main_window.size[1]);
+  }
+  buf.appendf("Maximized=%d\nWorkspaceVersion=4\n\n", main_window.maximized ? 1 : 0);
+  return buf.c_str();
+}
+
 }  // namespace inistate

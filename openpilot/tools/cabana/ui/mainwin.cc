@@ -695,7 +695,8 @@ void MainWindow::finishClose() {
   state.messages_visible = currentSource().messages_visible;
   state.video_visible = !camera_panes_.empty();
   state.playback_visible = playback_visible_;
-  settings.ui_state = inistate::save();
+  const bool builtin = !workspaces_.empty() && !workspaces_[active_workspace_]["builtin"].string_value().empty();
+  settings.ui_state = builtin ? inistate::saveWindowGeometry() : inistate::save();
 
   saveSessionState();
   settings.save();

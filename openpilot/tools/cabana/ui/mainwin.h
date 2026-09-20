@@ -72,6 +72,7 @@ private:
   void updateWindowTitle();
   void eventsMerged();
   void initializeWorkspaces();
+  void resetBuiltinWorkspace();
   void captureWorkspace();
   void persistWorkspaces();
   void switchWorkspace(int index, bool capture_current = true);

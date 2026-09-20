@@ -28,5 +28,6 @@ void addSettingsHandler();                    // register the [Cabana] ini secti
 void load();                                  // migrate Qt state if needed, then LoadIniSettingsFromMemory
 void applyWindowGeometry(GLFWwindow *window); // glfw pos/size/maximize from main_window
 std::string save();                           // SaveIniSettingsToMemory (caller fills main_window first)
+std::string saveWindowGeometry();             // OS window geometry without workspace layout/state
 
 }  // namespace inistate
