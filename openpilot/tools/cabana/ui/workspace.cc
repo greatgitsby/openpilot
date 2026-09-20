@@ -125,8 +125,9 @@ void MainWindow::applyWorkspace(const Json &saved_document) {
     const auto old_id = saved["id"].string_value();
     auto *loaded = sourceById(old_id);
     auto *replay = dynamic_cast<ReplayStream *>(loaded);
-    if (!loaded || dynamic_cast<DummyStream *>(loaded) || saved["route"].string_value().empty() ||
-        (replay && replay->routeName() == Route::parseRoute(saved["route"].string_value()).str)) continue;
+    const auto route = cabana::savedSourceRoute(saved);
+    if (!loaded || dynamic_cast<DummyStream *>(loaded) || route.empty() ||
+        (replay && replay->routeName() == route)) continue;
     std::string new_id;
     do { new_id = "source" + std::to_string(next_source_id_++); }
     while (sourceById(new_id) || std::any_of(document["sources"].array_items().begin(), document["sources"].array_items().end(),
@@ -138,7 +139,7 @@ void MainWindow::applyWorkspace(const Json &saved_document) {
     route_sources[route->routeName()] = route->source_id;
   const auto saved_sources_to_bind = document["sources"].array_items();
   for (const auto &saved : saved_sources_to_bind) {
-    const auto route = Route::parseRoute(saved["route"].string_value()).str;
+    const auto route = cabana::savedSourceRoute(saved);
     if (route.empty()) continue;
     const auto id = saved["id"].string_value();
     auto [it, inserted] = route_sources.emplace(route, id);
@@ -236,6 +237,26 @@ void MainWindow::importWorkspace(const std::string &path) {
   switchWorkspace(workspaces_.size() - 1);
 }
 
+std::string MainWindow::sourceSlotRoute(const std::string &id) const {
+  if (!workspaces_.empty()) {
+    for (const auto &saved : workspaces_[active_workspace_]["sources"].array_items())
+      if (saved["id"] == id) return cabana::savedSourceRoute(saved);
+  }
+  auto *source = sourceById(id);
+  return source ? cabana::savedSourceRoute(Json::object{{"label", source->source_label}}) : std::string();
+}
+
+void MainWindow::bindSourceSlots(std::string id) {
+  auto *route = dynamic_cast<ReplayStream *>(sourceById(id));
+  if (!route) return;
+  std::vector<std::string> slots;
+  for (const auto &view : source_views_)
+    if (dynamic_cast<DummyStream *>(view->stream.get()) && sourceSlotRoute(view->stream->source_id) == route->routeName())
+      slots.push_back(view->stream->source_id);
+  for (const auto &slot : slots) mergeSourceSlot(slot, id);
+  selectSource(id);
+}
+
 void MainWindow::mergeSourceSlot(const std::string &old_id, const std::string &new_id) {
   auto *old = sourceById(old_id);
   if (!old || !dynamic_cast<DummyStream *>(old)) return;
@@ -320,10 +341,7 @@ void MainWindow::openWorkspaceRoutes(const Json &document) {
         }
         default_workspace_ = use_default;
         can->source_label = source["label"].string_value();
-        // Recreate camera widgets against the newly opened source endpoint.
         const auto &current_document = workspaces_[active_workspace_];
-        for (const auto &widget : current_document["widgets"].array_items()) if (widget["kind"] == "camera" && widget["source"] == source["id"])
-          addCamera(can->source_id, (VisionStreamType)widget["camera"].int_value(), widget["crop"].bool_value(), widget["id"].string_value());
         timeline_.restore(current_document["timeline"]);
         showStatusMessage("Saved route opened", 2000);
       });

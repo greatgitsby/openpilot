@@ -371,6 +371,7 @@ void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::s
       const auto id = existing->source_id;
       const auto slot = std::exchange(source_to_replace_, {});
       if (!slot.empty() && slot != id) mergeSourceSlot(slot, id);
+      bindSourceSlots(id);
       selectSource(id);
       showStatusMessage("Source already open", 2000);
       return;
@@ -383,17 +384,35 @@ void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::s
     }
   }
   startStream(std::move(stream), dbc_file);
+  bindSourceSlots(selected_source_);
 }
 
 void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
   std::string id = source_to_replace_;
   source_to_replace_.clear();
-  if (id.empty() && dynamic_cast<DummyStream *>(sourceById(selected_source_))) id = selected_source_;
+  if (id.empty() && dynamic_cast<ReplayStream *>(stream.get())) {
+    for (const auto &view : source_views_) {
+      if (dynamic_cast<DummyStream *>(view->stream.get()) && sourceSlotRoute(view->stream->source_id) == stream->routeName()) {
+        id = view->stream->source_id;
+        break;
+      }
+    }
+  }
+  if (id.empty() && dynamic_cast<DummyStream *>(sourceById(selected_source_)) && sourceSlotRoute(selected_source_).empty()) id = selected_source_;
   if (id.empty()) for (const auto &view : source_views_) {
-    if (dynamic_cast<DummyStream *>(view->stream.get())) { id = view->stream->source_id; break; }
+    if (dynamic_cast<DummyStream *>(view->stream.get()) && sourceSlotRoute(view->stream->source_id).empty()) {
+      id = view->stream->source_id;
+      break;
+    }
   }
   SourceView *view = nullptr;
   for (auto &candidate : source_views_) if (candidate->stream->source_id == id) view = candidate.get();
+  struct SavedCamera { std::string id; VisionStreamType type; bool crop; };
+  std::vector<SavedCamera> slot_cameras;
+  if (view && dynamic_cast<DummyStream *>(view->stream.get())) {
+    for (const auto &camera : camera_panes_) if (camera.source == id && camera.visible)
+      slot_cameras.push_back({camera.id, camera.type, camera.widget->crop()});
+  }
   if (view) {
     SourceScope scope(view->stream.get());
     if (charts_widget_) charts_widget_->removeSource(id);
@@ -433,6 +452,7 @@ void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::
   if (!dbc_file.empty()) loadFile(dbc_file);
   if (!dbc()->dbcCount()) dbc()->open(SOURCE_ALL, std::string(), std::string());
   can->start();
+  for (const auto &camera : slot_cameras) addCamera(id, camera.type, camera.crop, camera.id);
   if (default_workspace_) makeDefaultWidgets();
   timeline_.setSources(orderedSources());
   timeline_.selectSource(id);
