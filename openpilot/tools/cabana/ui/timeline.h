@@ -15,7 +15,7 @@ public:
   void setSources(const std::vector<AbstractStream *> &sources);
   void selectSource(const std::string &id, VisionStreamType camera = VISION_STREAM_NARROW_ROAD);
   const std::string &selectedSource() const { return selected_id_; }
-  float height() const;
+  float height(size_t max_tracks = 3) const;
   void draw(bool expanded = true);
   void tick();
   void handleShortcuts();

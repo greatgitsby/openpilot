@@ -950,7 +950,9 @@ void MainWindow::drawDockspace() {
   const float collapsed_height = ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y * 2;
   const float max_drawer_height = std::max(collapsed_height, ImGui::GetContentRegionAvail().y - status_height -
                                           handle_height - spacing * 2 - ImGui::GetFrameHeight() * 3);
-  const float min_drawer_height = std::min(collapsed_height + 108.f, max_drawer_height);
+  // Include the toolbar-to-track gap and any status row, just like the natural
+  // height. Reserving only a track made the minimum eight pixels too short.
+  const float min_drawer_height = std::min(timeline_.height(1), max_drawer_height);
   const float desired_height = playback_height_ > 0 ? playback_height_ : timeline_.height();
   const float drawer_height = playback_expanded_ ? std::clamp(desired_height, min_drawer_height, max_drawer_height) : collapsed_height;
   const float playback_height = playback_visible_ ? drawer_height + handle_height + spacing * 2 : 0.0f;

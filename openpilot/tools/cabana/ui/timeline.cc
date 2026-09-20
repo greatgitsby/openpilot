@@ -240,10 +240,10 @@ void PlaybackTimeline::handleShortcuts() {
   if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) stepFrame(true);
 }
 
-float PlaybackTimeline::height() const {
+float PlaybackTimeline::height(size_t max_tracks) const {
   const auto &style = ImGui::GetStyle();
   return style.WindowPadding.y * 2 + ImGui::GetFrameHeightWithSpacing() +
-         108.f * std::min<size_t>(sources_.size(), 3) +
+         108.f * std::min(sources_.size(), max_tracks) +
          (status_.empty() ? 0 : ImGui::GetTextLineHeightWithSpacing());
 }
 
