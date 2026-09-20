@@ -67,6 +67,9 @@ ui_env['CXXFLAGS'] += [
 ui_objs = [ui_env.Object('ui/obj/' + src.replace('/', '_')[:-3], src) for src in core_srcs]
 ui_objs += [ui_env.Object('ui/obj/bootstrap_icons', bootstrap_icons_src)]
 ui_objs += ui_env.Glob('ui/*.cc') + ui_env.Glob('ui/widgets/*.cc') + ui_env.Glob('ui/dialogs/*.cc') + ui_env.Glob('ui/chart/*.cc') + ui_env.Glob('ui/tools/*.cc')
+# Provide the widget translation unit with Cabana's tab overflow extension. The
+# corresponding object in the static ImGui archive is consequently not linked.
+ui_objs += [ui_env.Object('ui/vendor/imgui/imgui_widgets.cpp')]
 ui_libs = [File(python_library), replay_lib, common, messaging, visionipc, cereal, File(f"{imgui.LIB_DIR}/libimgui.a"), File(f"{imgui.LIB_DIR}/libglfw3.a")] + \
           ffmpeg_libs + ['zstd', 'm', 'pthread', 'usb-1.0']
 if arch == "Darwin":
@@ -77,6 +80,10 @@ cabana_ui = ui_env.Program('cabana', ui_objs, LIBS=ui_libs)
 ui_env.Requires(cabana_ui, generated_dbcs)
 
 if GetOption('extras'):
+  ui_env.Program('tests/test_tab_overflow', [
+    ui_env.Object('tests/test_tab_overflow.cc'),
+    File('ui/widgets/scrollabletabbar.o'), File('ui/vendor/imgui/imgui_widgets.o'),
+  ], LIBS=[File(f"{imgui.LIB_DIR}/libimgui.a")])
   cabana_core_test_env = env.Clone()
   cabana_core_test_env['CXXFLAGS'] += [opendbc_path]
   cabana_core_test_env.Append(CPPPATH=[sysconfig.get_config_var('INCLUDEPY')], CPPDEFINES=python_defines, RPATH=python_runtime_paths)
