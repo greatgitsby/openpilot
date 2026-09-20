@@ -44,6 +44,8 @@ bool beginControlChild(const char *id, const ImVec2 &size, ImGuiWindowFlags flag
 bool clearableInput(const char *label, std::string *s, const char *hint = "", ImGuiInputTextCallback validator = nullptr);
 
 bool selectable(const char *label, bool selected, ImGuiSelectableFlags flags = 0, const ImVec2 &size = ImVec2(0, 0));
+// A padded, vertically centered label that elides within its selectable bounds.
+bool elidedSelectable(const char *id, const std::string &text, bool selected, const ImVec2 &size = ImVec2(0, 0));
 
 bool comboBox(const char *label, int *index, const std::vector<std::string> &items);
 

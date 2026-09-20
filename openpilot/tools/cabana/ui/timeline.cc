@@ -282,9 +282,11 @@ void PlaybackTimeline::drawTrack(AbstractStream *source) {
   ImGui::TableSetColumnIndex(0);
   const bool active = source == selected();
   const std::string label = source->source_label.empty() ? source->routeName() : source->source_label;
-  if (selectable(label.c_str(), active, 0, ImVec2(0, ImGui::GetFrameHeight()))) selectSource(source->source_id);
-  ImGui::SetItemTooltip("%s\nClick to control this source. Space: play/pause. Arrow keys: previous/next camera frame.", source->routeName().c_str());
-  ImGui::AlignTextToFramePadding();
+  pushBoldFont();
+  if (elidedSelectable("source", label, active)) selectSource(source->source_id);
+  popBoldFont();
+  ImGui::SetItemTooltip("%s\n%s\nClick to control this source. Space: play/pause. Arrow keys: previous/next camera frame.", label.c_str(), source->routeName().c_str());
+  ImGui::Indent(ImGui::GetStyle().FramePadding.x);
   pushMonoFont();
   ImGui::TextUnformatted(utils::formatSeconds(source->currentSec(), true, false).c_str());
   popMonoFont();
@@ -299,10 +301,15 @@ void PlaybackTimeline::drawTrack(AbstractStream *source) {
     ImGui::SetItemTooltip("Play checked routes together. Use Timeline → Align current positions to synchronize events.");
     ImGui::SameLine();
     auto [it, inserted] = offset_inputs_.try_emplace(source->source_id, decimal(source->timeline_offset));
-    ImGui::SetNextItemWidth(-1);
+    const float suffix_width = ImGui::CalcTextSize("s").x + ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetNextItemWidth(std::max(1.f, std::min(ImGui::CalcTextSize("-000.000").x + ImGui::GetStyle().FramePadding.x * 2,
+                                               ImGui::GetContentRegionAvail().x - suffix_width)));
     if (secondsInput("##offset", &it->second, &source->timeline_offset)) status_.clear();
     ImGui::SetItemTooltip("Alignment offset in seconds. Workspace time = route time + offset.");
+    ImGui::SameLine();
+    ImGui::TextDisabled("s");
   }
+  ImGui::Unindent(ImGui::GetStyle().FramePadding.x);
   ImGui::TableSetColumnIndex(1);
   // A ruler and one continuous clip make the route read like a video editing track.
   auto *ruler_draw = ImGui::GetWindowDrawList();

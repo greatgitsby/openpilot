@@ -101,6 +101,22 @@ bool selectable(const char *label, bool selected, ImGuiSelectableFlags flags, co
   return clicked;
 }
 
+bool elidedSelectable(const char *id, const std::string &text, bool selected, const ImVec2 &size) {
+  ImGui::PushID(id);
+  const ImVec2 bounds(size.x > 0 ? size.x : ImGui::GetContentRegionAvail().x,
+                      size.y > 0 ? size.y : ImGui::GetFrameHeight());
+  const bool clicked = selectable("##label", selected, ImGuiSelectableFlags_NoPadWithHalfSpacing, bounds);
+  if (ImGui::IsItemVisible()) {
+    ImRect rect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    rect.Min.x += ImGui::GetStyle().FramePadding.x;
+    rect.Max.x -= ImGui::GetStyle().FramePadding.x;
+    if (rect.GetWidth() > 0)
+      drawElidedText(ImGui::GetWindowDrawList(), rect, text, ImGui::GetColorU32(selected ? palette().text_selected : palette().text));
+  }
+  ImGui::PopID();
+  return clicked;
+}
+
 bool comboBox(const char *label, int *index, const std::vector<std::string> &items) {
   bool changed = false;
   const int count = (int)items.size();
