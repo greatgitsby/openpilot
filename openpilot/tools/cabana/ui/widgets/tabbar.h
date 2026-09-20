@@ -26,7 +26,6 @@ public:
   void moveTab(int from, int to);
   void setAutoHide(bool hide) { auto_hide_ = hide; }
   void setTabsClosable(bool closable) { tabs_closable_ = closable; }  // off by default
-  void setUsesScrollButtons(bool use) { scroll_buttons_ = use; }
   void draw();
 
   Observable<int> currentChanged;
@@ -41,5 +40,4 @@ private:
   bool select_current_ = false;  // programmatic current change, applied at the next draw()
   bool auto_hide_ = false;
   bool tabs_closable_ = false;
-  bool scroll_buttons_ = false;
 };

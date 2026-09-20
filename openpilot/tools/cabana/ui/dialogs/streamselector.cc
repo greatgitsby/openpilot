@@ -13,6 +13,7 @@
 #include "tools/cabana/ui/dialogs/filedialog.h"
 #include "tools/cabana/ui/dialogs/messagebox.h"
 #include "tools/cabana/ui/util.h"
+#include "tools/cabana/ui/widgets/scrollabletabbar.h"
 #include "tools/cabana/utils/util.h"
 
 void OpenReplayWidget::draw() {
@@ -266,7 +267,7 @@ void StreamSelector::draw() {
   const ImVec4 pane = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
   ImGui::PushStyleColor(ImGuiCol_ChildBg, pane);
   ImGui::PushStyleColor(ImGuiCol_TabSelected, pane);
-  if (ImGui::BeginTabBar("streams")) {
+  if (beginScrollableTabBar("streams")) {
     for (auto &w : widgets_) {
       // a fresh dialog every time, so the first tab is always the current one
       ImGuiTabItemFlags tab_flags = (first_frame_ && w == widgets_.front()) ? ImGuiTabItemFlags_SetSelected : 0;
@@ -278,7 +279,7 @@ void StreamSelector::draw() {
         ImGui::EndTabItem();
       }
     }
-    ImGui::EndTabBar();
+    endScrollableTabBar();
   }
   ImGui::PopStyleColor(2);
   first_frame_ = false;

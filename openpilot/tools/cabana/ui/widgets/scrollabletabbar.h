@@ -6,3 +6,6 @@
 // imgui's small arrows. Use like BeginTabBar/EndTabBar, the fitting policy is always scroll
 bool beginScrollableTabBar(const char *str_id, ImGuiTabBarFlags flags = 0);
 void endScrollableTabBar();
+
+// Cabana's workspace tab groups, using the same overflow controls as widget tabs.
+void scrollableDockSpace(ImGuiID id, const ImVec2 &size);

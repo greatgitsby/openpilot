@@ -40,7 +40,6 @@ void ElidedLabel::draw(float width) {
 }
 
 DetailWidget::DetailWidget(ChartsWidget *charts) : charts_(charts) {
-  tabbar_.setUsesScrollButtons(true);
   tabbar_.setAutoHide(true);
   tabbar_.setTabsClosable(true);
   connections_.push_back(tabbar_.currentChanged.connect([this](int index) {

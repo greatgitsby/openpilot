@@ -23,6 +23,7 @@
 #include "tools/cabana/ui/tools/findsignal.h"
 #include "tools/cabana/ui/tools/findsimilarbits.h"
 #include "tools/cabana/ui/util.h"
+#include "tools/cabana/ui/widgets/scrollabletabbar.h"
 #include "tools/cabana/utils/export.h"
 #include "tools/cabana/utils/util.h"
 #include "tools/replay/py_downloader.h"
@@ -937,7 +938,7 @@ void MainWindow::drawDockspace() {
   const float min_panel_width = (SignalView::minimumWidth() + (ImGui::GetStyle().WindowPadding.x + ImGui::GetStyle().WindowBorderSize) * 2) * 0.5f;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(min_panel_width, ImGui::GetStyle().WindowMinSize.y));
   const ImVec2 dock_origin = ImGui::GetCursorScreenPos();
-  ImGui::DockSpace(dock_id, dock_size);
+  scrollableDockSpace(dock_id, dock_size);
   // Resolve the insertion point from restored docking too, not only a freshly built layout.
   ImGuiID insertion_dock = 0;
   if (charts_widget_) for (const auto &name : charts_widget_->windowNames()) {

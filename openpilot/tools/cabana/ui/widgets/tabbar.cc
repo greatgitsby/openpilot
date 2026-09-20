@@ -58,7 +58,7 @@ void TabBar::draw() {
   if (auto_hide_ && count() < 2) return;  // auto hidden with fewer than two tabs
   ImGui::PushID(this);
   // no default tooltip, the tabs carry their own
-  if (!(scroll_buttons_ ? beginScrollableTabBar("##tabbar", ImGuiTabBarFlags_NoTooltip) : ImGui::BeginTabBar("##tabbar", ImGuiTabBarFlags_NoTooltip))) {
+  if (!beginScrollableTabBar("##tabbar", ImGuiTabBarFlags_NoTooltip)) {
     ImGui::PopID();
     return;
   }
@@ -82,7 +82,7 @@ void TabBar::draw() {
     tabContextMenu(i);
     if (!open) close_index = i;
   }
-  scroll_buttons_ ? endScrollableTabBar() : ImGui::EndTabBar();
+  endScrollableTabBar();
   ImGui::PopID();
   if (close_index >= 0) tabCloseRequested(close_index);
 }
