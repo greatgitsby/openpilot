@@ -117,8 +117,6 @@ workspace tab. Drag a tab to dock it beside another widget, stack tabs, or float
 separate window. **Add widget** creates charts or opens a browser, inspector, or available
 camera for the selected source. **View → Arrange widgets** restores an automatic arrangement.
 The Default preset starts with message browsers, an empty chart, and an available camera.
-Double-click a chart tab to rename it; leave the title blank to restore its automatic name.
-Overflowing tabs use the same chevron buttons and wheel scrolling in docked and floating groups.
 
 Use **Sources → Add route or live source...** to open additional sources without replacing
 existing ones. Select or rename a source in **Sources**. Browsers and CAN definitions belong
@@ -209,9 +207,5 @@ route is selected. The fixture includes two CAN messages per route for checking 
 inspector selections, plus engagement and alert intervals for the timeline ribbons.
 
 ## Additional Information
-
-The headless tab overflow regression covers widget tabs, docked groups, and floating
-groups. Build it with `scons openpilot/tools/cabana/tests/test_tab_overflow`, then run
-`openpilot/tools/cabana/tests/test_tab_overflow`.
 
 For more information, see the [openpilot wiki](https://github.com/commaai/openpilot/wiki/Cabana)

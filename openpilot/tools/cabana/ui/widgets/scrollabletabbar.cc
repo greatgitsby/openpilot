@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "imgui_internal.h"
 
@@ -44,22 +45,33 @@ void drawScrollButtons(ImGuiTabBar *tab_bar) {
   ImGui::SetCursorScreenPos(backup_pos);
 }
 
+struct ScrollableTabBar { ImGuiTabBar *tab_bar; bool overflowing; };
+std::vector<ScrollableTabBar> scrollable_tab_bars;
 }  // namespace
 
 bool beginScrollableTabBar(const char *str_id, ImGuiTabBarFlags flags) {
-  return ImGui::BeginTabBar(str_id, flags);
+  // the buttons take their room from the bar when the tabs overflowed last frame
+  ImGuiWindow *window = ImGui::GetCurrentWindow();
+  ImGuiTabBar *prev_tab_bar = ImGui::TabBarFindByID(window->GetID(str_id));
+  const bool overflowing = prev_tab_bar && prev_tab_bar->WidthAllTabsIdeal > prev_tab_bar->BarRect.GetWidth() + 1.0f;
+  const float backup_work_max_x = window->WorkRect.Max.x;
+  if (overflowing) window->WorkRect.Max.x -= scrollButtonsWidth();
+  const bool open = ImGui::BeginTabBar(str_id, flags | ImGuiTabBarFlags_FittingPolicyScroll | ImGuiTabBarFlags_NoTabListScrollingButtons);
+  window->WorkRect.Max.x = backup_work_max_x;
+  if (open) scrollable_tab_bars.push_back({ImGui::GetCurrentTabBar(), overflowing});
+  return open;
 }
 
-void endScrollableTabBar() { ImGui::EndTabBar(); }
+void endScrollableTabBar() {
+  ImGui::EndTabBar();
+  const ScrollableTabBar bar = scrollable_tab_bars.back();
+  scrollable_tab_bars.pop_back();
+  if (!bar.overflowing) return;
+  drawScrollButtons(bar.tab_bar);
 
-void layoutTabScrollButtons(ImGuiTabBar *tab_bar) {
-  tab_bar->BarRect.Max.x = std::max(tab_bar->BarRect.Min.x + 1.0f, tab_bar->BarRect.Max.x - scrollButtonsWidth());
-  drawScrollButtons(tab_bar);
-}
-
-void scrollTabBarWithWheel(ImGuiTabBar *tab_bar) {
   // the wheel scrolls the tabs while the pointer is over them: a two finger swipe on a touchpad, or a
   // mouse wheel like a window that only scrolls sideways. Owning the wheel keeps the window behind still
+  ImGuiTabBar *tab_bar = bar.tab_bar;
   if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(tab_bar->BarRect.Min, tab_bar->BarRect.Max)) {
     ImGui::SetKeyOwner(ImGuiKey_MouseWheelX, tab_bar->ID);
     ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, tab_bar->ID);

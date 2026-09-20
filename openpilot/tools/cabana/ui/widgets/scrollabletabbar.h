@@ -6,8 +6,3 @@
 // imgui's small arrows. Use like BeginTabBar/EndTabBar, the fitting policy is always scroll
 bool beginScrollableTabBar(const char *str_id, ImGuiTabBarFlags flags = 0);
 void endScrollableTabBar();
-
-struct ImGuiTabBar;
-// Called during ImGui tab layout for both widget and native docking tab bars.
-void layoutTabScrollButtons(ImGuiTabBar *tab_bar);
-void scrollTabBarWithWheel(ImGuiTabBar *tab_bar);
