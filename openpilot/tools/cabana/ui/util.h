@@ -151,6 +151,9 @@ constexpr float CHECKBOX_SIZE = 16.0f;
 // the next items on the line are right aligned as a block `width` wide
 void alignRight(float width);
 
+// Horizontal divider with a resize cursor and grip; returns the vertical drag delta.
+float horizontalResizeHandle(const char *id, const ImVec2 &size);
+
 // text drawn inside a rect; align 0 = left/top, 0.5 = center, 1 = right/bottom. font_size 0: the current size
 void drawText(ImDrawList *dl, const ImRect &rect, const char *text, ImU32 col, ImFont *font = nullptr,
               float font_size = 0.0f, const ImVec2 &align = ImVec2(0.5f, 0.5f));

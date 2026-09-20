@@ -458,6 +458,23 @@ void alignRight(float width) {
   ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, ImGui::GetContentRegionAvail().x - width));
 }
 
+float horizontalResizeHandle(const char *id, const ImVec2 &size) {
+  ImGui::InvisibleButton(id, size);
+  const bool active = ImGui::IsItemActive();
+  const bool hovered = ImGui::IsItemHovered();
+  if (hovered || active) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+  ImGui::SetItemTooltip("Drag to resize the timeline");
+  const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+  const float y = (min.y + max.y) * .5f;
+  auto *draw = ImGui::GetWindowDrawList();
+  draw->AddLine(ImVec2(min.x, y), ImVec2(max.x, y), ImGui::GetColorU32(ImGuiCol_Separator));
+  const float half_grip = std::min(20.f, size.x * .25f);
+  const float x = (min.x + max.x) * .5f;
+  draw->AddLine(ImVec2(x - half_grip, y), ImVec2(x + half_grip, y),
+                ImGui::GetColorU32(active || hovered ? palette().accent : palette().text_inactive), 2.f);
+  return active ? ImGui::GetIO().MouseDelta.y : 0.f;
+}
+
 void drawText(ImDrawList *dl, const ImRect &rect, const char *text, ImU32 col, ImFont *font, float font_size, const ImVec2 &align) {
   if (font == nullptr) font = ImGui::GetFont();
   if (font_size <= 0.0f) font_size = ImGui::GetFontSize();

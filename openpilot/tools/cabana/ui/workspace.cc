@@ -65,6 +65,8 @@ void MainWindow::captureWorkspace() {
   doc["ui"] = inistate::save();
   doc["timeline"] = timeline_.snapshot();
   doc["timeline_visible"] = playback_visible_;
+  doc["timeline_expanded"] = playback_expanded_;
+  doc["timeline_height"] = playback_height_;
   Json::array source_docs, widgets;
   for (auto &view : source_views_) {
     auto *stream = view->stream.get();
@@ -150,6 +152,8 @@ void MainWindow::applyWorkspace(const Json &saved_document) {
   default_workspace_ = document["default"].bool_value();
   include_routes_ = document["include_routes"].bool_value();
   playback_visible_ = document["timeline_visible"].is_null() || document["timeline_visible"].bool_value();
+  playback_expanded_ = document["timeline_expanded"].is_null() || document["timeline_expanded"].bool_value();
+  playback_height_ = std::clamp(document["timeline_height"].number_value(), 0., 10000.);
   camera_panes_.clear();
   for (auto &view : source_views_) {
     SourceScope scope(view->stream.get());

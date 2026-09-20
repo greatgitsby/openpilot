@@ -823,11 +823,17 @@ void MainWindow::drawPanelToggles() {
   }
 }
 
-void MainWindow::drawPlaybackBar() {
+void MainWindow::drawPlaybackBar(float height) {
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
-  ImGui::BeginChild("playback_bar", ImVec2(0, timeline_.height()), ImGuiChildFlags_AlwaysUseWindowPadding,
+  ImGui::BeginChild("playback_bar", ImVec2(0, height), ImGuiChildFlags_AlwaysUseWindowPadding,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   ImGui::PopStyleVar();
+  // Keep the transport accessible while the route tracks are folded away.
+  const bool expanded = playback_expanded_;
+  if (iconTextButton("toggle_timeline", expanded ? icon::CHEVRON_DOWN : icon::CHEVRON_UP, "Timeline"))
+    playback_expanded_ = !expanded;
+  ImGui::SetItemTooltip(expanded ? "Collapse timeline" : "Expand timeline");
+  ImGui::SameLine();
   const bool loaded = std::any_of(source_views_.begin(), source_views_.end(), [](const auto &view) {
     return !dynamic_cast<DummyStream *>(view->stream.get());
   });
@@ -840,7 +846,7 @@ void MainWindow::drawPlaybackBar() {
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("Load this workspace's referenced data");
-  } else timeline_.draw();
+  } else timeline_.draw(expanded);
   ImGui::EndChild();
 }
 
@@ -937,7 +943,15 @@ void MainWindow::drawDockspace() {
   // the status bar sits below the dockspace: reserve its height plus the item spacing between the two,
   // otherwise the host window is a few pixels taller than the viewport and scrolls
   const float status_height = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y;
-  const float playback_height = playback_visible_ ? timeline_.height() + ImGui::GetStyle().ItemSpacing.y : 0.0f;
+  const float spacing = ImGui::GetStyle().ItemSpacing.y;
+  const float handle_height = 8.f;
+  const float collapsed_height = ImGui::GetFrameHeight() + ImGui::GetStyle().WindowPadding.y * 2;
+  const float max_drawer_height = std::max(collapsed_height, ImGui::GetContentRegionAvail().y - status_height -
+                                          handle_height - spacing * 2 - ImGui::GetFrameHeight() * 3);
+  const float min_drawer_height = std::min(collapsed_height + 108.f, max_drawer_height);
+  const float desired_height = playback_height_ > 0 ? playback_height_ : timeline_.height();
+  const float drawer_height = playback_expanded_ ? std::clamp(desired_height, min_drawer_height, max_drawer_height) : collapsed_height;
+  const float playback_height = playback_visible_ ? drawer_height + handle_height + spacing * 2 : 0.0f;
   const ImVec2 dock_size(ImGui::GetContentRegionAvail().x, std::max(1.0f, ImGui::GetContentRegionAvail().y - status_height - playback_height));
   const ImGuiID dock_id = ImGui::GetID("cabana_dockspace");
   if (reset_layout_ || ImGui::DockBuilderGetNode(dock_id) == nullptr) {
@@ -1008,7 +1022,14 @@ void MainWindow::drawDockspace() {
     ImGui::SetCursorScreenPos(ImVec2(dock_origin.x, dock_origin.y + dock_size.y + ImGui::GetStyle().ItemSpacing.y));
   }
   ImGui::PopStyleVar();
-  if (playback_visible_) drawPlaybackBar();
+  if (playback_visible_) {
+    const float delta = horizontalResizeHandle("timeline_resize", ImVec2(dock_size.x, handle_height));
+    if (delta != 0) {
+      playback_height_ = std::clamp(drawer_height - delta, min_drawer_height, max_drawer_height);
+      playback_expanded_ = true;
+    }
+    drawPlaybackBar(drawer_height);
+  }
   drawStatusBar();
   ImGui::End();
 }

@@ -16,7 +16,7 @@ public:
   void selectSource(const std::string &id, VisionStreamType camera = VISION_STREAM_NARROW_ROAD);
   const std::string &selectedSource() const { return selected_id_; }
   float height() const;
-  void draw();
+  void draw(bool expanded = true);
   void tick();
   void handleShortcuts();
   json11::Json snapshot() const;

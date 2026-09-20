@@ -300,7 +300,7 @@ void PlaybackTimeline::drawTrack(AbstractStream *source) {
     if (checkBox("Link", &linked)) {
       if (linked) linked_.insert(source->source_id); else linked_.erase(source->source_id);
     }
-    ImGui::SetItemTooltip("Play checked routes together. Use Timeline → Align current positions to synchronize events.");
+    ImGui::SetItemTooltip("Play checked routes together. Use Options → Align current positions to synchronize events.");
     ImGui::SameLine();
     auto [it, inserted] = offset_inputs_.try_emplace(source->source_id, decimal(source->timeline_offset));
     const float suffix_width = ImGui::CalcTextSize("s").x + ImGui::GetStyle().ItemSpacing.x;
@@ -370,9 +370,13 @@ void PlaybackTimeline::drawTrack(AbstractStream *source) {
   ImGui::PopID();
 }
 
-void PlaybackTimeline::draw() {
+void PlaybackTimeline::draw(bool expanded) {
   auto *master = selected();
-  if (!master) { ImGui::TextDisabled("Open a route or connect a live source to begin."); return; }
+  if (!master) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Open a route or connect a live source to begin.");
+    return;
+  }
   SourceScope scope(master);
   std::vector<ToolbarItem> items;
   items.push_back(toolbarAction("prev-frame", icon::REWIND, "Previous camera frame (Left)", [this]() { stepFrame(false); }, !master->liveStreaming()));
@@ -386,8 +390,9 @@ void PlaybackTimeline::draw() {
       if (dropdown::Item(label, nullptr, std::abs(master->getSpeed() - speed) < .001)) setSpeed(speed);
     }
   }));
-  items.push_back(toolbarMenu("timeline-settings", loopApplies(master) ? "Timeline · Loop on" : "Timeline", "Synchronization and loop interval", [this]() { drawSettings(); }));
+  items.push_back(toolbarMenu("timeline-settings", loopApplies(master) ? "Options · Loop on" : "Options", "Synchronization and loop interval", [this]() { drawSettings(); }));
   drawToolbar(items, 3);
+  if (!expanded) return;
   if (!status_.empty()) {
     ImGui::TextDisabled("%s", status_.c_str());
     if (ImGui::IsItemClicked()) status_.clear();

@@ -144,7 +144,7 @@ private:
   void drawVideoPanel();
   void drawDetailsPanel();
   void showMessage(const MessageId &id);
-  void drawPlaybackBar();
+  void drawPlaybackBar(float height);
   void drawPanelToggles();
   void drawStatusBar();
   void drawWaitDialog();
@@ -163,6 +163,8 @@ private:
   enum { MAX_RECENT_FILES = 15 };
   bool charts_visible_ = true;
   bool playback_visible_ = true;
+  bool playback_expanded_ = true;
+  float playback_height_ = 0;  // Zero uses the initial height for the number of routes.
   bool reset_layout_ = false;
   bool full_screen_ = false;
 #ifndef __APPLE__
