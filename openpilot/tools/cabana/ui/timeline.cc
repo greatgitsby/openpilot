@@ -285,7 +285,9 @@ void PlaybackTimeline::drawTrack(AbstractStream *source) {
   pushBoldFont();
   if (elidedSelectable("source", label, active)) selectSource(source->source_id);
   popBoldFont();
-  ImGui::SetItemTooltip("%s\n%s\nClick to control this source. Space: play/pause. Arrow keys: previous/next camera frame.", label.c_str(), source->routeName().c_str());
+  const auto route_name = source->routeName();
+  const auto tooltip = label == route_name || route_name.empty() ? label : label + "\n" + route_name;
+  ImGui::SetItemTooltip("%s\nClick to control this source. Space: play/pause. Arrow keys: previous/next camera frame.", tooltip.c_str());
   ImGui::Indent(ImGui::GetStyle().FramePadding.x);
   pushMonoFont();
   ImGui::TextUnformatted(utils::formatSeconds(source->currentSec(), true, false).c_str());
