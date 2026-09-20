@@ -41,6 +41,8 @@ void readLine(ImGuiContext *, ImGuiSettingsHandler *, void *entry, const char *l
     state->workspace_version = flag;
   } else if (sscanf(line, "LogMessagesVisible=%d", &flag) == 1) {
     state->log_messages_visible = flag != 0;
+  } else if (sscanf(line, "JoystickVisible=%d", &flag) == 1) {
+    state->joystick_visible = flag != 0;
   } else if (sscanf(line, "ChartsVisible=%d", &flag) == 1) {
     state->charts_visible = flag != 0;
   } else if (sscanf(line, "DetailsVisible=%d", &flag) == 1) {
@@ -69,6 +71,7 @@ void writeAll(ImGuiContext *, ImGuiSettingsHandler *handler, ImGuiTextBuffer *bu
   buf->appendf("VideoVisible=%d\n", main_window.video_visible ? 1 : 0);
   buf->appendf("PlaybackVisible=%d\n", main_window.playback_visible ? 1 : 0);
   buf->appendf("ChartsVisible=%d\n", main_window.charts_visible ? 1 : 0);
+  buf->appendf("JoystickVisible=%d\n", main_window.joystick_visible ? 1 : 0);
   buf->append("\n");
 }
 
@@ -168,7 +171,8 @@ std::string saveWindowGeometry() {
     buf.appendf("Pos=%d,%d\n", main_window.pos[0], main_window.pos[1]);
     buf.appendf("Size=%d,%d\n", main_window.size[0], main_window.size[1]);
   }
-  buf.appendf("Maximized=%d\nWorkspaceVersion=4\n\n", main_window.maximized ? 1 : 0);
+  buf.appendf("Maximized=%d\nWorkspaceVersion=4\nJoystickVisible=%d\n\n",
+              main_window.maximized ? 1 : 0, main_window.joystick_visible ? 1 : 0);
   return buf.c_str();
 }
 

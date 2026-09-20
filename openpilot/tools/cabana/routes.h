@@ -10,6 +10,7 @@ namespace routes {
 
 struct DeviceInfo {
   std::string dongle_id;
+  std::string alias;
 };
 
 struct RouteInfo {

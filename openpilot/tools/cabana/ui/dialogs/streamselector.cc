@@ -181,24 +181,50 @@ std::unique_ptr<AbstractStream> OpenPandaWidget::open() {
   }
 }
 
+OpenDeviceWidget::OpenDeviceWidget() {
+  refreshDevices();
+}
+
+void OpenDeviceWidget::refreshDevices() {
+  if (loading_) return;
+  loading_ = true;
+  error_.clear();
+  const std::string selected = devices_.empty() ? "" : devices_[device_index_].dongle_id;
+  routes::fetchDevices([this, selected, alive = std::weak_ptr<bool>(alive_)](std::vector<routes::DeviceInfo> devices, bool success, int error_code) {
+    utils::runOnMainThread(utils::guarded(alive.lock(), [this, selected, devices = std::move(devices), success, error_code]() {
+      loading_ = false;
+      devices_ = std::move(devices);
+      device_labels_.clear();
+      device_index_ = 0;
+      for (int i = 0; i < devices_.size(); ++i) {
+        const auto &device = devices_[i];
+        device_labels_.push_back(device.alias.empty() ? device.dongle_id : device.alias + " (" + device.dongle_id + ")");
+        if (device.dongle_id == selected) device_index_ = i;
+      }
+      if (!success) error_ = error_code == 401 ? "Sign in with python -m openpilot.tools.lib.auth, then refresh." : "Could not load devices. Try refreshing.";
+      else if (devices_.empty()) error_ = "No devices linked to your account.";
+    }));
+  });
+}
+
 void OpenDeviceWidget::draw() {
-  ImGui::RadioButton("MSGQ", &mode_, 0);
-  ImGui::RadioButton("ZMQ", &mode_, 1);
-  // the radio buttons are the label column, the ip address is the field column
-  const float label_width = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-                            std::max(ImGui::CalcTextSize("MSGQ").x, ImGui::CalcTextSize("ZMQ").x) +
-                            ImGui::GetStyle().ItemInnerSpacing.x;
-  ImGui::SameLine(label_width);
-  ImGui::BeginDisabled(mode_ != 1);
-  ImGui::SetNextItemWidth(-1.0f);
-  validatedText("##ip", &ip_address_, validateIpAddress, "Enter device IP address", ipValidator);
+  ImGui::RadioButton("Local messages", &mode_, 0);
+  ImGui::SameLine();
+  ImGui::RadioButton("Athena", &mode_, 1);
+  if (mode_ != 1) return;
+  ImGui::BeginDisabled(loading_);
+  ImGui::SetNextItemWidth(-(toolbarButtonWidth("Refresh") + ImGui::GetStyle().ItemSpacing.x));
+  comboBox("##athena_device", &device_index_, device_labels_);
+  ImGui::SameLine();
+  if (ImGui::Button("Refresh")) refreshDevices();
   ImGui::EndDisabled();
+  if (loading_) ImGui::TextUnformatted("Loading devices...");
+  else if (!error_.empty()) ImGui::TextWrapped("%s", error_.c_str());
 }
 
 std::unique_ptr<AbstractStream> OpenDeviceWidget::open() {
-  std::string ip = ip_address_.empty() ? "127.0.0.1" : ip_address_;
-  bool msgq = mode_ == 0;
-  return std::make_unique<DeviceStream>(msgq ? "" : ip);
+  if (!openEnabled()) return nullptr;
+  return std::make_unique<DeviceStream>(mode_ == 0 ? "" : devices_[device_index_].dongle_id);
 }
 
 #ifdef __linux__

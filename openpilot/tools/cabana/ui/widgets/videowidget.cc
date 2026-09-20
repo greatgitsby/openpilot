@@ -17,6 +17,7 @@ extern "C" {
 
 #include "tools/cabana/settings.h"
 #include "tools/cabana/core/source.h"
+#include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/ui/threadpool.h"
 #include "tools/cabana/ui/util.h"
 #include "tools/cabana/utils/strings.h"
@@ -108,7 +109,9 @@ static bool decodeJpeg(const uint8_t *data, size_t size, RgbImage *out) {
 VideoWidget::VideoWidget(AbstractStream *source, VisionStreamType type)
     : source_(source ? source : can), stream_type_(type) {
   auto *replay = dynamic_cast<ReplayStream *>(source_);
-  cam_widget_ = std::make_unique<StreamCameraView>(replay ? replay->cameraEndpoint() : "camerad", type);
+  auto *device = dynamic_cast<DeviceStream *>(source_);
+  cam_widget_ = std::make_unique<StreamCameraView>(replay ? replay->cameraEndpoint() :
+    device && device->remote() ? device->cameraServer() : "camerad", type);
   connections_.push_back(cam_widget_->clicked.connect([this]() { if (togglePlayback) togglePlayback(); else source_->pause(!source_->isPaused()); }));
   if (replay) {
     connections_.push_back(cam_widget_->connected.connect([replay]() { replay->getReplay()->requestCameraPreview(); }));
@@ -128,6 +131,8 @@ const char *VideoWidget::cameraName(VisionStreamType type) {
 }
 
 std::set<VisionStreamType> VideoWidget::availableStreams(AbstractStream *source) {
+  if (auto *device = dynamic_cast<DeviceStream *>(source); device && device->remote())
+    return {VISION_STREAM_NARROW_ROAD, VISION_STREAM_CABIN, VISION_STREAM_WIDE_ROAD};
   std::set<VisionStreamType> result;
   if (auto *replay = dynamic_cast<ReplayStream *>(source)) {
     if (replay->getReplay()->hasFlag(REPLAY_FLAG_NO_VIPC)) return result;
@@ -140,6 +145,7 @@ std::set<VisionStreamType> VideoWidget::availableStreams(AbstractStream *source)
 
 void VideoWidget::drawVideo() {
   SourceScope scope(source_);
+  if (auto *device = dynamic_cast<DeviceStream *>(source_); device && device->remote()) device->setCamera(stream_type_);
   if (dynamic_cast<DummyStream *>(source_)) {
     // An unresolved saved route must never subscribe to the live camerad endpoint.
     cam_widget_->setVisible(false);

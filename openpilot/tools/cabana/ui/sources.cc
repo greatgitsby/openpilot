@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include "tools/cabana/ui/icons.h"
+#include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/ui/util.h"
 
 MainWindow::SourceView &MainWindow::currentSource() {
@@ -49,6 +50,7 @@ std::string MainWindow::panelName(const char *kind) const {
 }
 
 void MainWindow::removeSource(const std::string &id) {
+  if (joystick_widget_) joystick_widget_->stop();
   ++source_load_generation_[id];
   if (charts_widget_) charts_widget_->removeSource(id);
   camera_panes_.erase(std::remove_if(camera_panes_.begin(), camera_panes_.end(), [&](const auto &p) { return p.source == id; }), camera_panes_.end());
@@ -75,6 +77,11 @@ void MainWindow::addCamera(const std::string &source_id, VisionStreamType type, 
   auto *source = sourceById(source_id);
   if (!source) return;
   SourceScope scope(source);
+  // A remote connection transmits one camera at a time. Replace its existing pane.
+  if (auto *device = dynamic_cast<DeviceStream *>(source); device && device->remote()) {
+    camera_panes_.erase(std::remove_if(camera_panes_.begin(), camera_panes_.end(),
+      [&](const auto &pane) { return pane.source == source_id; }), camera_panes_.end());
+  }
   CameraPane pane;
   pane.id = id;
   if (pane.id.empty()) do {

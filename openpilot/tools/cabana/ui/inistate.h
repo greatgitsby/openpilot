@@ -20,6 +20,7 @@ struct MainWindowState {
   bool charts_visible = true;
   bool video_visible = true;
   bool playback_visible = true;
+  bool joystick_visible = true;
 };
 
 extern MainWindowState main_window;

@@ -21,6 +21,7 @@
 #include "tools/cabana/ui/widgets/detailwidget.h"
 #include "tools/cabana/ui/widgets/messageswidget.h"
 #include "tools/cabana/ui/widgets/videowidget.h"
+#include "tools/cabana/ui/widgets/joystickwidget.h"
 
 struct GLFWwindow;
 
@@ -155,6 +156,7 @@ private:
   std::unique_ptr<AbstractStream> startup_stream_;  // opened on the first frame
   StreamLoader startup_loader_;  // run on a worker after the first frame
   DummyStream dummy_;
+  std::unique_ptr<JoystickWidget> joystick_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;
   SettingsDialog settings_dialog_;
@@ -166,6 +168,7 @@ private:
   bool playback_visible_ = true;
   bool playback_expanded_ = true;
   float playback_height_ = 0;  // Zero uses the initial height for the number of routes.
+  bool joystick_visible_ = true;
   bool reset_layout_ = false;
   bool full_screen_ = false;
 #ifndef __APPLE__

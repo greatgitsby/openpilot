@@ -16,6 +16,7 @@
 #include "json11/json11.hpp"
 #include "tools/cabana/commands.h"
 #include "tools/cabana/settings.h"
+#include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/ui/app.h"
 #include "tools/cabana/ui/dialogs/filedialog.h"
 #include "tools/cabana/ui/dialogs/messagebox.h"
@@ -36,12 +37,15 @@ constexpr const char *VIDEO_PANEL = "###VideoPanel";
 constexpr const char *CENTER_PANEL = "CAN Details###CenterWidget";
 constexpr const char *CHARTS_PANEL = "Charts###ChartsPanel";
 constexpr const char *LOG_MESSAGES_PANEL = "openpilot Messages###LogMessagesPanel";
+constexpr const char *JOYSTICK_WINDOW = "Joystick###JoystickWindow";
 }  // namespace
 
 MainWindow::MainWindow(GLFWwindow *window, std::unique_ptr<AbstractStream> stream, StreamLoader stream_loader,
                        const std::string &dbc_file, const std::string &layout) : startup_layout_(layout), window_(window) {
   can = &dummy_;
   reset_layout_ = true;
+  joystick_visible_ = inistate::main_window.joystick_visible;
+  joystick_widget_ = std::make_unique<JoystickWidget>();
   loadFingerprints();
   std::error_code ec;
   for (const auto &entry : std::filesystem::directory_iterator(OPENDBC_FILE_PATH, ec)) {
@@ -170,6 +174,7 @@ void MainWindow::drawMenuBar() {
   if (dropdown::BeginMenu("View")) {
     if (dropdown::Item("Full Screen", shortcut("F11").c_str())) toggleFullScreen();
     ImGui::Separator();
+    dropdown::Item("Joystick", nullptr, &joystick_visible_);
     dropdown::Item("Timeline", nullptr, &playback_visible_);
     if (dropdown::Item("Arrange widgets")) reset_layout_ = true;
     dropdown::EndMenu();
@@ -353,6 +358,7 @@ MainWindow::~MainWindow() {
 void MainWindow::releaseStream() {
   camera_panes_.clear();
   charts_widget_.reset();
+  joystick_widget_->stop();
   for (auto &view : source_views_) {
     SourceScope scope(view->stream.get());
     view->tools.clear();
@@ -390,6 +396,7 @@ void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::s
 }
 
 void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
+  if (joystick_widget_) joystick_widget_->stop();
   std::string id = source_to_replace_;
   source_to_replace_.clear();
   if (id.empty() && dynamic_cast<ReplayStream *>(stream.get())) {
@@ -693,6 +700,7 @@ void MainWindow::finishClose() {
   state.workspace_version = 4;
   state.log_messages_visible = currentSource().logs_visible;
   state.charts_visible = charts_visible_;
+  state.joystick_visible = joystick_visible_;
   state.details_visible = currentSource().inspector_visible;
   state.messages_visible = currentSource().messages_visible;
   state.video_visible = !camera_panes_.empty();
@@ -981,6 +989,7 @@ void MainWindow::drawDockspace() {
     }
     if (charts_widget_) for (const auto &name : charts_widget_->windowNames()) ImGui::DockBuilderDockWindow(name.c_str(), views);
     ImGui::DockBuilderGetNode(views)->LocalFlags &= ~ImGuiDockNodeFlags_CentralNode;
+    ImGui::DockBuilderDockWindow(JOYSTICK_WINDOW, details);
     ImGui::DockBuilderFinish(dock_id);
     setDefaultPanelDock(views);
     reset_layout_ = false;
@@ -1226,6 +1235,16 @@ void MainWindow::draw() {
     selected_source_ = selected->source_id;
     can = selected;
   }
+  bool joystick_drawn = false;
+  if (joystick_visible_) {
+    setNextPanelClass();
+    if (beginPanel(JOYSTICK_WINDOW, &joystick_visible_) && joystick_widget_) {
+      joystick_widget_->draw();
+      joystick_drawn = joystick_visible_;
+    }
+    ImGui::End();
+  }
+  if (!joystick_drawn && joystick_widget_) joystick_widget_->stop();
 
   for (auto &source : source_views_) {
     SourceScope scope(source->stream.get());
