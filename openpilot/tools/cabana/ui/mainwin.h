@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -79,6 +80,7 @@ private:
   json11::Json::array workspaces_;
   int active_workspace_ = 0;
   std::string pending_workspace_layout_;
+  std::map<std::string, json11::Json> pending_workspace_inspectors_;
 
   void saveSessionState();
   void restoreSessionState();

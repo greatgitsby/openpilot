@@ -375,6 +375,7 @@ void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::s
 void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
   std::string id = source_to_replace_;
   source_to_replace_.clear();
+  if (id.empty() && dynamic_cast<DummyStream *>(sourceById(selected_source_))) id = selected_source_;
   if (id.empty()) for (const auto &view : source_views_) {
     if (dynamic_cast<DummyStream *>(view->stream.get())) { id = view->stream->source_id; break; }
   }
@@ -736,13 +737,18 @@ void MainWindow::restoreSessionState() {
       pending_workspace_layout_.clear();
     }
   }
-  if (settings.recent_dbc_file.empty() || dbc()->nonEmptyDBCCount() == 0) return;
-
-  if (dbc()->nonEmptyDBCFiles().front()->filename != settings.recent_dbc_file) return;
-
-  if (!settings.selected_msg_ids.empty()) {
-    currentSource().inspector.ensureDetailWidget()->restoreTabs(settings.active_msg_id, settings.selected_msg_ids);
-  }
+  if (dynamic_cast<DummyStream *>(can) || dbc()->nonEmptyDBCCount() == 0) return;
+  auto pending = pending_workspace_inspectors_.find(can->source_id);
+  if (pending == pending_workspace_inspectors_.end()) return;
+  std::vector<std::string> ids;
+  for (const auto &id : pending->second["messages"].array_items()) ids.push_back(id.string_value());
+  // DBC file changes can arrive separately. Keep unresolved tabs pending until
+  // every saved message has a definition, including messages on other buses.
+  if (!std::all_of(ids.begin(), ids.end(), [](const auto &id) { return dbc()->msg(MessageId::fromString(id)) != nullptr; })) return;
+  const auto active = pending->second["active"].string_value();
+  if (!active.empty() && !dbc()->msg(MessageId::fromString(active))) return;
+  if (!ids.empty()) currentSource().inspector.ensureDetailWidget()->restoreTabs(active, ids);
+  pending_workspace_inspectors_.erase(pending);
 }
 
 void MainWindow::handleShortcuts() {
@@ -789,7 +795,19 @@ void MainWindow::drawPlaybackBar() {
   ImGui::BeginChild("playback_bar", ImVec2(0, timeline_.height()), ImGuiChildFlags_AlwaysUseWindowPadding,
                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
   ImGui::PopStyleVar();
-  timeline_.draw();
+  const bool loaded = std::any_of(source_views_.begin(), source_views_.end(), [](const auto &view) {
+    return !dynamic_cast<DummyStream *>(view->stream.get());
+  });
+  const auto &saved_sources = workspaces_.empty() ? json11::Json::array{} : workspaces_[active_workspace_]["sources"].array_items();
+  const bool has_references = std::any_of(saved_sources.begin(), saved_sources.end(), [](const auto &source) {
+    return !source["route"].string_value().empty();
+  });
+  if (!loaded && has_references) {
+    if (iconTextButton("open_saved_routes", icon::PLUS_LG, "Open saved routes")) openWorkspaceRoutes(workspaces_[active_workspace_]);
+    ImGui::SameLine();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Load this workspace's referenced data");
+  } else timeline_.draw();
   ImGui::EndChild();
 }
 

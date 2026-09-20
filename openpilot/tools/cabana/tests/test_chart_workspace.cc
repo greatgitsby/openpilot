@@ -1,5 +1,6 @@
 #include "common/tests/native_test.h"
 #include "tools/cabana/ui/chart/layout.h"
+#include "tools/cabana/ui/workspace.h"
 
 using json11::Json;
 
@@ -57,6 +58,43 @@ void test_chart_workspaces() {
   REQUIRE(layout->tabs.size() == 2);
   REQUIRE(layout->tabs[0][0].signals[0].source_id.empty());
   REQUIRE(layout->tabs[1][0].widget_id.empty());
+}
+
+// Shared source IDs may collide with routes already open in the receiving app.
+{
+  const Json document = Json::object{
+    {"cabana_workspace", 2}, {"name", "Comparison"}, {"ui", ""},
+    {"sources", Json::array{Json::object{{"id", "source1"}, {"label", "Saved route"}, {"route", "route-b"},
+      {"inspector", Json::object{{"active", "0:123"}, {"messages", Json::array{"0:123", "1:456"}}}}}}},
+    {"widgets", Json::array{Json::object{{"kind", "inspector"}, {"source", "source1"}},
+      Json::object{{"kind", "camera"}, {"id", "camera1"}, {"source", "source1"}, {"camera", 0}, {"crop", true}}}},
+    {"timeline", Json::object{{"selected", "source1"}, {"linked_master", "source1"}, {"loop_source", "source1"},
+      {"linked", Json::array{"source1"}}, {"positions", Json::object{{"source1", 12}}}, {"offsets", Json::object{{"source1", -3}}}}},
+    {"charts", Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", Json::array{
+      Json::object{{"id", "1"}, {"type", 0}, {"signals", Json::array{
+        Json::object{{"source", "source1"}, {"path", "/carState/vEgo"}}}}}}}}}};
+  REQUIRE(cabana::validWorkspace(document));
+  const auto rebound = cabana::remapWorkspaceSource(document, "source1", "source3");
+  REQUIRE(cabana::validWorkspace(rebound));
+  REQUIRE(rebound["sources"][0]["id"] == "source3");
+  REQUIRE(rebound["sources"][0]["route"] == "route-b");
+  REQUIRE(rebound["sources"][0]["inspector"] == document["sources"][0]["inspector"]);
+  REQUIRE(rebound["widgets"][0]["source"] == "source3");
+  REQUIRE(rebound["widgets"][1]["crop"].bool_value());
+  REQUIRE(rebound["widgets"][1]["id"] == "camera1");
+  for (const char *key : {"selected", "linked_master", "loop_source"}) REQUIRE(rebound["timeline"][key] == "source3");
+  REQUIRE(rebound["timeline"]["linked"][0] == "source3");
+  REQUIRE(rebound["timeline"]["offsets"]["source3"] == -3);
+  REQUIRE(rebound["timeline"]["positions"]["source3"] == 12);
+  REQUIRE(rebound["timeline"]["positions"]["source1"].is_null());
+  REQUIRE(rebound["charts"]["charts"][0]["signals"][0]["source"] == "source3");
+  auto bad = rebound.object_items();
+  auto sources = rebound["sources"].array_items();
+  auto source = sources[0].object_items();
+  source["inspector"] = Json::object{{"active", ""}, {"messages", Json::array{42}}};
+  sources[0] = source;
+  bad["sources"] = sources;
+  REQUIRE(!cabana::validWorkspace(bad));
 }
 
 }

@@ -140,6 +140,22 @@ std::set<VisionStreamType> VideoWidget::availableStreams(AbstractStream *source)
 
 void VideoWidget::drawVideo() {
   SourceScope scope(source_);
+  if (dynamic_cast<DummyStream *>(source_)) {
+    // An unresolved saved route must never subscribe to the live camerad endpoint.
+    cam_widget_->setVisible(false);
+    ImGui::BeginChild("unloaded_video", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    const char *title = "Source not loaded";
+    const char *hint = "Open saved routes or choose a route for this source.";
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + std::max(0.f, (avail.y - ImGui::GetTextLineHeightWithSpacing() * 2) / 2));
+    for (const char *text : {title, hint}) {
+      ImGui::SetCursorPosX(ImGui::GetStyle().WindowPadding.x + std::max(0.f, (avail.x - ImGui::CalcTextSize(text).x) / 2));
+      ImGui::TextDisabled("%s", text);
+    }
+    ImGui::EndChild();
+    return;
+  }
   const ImVec2 origin = ImGui::GetCursorScreenPos();
   const ImVec2 avail = ImGui::GetContentRegionAvail();
   // Submit the overlay first so it owns clicks, then composite it above the video.
@@ -158,7 +174,7 @@ void VideoWidget::drawVideo() {
 }
 
 void VideoWidget::setVisible(bool visible) {
-  cam_widget_->setVisible(visible);
+  cam_widget_->setVisible(visible && !dynamic_cast<DummyStream *>(source_));
 }
 
 void Slider::draw(double thumbnail_time) {

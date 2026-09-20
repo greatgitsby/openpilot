@@ -30,7 +30,6 @@ void MainWindow::initializeWorkspaces() {
     captureWorkspace();
   } else {
     applyWorkspace(workspaces_[active_workspace_]);
-    if (include_routes_) openWorkspaceRoutes(workspaces_[active_workspace_]);
   }
 }
 
@@ -65,6 +64,16 @@ void MainWindow::captureWorkspace() {
         for (const char *key : {"route", "data_dir", "dbcs"}) if (!saved[key].is_null()) source[key] = saved[key];
       }
     }
+    if (auto pending = pending_workspace_inspectors_.find(stream->source_id); pending != pending_workspace_inspectors_.end()) {
+      source["inspector"] = pending->second;
+    } else if (auto *detail = view->inspector.getDetailWidget()) {
+      auto [active, ids] = detail->serializeMessageIds();
+      Json::array messages;
+      for (const auto &id : ids) messages.push_back(id);
+      source["inspector"] = Json::object{{"active", active}, {"messages", messages}};
+    } else {
+      source["inspector"] = Json::object{{"active", ""}, {"messages", Json::array{}}};
+    }
     source_docs.push_back(source);
     auto widget = [&](const char *kind, bool visible) {
       if (visible) widgets.push_back(Json::object{{"kind", kind}, {"source", stream->source_id}});
@@ -87,13 +96,54 @@ void MainWindow::persistWorkspaces() {
   if (!workspaces_.empty()) settings.workspaces = Json(Json::object{{"active", active_workspace_}, {"workspaces", workspaces_}}).dump();
 }
 
-void MainWindow::applyWorkspace(const Json &document) {
+void MainWindow::applyWorkspace(const Json &saved_document) {
+  auto document = saved_document;
+  // Source IDs are local to a shared file. Preserve unrelated open routes by
+  // giving conflicting saved slots their own identity before applying widgets.
+  for (const auto &saved : saved_document["sources"].array_items()) {
+    const auto old_id = saved["id"].string_value();
+    auto *loaded = sourceById(old_id);
+    auto *replay = dynamic_cast<ReplayStream *>(loaded);
+    if (!loaded || dynamic_cast<DummyStream *>(loaded) || saved["route"].string_value().empty() ||
+        (replay && replay->routeReference() == saved["route"].string_value() &&
+         replay->dataDirectory() == saved["data_dir"].string_value())) continue;
+    std::string new_id;
+    do { new_id = "source" + std::to_string(next_source_id_++); }
+    while (sourceById(new_id) || std::any_of(document["sources"].array_items().begin(), document["sources"].array_items().end(),
+      [&](const auto &s) { return s["id"] == new_id; }));
+    document = cabana::remapWorkspaceSource(document, old_id, new_id);
+    auto remapped = document.object_items();
+    std::string ui = document["ui"].string_value();
+    auto replace = [&](const std::string &from, const std::string &to) {
+      size_t pos = 0;
+      while ((pos = ui.find(from, pos)) != std::string::npos) { ui.replace(pos, from.size(), to); pos += to.size(); }
+    };
+    for (const char *kind : {"can", "logs", "inspector"}) {
+      const auto old_name = std::string("###") + kind + "_" + old_id;
+      const auto new_name = std::string("###") + kind + "_" + new_id;
+      replace(old_name + "]", new_name + "]");
+      char old_hash[16], new_hash[16];
+      snprintf(old_hash, sizeof(old_hash), "0x%08X", ImHashStr(old_name.c_str()));
+      snprintf(new_hash, sizeof(new_hash), "0x%08X", ImHashStr(new_name.c_str()));
+      replace(old_hash, new_hash);
+    }
+    remapped["ui"] = ui;
+    document = remapped;
+  }
+  workspaces_[active_workspace_] = document;
   ++workspace_generation_;
   default_workspace_ = document["default"].bool_value();
   include_routes_ = document["include_routes"].bool_value();
   playback_visible_ = document["timeline_visible"].is_null() || document["timeline_visible"].bool_value();
   camera_panes_.clear();
-  for (auto &view : source_views_) view->messages_visible = view->logs_visible = view->inspector_visible = false;
+  for (auto &view : source_views_) {
+    SourceScope scope(view->stream.get());
+    view->messages_visible = view->logs_visible = view->inspector_visible = false;
+    view->inspector.clear();
+    // clear() also detaches the chart manager for source teardown. Workspace
+    // switches retain that manager and may restore inspector tabs immediately.
+    view->inspector.setChartsWidget(charts_widget_.get());
+  }
   for (const auto &source : document["sources"].array_items()) {
     const auto id = source["id"].string_value();
     if (!sourceById(id)) {
@@ -119,6 +169,12 @@ void MainWindow::applyWorkspace(const Json &document) {
   };
   std::stable_sort(source_views_.begin(), source_views_.end(), [&](const auto &a, const auto &b) { return source_rank(a) < source_rank(b); });
   charts_widget_->restoreLayout(document["charts"].dump(), true);
+  pending_workspace_inspectors_.clear();
+  for (const auto &source : document["sources"].array_items()) if (source["inspector"].is_object()) {
+    const auto id = source["id"].string_value();
+    pending_workspace_inspectors_[id] = source["inspector"];
+    withSource(id, [this]() { restoreSessionState(); });
+  }
   if (document["cabana_workspace"] == 1) {
     auto &view = currentSource();
     view.messages_visible = document["panels"]["messages"].bool_value();
@@ -172,7 +228,8 @@ void MainWindow::openWorkspaceRoutes(const Json &document) {
     const auto route = source["route"].string_value();
     if (route.empty()) continue;
     const auto id = source["id"].string_value();
-    if (auto *loaded = dynamic_cast<ReplayStream *>(sourceById(id)); loaded && loaded->routeReference() == route) continue;
+    if (auto *loaded = dynamic_cast<ReplayStream *>(sourceById(id)); loaded && loaded->routeReference() == route &&
+        loaded->dataDirectory() == source["data_dir"].string_value()) continue;
     const auto workspace_generation = workspace_generation_;
     const auto source_generation = ++source_load_generation_[id];
     showStatusMessage("Opening saved routes…");
@@ -261,10 +318,40 @@ void MainWindow::drawWorkspaceMenu() {
     workspaces_.erase(workspaces_.begin() + removed); persistWorkspaces(); settings.save();
   });
   if (dropdown::BeginMenu("Presets")) {
-    if (dropdown::Item("Default")) nextFrame([this]() { default_workspace_ = true; makeDefaultWidgets(); });
-    if (dropdown::Item("Live")) nextFrame([this]() {
-      default_workspace_ = true; makeDefaultWidgets();
-      showStatusMessage("Add a Device, Panda, or SocketCAN source to start live inspection.", 5000);
+    for (const bool live : {false, true}) if (dropdown::Item(live ? "Live" : "Default")) nextFrame([this, live]() {
+      captureWorkspace();
+      auto doc = workspaces_[active_workspace_].object_items();
+      doc["name"] = live ? "Live" : "Default";
+      doc["ui"] = "";
+      doc["widgets"] = Json::array{};
+      doc["default"] = !live;
+      doc["include_routes"] = false;
+      doc["timeline"] = Json::object{};
+      doc["charts"] = Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", Json::array{}}};
+      Json::array slots;
+      for (const auto &source : doc["sources"].array_items()) slots.push_back(Json::object{{"id", source["id"]}, {"label", source["label"]}});
+      std::string live_source;
+      if (live) {
+        for (const auto &view : source_views_) if (view->stream->liveStreaming() && !dynamic_cast<DummyStream *>(view->stream.get())) {
+          live_source = view->stream->source_id;
+          break;
+        }
+        if (live_source.empty()) {
+          do { live_source = "source" + std::to_string(next_source_id_++); } while (sourceById(live_source));
+          slots.push_back(Json::object{{"id", live_source}, {"label", "Live source"}});
+        }
+      }
+      doc["sources"] = slots;
+      workspaces_.push_back(doc);
+      switchWorkspace(workspaces_.size() - 1);
+      if (live) {
+        selectSource(live_source);
+        auto &view = currentSource();
+        view.messages_visible = view.logs_visible = view.inspector_visible = true;
+        charts_widget_->newChart();
+        reset_layout_ = true;
+        showStatusMessage("Add a Device, Panda, or SocketCAN source to start live inspection.", 5000);
+      } else makeDefaultWidgets();
     });
     ImGui::Separator();
     std::error_code error;
