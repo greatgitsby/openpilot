@@ -46,6 +46,7 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
     self.timing_sei_enabled = False
     self.params = Params()
     self._seen_keyframe = False
+    self._keyframe_requested = False
     self.video_enabled = video_enabled
 
   def stop(self) -> None:
@@ -57,6 +58,8 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
 
   def switch_camera(self, camera_type: str) -> None:
     self._sock = self._make_sock(camera_type)
+    self._seen_keyframe = False
+    self.request_keyframe()
 
   def enable(self, enabled: bool):
     self.video_enabled = enabled
@@ -64,7 +67,10 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
       self._seen_keyframe = False
 
   def request_keyframe(self) -> None:
-    self.params.put("LivestreamRequestKeyframe", True, block=False)
+    # PLI callbacks run under libdatachannel's transport lock. Params uses ctypes
+    # and releases the GIL, which can deadlock with a concurrent channel.send().
+    # Coalesce requests and write the parameter from the video task instead.
+    self._keyframe_requested = True
 
   def _build_frame_data(self, msg) -> bytes:
     encode_data = getattr(msg, msg.which())
@@ -82,6 +88,9 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
 
   async def recv(self):
     while True:
+      if self._keyframe_requested:
+        self._keyframe_requested = False
+        self.params.put("LivestreamRequestKeyframe", True, block=False)
       # while video is disabled, pause here without returning
       if not self.video_enabled:
         await asyncio.sleep(0.005)
@@ -89,7 +98,10 @@ class LiveStreamVideoStreamTrack(TiciVideoStreamTrack):
 
       msg = messaging.recv_one_or_none(self._sock)
       if msg is not None:
-        if not self._seen_keyframe and (getattr(msg, msg.which()).idx.flags & V4L2_BUF_FLAG_KEYFRAME):
+        if not self._seen_keyframe:
+          if not (getattr(msg, msg.which()).idx.flags & V4L2_BUF_FLAG_KEYFRAME):
+            await asyncio.sleep(0.005)
+            continue
           self._seen_keyframe = True
           self.params.put("LivestreamRequestKeyframe", False, block=False)
         break

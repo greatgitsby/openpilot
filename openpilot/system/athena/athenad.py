@@ -789,30 +789,22 @@ def getNetworkMetered() -> bool:
 
 
 @dispatcher.add_method
-def startStream(sdp: str, enabled: bool) -> dict:
+def startStream(sdp: str, enabled: bool, can: bool = False, joystick: bool = False) -> dict:
   from openpilot.system.webrtc.helpers import StreamRequestBody, post_stream_request, wait_for_webrtcd
   params = Params()
   bridge_services_in = []
 
-  # stale car params case taken care of by webrtcd being shut off on ignition
   cp_bytes = params.get("CarParamsPersistent")
   if cp_bytes is not None:
     with car.CarParams.from_bytes(cp_bytes) as CP:
-      if CP.notCar:
+      if CP.notCar or joystick:
         bridge_services_in.append("testJoystick")
 
-  if params.get_bool("IsOffroad"):
-    # manager owns camerad/stream_encoderd/webrtcd; flip the param and let it bring them up.
-    # webrtcd clears IsLiveStreaming when the session ends
-    params.put_bool("IsLiveStreaming", True)
-    # wait for webrtcd end points to wake up
-    try:
-      wait_for_webrtcd()
-    except TimeoutError:
-      cloudlog.event("athena.startStream.webrtcd_offroad_start_timeout", error=True)
-      raise
-
-  return post_stream_request(StreamRequestBody(sdp, ["wideRoad"], enabled, bridge_services_in, ["carState", "deviceState"]))
+  # Keep the session alive across ignition transitions; manager owns the processes.
+  params.put_bool("IsLiveStreaming", True, block=True)
+  wait_for_webrtcd()
+  services = ["carState", "deviceState"] + (["can"] if can else [])
+  return post_stream_request(StreamRequestBody(sdp, ["wideRoad"], enabled, bridge_services_in, services))
 
 
 def get_logs_to_send_sorted() -> list[str]:

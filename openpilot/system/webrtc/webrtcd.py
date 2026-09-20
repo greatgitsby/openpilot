@@ -12,6 +12,7 @@ import contextlib
 import json
 import uuid
 import logging
+import math
 import signal
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,11 +21,11 @@ from typing import Any
 
 from openpilot.system.webrtc.helpers import StreamRequestBody
 from openpilot.system.webrtc.schema import generate_field
+from openpilot.system.webrtc.can import CAN_WINDOW, MAX_BATCH_SIZE, pack_can_batch
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
 from openpilot.cereal import messaging, log
-
-SESSION_TIMEOUT_SECONDS = 300
+from opendbc.car.structs import car
 
 
 # ice candidate parser for logging
@@ -71,13 +72,58 @@ class AsyncTaskRunner:
 class CerealOutgoingMessageProxy(AsyncTaskRunner):
   def __init__(self, services: list[str], enabled: bool = True):
     super().__init__()
-    self.services = list(services)
+    # CAN must retain every event and arbitrary bytes; SubMaster conflates updates.
+    self.can_sock = messaging.sub_sock("can", conflate=False) if "can" in services else None
+    self.services = [s for s in services if s != "can"]
     self.sm = messaging.SubMaster(self.services)
     self.channels = []
+    self.sent_bytes = {}
+    self.acked_bytes = {}
+    self.pending_can = None
     self._enabled = enabled
 
   def add_channel(self, channel):
     self.channels.append(channel)
+    self.sent_bytes[channel] = 0
+    self.acked_bytes[channel] = 0
+
+  def acknowledge(self, channel, received):
+    if type(received) is int and self.acked_bytes.get(channel, 0) <= received <= self.sent_bytes.get(channel, 0):
+      self.acked_bytes[channel] = received
+
+  def send(self, channel, message):
+    # False means accepted into SCTP's queue, not that previous bytes remain there.
+    try:
+      channel.send(message)
+      return True
+    except RuntimeError:
+      if channel.is_open():
+        raise
+      return False
+
+  def send_can(self):
+    channels = [ch for ch in self.channels if ch.is_open()]
+    if not channels or any(self.sent_bytes[ch] - self.acked_bytes[ch] >= CAN_WINDOW for ch in channels):
+      return
+    events, size = [], 0
+    # Batch one tick's events, retaining the first event that doesn't fit.
+    for _ in range(256):
+      data = self.pending_can if self.pending_can is not None else self.can_sock.receive(non_blocking=True)
+      self.pending_can = None
+      if data is None:
+        break
+      if len(data) + 4 > MAX_BATCH_SIZE:
+        raise ValueError("CAN event exceeds batch limit")
+      if size + len(data) + 4 > MAX_BATCH_SIZE:
+        self.pending_can = data
+        break
+      events.append(data)
+      size += len(data) + 4
+    if events:
+      packet = pack_can_batch(events)
+      for ch in channels:
+        if self.send(ch, packet):
+          self.sent_bytes[ch] += len(packet)
 
   def enable(self, enable: bool):
     self._enabled = enable
@@ -96,6 +142,8 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
 
   def update(self):
     # this is blocking in async context...
+    if self.can_sock is not None:
+      self.send_can()
     self.sm.update(0)
     for service, updated in self.sm.updated.items():
       if not updated:
@@ -107,7 +155,7 @@ class CerealOutgoingMessageProxy(AsyncTaskRunner):
       for channel in self.channels:
         if not channel.is_open():
           continue
-        channel.send(encoded_msg)
+        self.send(channel, encoded_msg)
 
   async def run(self):
     while True:
@@ -224,6 +272,38 @@ class LivestreamBitrateController(AsyncTaskRunner):
       self._auto = True
 
 
+class JoystickControl:
+  def __init__(self, params):
+    self.params = params
+    self.is_body = False
+    cp = params.get("CarParamsPersistent")
+    if cp:
+      with car.CarParams.from_bytes(cp) as parsed:
+        self.is_body = parsed.notCar
+
+  def enabled(self):
+    return self.is_body or self.params.get_bool("JoystickDebugMode")
+
+  def mode(self, data):
+    error = ""
+    if "enabled" in data and not self.is_body:
+      if not self.params.get_bool("IsOffroad"):
+        error = "Turn the car off before changing joystick mode."
+      elif type(data["enabled"]) is not bool:
+        error = "Invalid joystick mode."
+      else:
+        self.params.put_bool("JoystickDebugMode", data["enabled"], block=True)
+    return {"type": "joystickStatus", "data": {
+      "enabled": self.enabled(), "body": self.is_body, "error": error,
+    }}
+
+  def valid(self, data):
+    axes = data.get("axes", [])
+    buttons = data.get("buttons", [])
+    return (self.enabled() and len(axes) == 2 and len(buttons) == 1 and type(buttons[0]) is bool
+            and all(type(x) in (float, int) and math.isfinite(x) and -1 <= x <= 1 for x in axes))
+
+
 class StreamSession:
   shared_pub_master = DynamicPubMaster([])
 
@@ -244,7 +324,9 @@ class StreamSession:
       builder.add_video_stream(camera, track)
     self.stream = builder.stream()
 
-    self.is_body = "testJoystick" in body.bridge_services_in
+    self.joystick = JoystickControl(self.params)
+    self.joystick_used = False
+    self.is_body = self.joystick.is_body
 
     self.incoming_bridge: CerealIncomingMessageProxy | None = None
     self.incoming_bridge_services = body.bridge_services_in
@@ -288,6 +370,16 @@ class StreamSession:
         msg_type = payload.get("type")
 
         match msg_type:
+          case "canAck":
+            if self.outgoing_bridge is not None:
+              self.outgoing_bridge.acknowledge(self.stream.get_messaging_channel(), payload["data"]["bytes"])
+          case "joystickMode":
+            if "testJoystick" in self.incoming_bridge_services:
+              self.stream.get_messaging_channel().send(json.dumps(self.joystick.mode(payload["data"])))
+          case "testJoystick":
+            if "testJoystick" in self.incoming_bridge_services and self.joystick.valid(payload["data"]):
+              self.incoming_bridge.send(message)
+              self.joystick_used = True
           case "livestreamCameraSwitch":
             # only needed for 1 track stream
             if len(self.video_tracks) == 1:
@@ -329,14 +421,7 @@ class StreamSession:
       self.logger.exception("Cereal incoming proxy failure")
 
   async def run_normal_session(self):
-    try:
-      await asyncio.wait_for(self.stream.wait_for_disconnection(), timeout=SESSION_TIMEOUT_SECONDS)
-    except TimeoutError:
-      self.logger.warning("Stream session (%s) timed out after %d s", self.identifier, SESSION_TIMEOUT_SECONDS)
-      try:
-        self.stream.get_messaging_channel().send(json.dumps({"type": "disconnect", "data": "Session timed out"}))
-      except Exception:
-        pass
+    await self.stream.wait_for_disconnection()
 
   async def run_body_session(self):
     await self.stream.wait_for_disconnection()
@@ -382,15 +467,19 @@ class StreamSession:
     await asyncio.shield(self._cleanup_task)
 
   async def _cleanup_resources(self):
+    if self.joystick_used and self.incoming_bridge is not None:
+      self.incoming_bridge.send(json.dumps({"type": "testJoystick", "data": {"axes": [0, 0], "buttons": [False]}}))
     self.params.put("LivestreamRequestKeyframe", False)
     if self.bitrate_controller is not None:
       await self.bitrate_controller.stop()
     if self.outgoing_bridge is not None:
       await self.outgoing_bridge.stop()
-    await self.stream.stop()
     for track in self.video_tracks:
       track.stop()
     self.video_tracks.clear()
+    # The binding waits for native close (up to 30s). Keep HTTP and callbacks live.
+    await asyncio.to_thread(self.stream.peer_connection.close)
+    await self.stream.stop()
 
 
 class ServerState:

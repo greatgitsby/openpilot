@@ -15,6 +15,7 @@
 #include "json11/json11.hpp"
 #include "tools/cabana/commands.h"
 #include "tools/cabana/settings.h"
+#include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/ui/app.h"
 #include "tools/cabana/ui/dialogs/filedialog.h"
 #include "tools/cabana/ui/dialogs/messagebox.h"
@@ -32,6 +33,7 @@ namespace {
 // dock window ids (the visible titles change, the part after ### is the identity)
 constexpr const char *VIDEO_PANEL = "###VideoPanel";
 constexpr const char *CENTER_PANEL = "Signals###CenterWidget";
+constexpr const char *JOYSTICK_WINDOW = "Joystick###JoystickWindow";
 constexpr const char *CHARTS_WINDOW = "Charts###ChartsWindow";
 }  // namespace
 
@@ -41,6 +43,7 @@ MainWindow::MainWindow(GLFWwindow *window, std::unique_ptr<AbstractStream> strea
   messages_visible_ = inistate::main_window.messages_visible;
   video_visible_ = inistate::main_window.video_visible;
   charts_visible_ = inistate::main_window.charts_visible;
+  joystick_visible_ = inistate::main_window.joystick_visible;
   loadFingerprints();
   std::error_code ec;
   for (const auto &entry : std::filesystem::directory_iterator(OPENDBC_FILE_PATH, ec)) {
@@ -158,9 +161,10 @@ void MainWindow::drawMenuBar() {
     dropdown::Item(messages_widget_ ? messages_widget_->title().c_str() : "MESSAGES", nullptr, &messages_visible_);
     dropdown::Item(videoPanelTitle(), nullptr, &video_visible_);
     dropdown::Item("Charts", nullptr, &charts_visible_);
+    dropdown::Item("Joystick", nullptr, &joystick_visible_);
     ImGui::Separator();
     if (dropdown::Item("Reset Window Layout")) {
-      messages_visible_ = video_visible_ = charts_visible_ = true;
+      messages_visible_ = video_visible_ = charts_visible_ = joystick_visible_ = true;
       reset_layout_ = true;
     }
     dropdown::EndMenu();
@@ -190,6 +194,7 @@ void MainWindow::createDockWidgets() {
   charts_widget_ = std::make_unique<ChartsWidget>();
   center_widget_.setChartsWidget(charts_widget_.get());
   video_widget_ = std::make_unique<VideoWidget>();
+  joystick_widget_ = std::make_unique<JoystickWidget>();
 }
 
 void MainWindow::showStatusMessage(const std::string &msg, int timeout_ms) {
@@ -346,6 +351,7 @@ void MainWindow::releaseStream() {
   wait_dlg_.open = false;
   widget_connections_.clear();
   charts_widget_.reset();
+  joystick_widget_.reset();
   video_widget_.reset();
   center_widget_.clear();
   messages_widget_.reset();
@@ -379,7 +385,8 @@ void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::
 
     stream_connections_.push_back(can->eventsMerged.connect([this](const MessageEventsMap &) { eventsMerged(); }));
 
-    if (hasStream()) {
+    auto *device = dynamic_cast<DeviceStream *>(can);
+    if (hasStream() && !(device && device->remote())) {
       wait_dlg_.text = can->liveStreaming() ? "Waiting for the live stream to start..." : "Loading segment data...";
       wait_dlg_.value = 0;
       wait_dlg_.open = true;
@@ -602,6 +609,7 @@ void MainWindow::finishClose() {
   state.messages_visible = messages_visible_;
   state.video_visible = video_visible_;
   state.charts_visible = charts_visible_;
+  state.joystick_visible = joystick_visible_;
   settings.ui_state = inistate::save();
 
   saveSessionState();
@@ -816,12 +824,26 @@ void MainWindow::drawDockspace() {
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.28f, &left, &center);
     ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.4f, &right, &center);
     ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.55f, &charts, &right);
+    ImGuiID joystick = 0;
+    ImGui::DockBuilderSplitNode(charts, ImGuiDir_Right, 0.4f, &joystick, &charts);
+    ImGui::DockBuilderDockWindow(JOYSTICK_WINDOW, joystick);
     ImGui::DockBuilderDockWindow(CHARTS_WINDOW, charts);
     ImGui::DockBuilderDockWindow(MESSAGES_PANEL_ID, left);
     ImGui::DockBuilderDockWindow(VIDEO_PANEL, right);
     ImGui::DockBuilderDockWindow(CENTER_PANEL, center);
     ImGui::DockBuilderFinish(dock_id);
     reset_layout_ = false;
+  }
+  // Add the new dock beside charts without resetting an existing custom layout.
+  if (!ImGui::FindWindowByName(JOYSTICK_WINDOW) && !ImGui::FindWindowSettingsByID(ImHashStr(JOYSTICK_WINDOW))) {
+    auto *chart_settings = ImGui::FindWindowSettingsByID(ImHashStr(CHARTS_WINDOW));
+    ImGuiID target = chart_settings ? chart_settings->DockId : 0;
+    if (target && ImGui::DockBuilderGetNode(target)) {
+      ImGuiID joystick = 0, charts = 0;
+      ImGui::DockBuilderSplitNode(target, ImGuiDir_Right, 0.4f, &joystick, &charts);
+      ImGui::DockBuilderDockWindow(JOYSTICK_WINDOW, joystick);
+      ImGui::DockBuilderFinish(dock_id);
+    }
   }
   // a panel never shrinks past half the width where the signal view's tool bar squishes
   const float min_panel_width = (SignalView::minimumWidth() + (ImGui::GetStyle().WindowPadding.x + ImGui::GetStyle().WindowBorderSize) * 2) * 0.5f;
@@ -924,6 +946,16 @@ void MainWindow::draw() {
     }
     ImGui::End();
   }
+  bool joystick_drawn = false;
+  if (joystick_visible_) {
+    setNextPanelClass();
+    if (beginPanel(JOYSTICK_WINDOW, &joystick_visible_) && joystick_widget_) {
+      joystick_widget_->draw();
+      joystick_drawn = joystick_visible_;
+    }
+    ImGui::End();
+  }
+  if (!joystick_drawn && joystick_widget_) joystick_widget_->stop();
   for (auto it = tool_dialogs_.begin(); it != tool_dialogs_.end();) {
     it = (*it)->draw() ? it + 1 : tool_dialogs_.erase(it);
   }

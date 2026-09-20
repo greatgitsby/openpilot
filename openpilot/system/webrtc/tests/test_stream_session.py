@@ -66,6 +66,7 @@ class TestStreamSession(OpenpilotTestCase):
 
   def test_livestream_track(self, mocker):
     fake_msg = messaging.new_message("livestreamCabinEncodeData")
+    fake_msg.livestreamCabinEncodeData.idx.flags = 8
 
     config = {"receive.return_value": fake_msg.to_bytes()}
     mocker.patch("msgq.SubSocket", spec=True, **config)
