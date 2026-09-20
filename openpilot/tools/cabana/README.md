@@ -138,7 +138,8 @@ its visibility independently of camera widgets.
 Check **Link** on routes to play and seek them together. Position each route at a matching
 event, then choose **Timeline → Align current positions**, or edit each track's offset.
 Workspace time equals route time plus that offset. The Timeline menu can loop the next ten
-seconds or a start/end interval in workspace seconds. Live sources offer **Go live**.
+seconds or a start/end interval in workspace seconds. A playing linked group keeps its
+alignment and loop while you select an independent source. Live sources offer **Go live**.
 
 ### Plotting signals
 
@@ -163,14 +164,16 @@ visible series at their original timestamps, including calculated and transforme
 ### Workspaces, layouts, and functions
 
 Use **Workspace: Default** to select, rename, duplicate, or create a blank workspace.
-**Presets** includes Default, Live, and the bundled analysis layouts. A workspace remembers
+**Presets** creates named workspaces from Default, Live, or the bundled analysis layouts.
+Live starts with message browsers, a CAN inspector, and a chart. A workspace remembers
 widget arrangement, charts, equations, source assignments, camera settings, and timeline
-links, offsets, and loop settings. Changes are saved when switching or exiting;
+links, offsets, loop settings, and each source’s CAN inspector tabs. Changes are saved when switching or exiting;
 **Save workspaces** saves immediately. The first workspace cannot be deleted.
 
 **Open workspace...** imports a workspace JSON file; **Save As...** exports one.
 Enable **Include route references** to save route identifiers, local data directories,
-and DBC file references. **Open saved routes** loads those sources separately. Workspaces
+and DBC file references. **Open saved routes** loads those sources explicitly; selecting
+a workspace or starting Cabana does not open saved routes automatically. Workspaces
 do not embed logs, video, or DBC contents; referenced files must remain accessible.
 Without route references, a workspace can be reused with other routes.
 
@@ -198,6 +201,10 @@ Run this from the repository root with the openpilot Python environment and `ffm
 (with libx265 and drawtext) installed. Import the generated `workspace.json` through the
 workspace menu, then select **Open saved routes**. The directory also contains a reusable
 `layout.json` and `fixture.dbc`. Rerunning replaces the generated fixture files.
+
+Add `--routes 3` to check that a linked pair continues looping while an independent third
+route is selected. The fixture includes two CAN messages per route for checking separate
+inspector selections, plus engagement and alert intervals for the timeline ribbons.
 
 ## Additional Information
 
