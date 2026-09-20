@@ -15,6 +15,27 @@
 
 using json11::Json;
 
+static Json remapSource(const Json &input, const std::string &old_id, const std::string &new_id) {
+  auto document = cabana::remapWorkspaceSource(input, old_id, new_id);
+  auto remapped = document.object_items();
+  std::string ui = document["ui"].string_value();
+  auto replace = [&](const std::string &from, const std::string &to) {
+    size_t pos = 0;
+    while ((pos = ui.find(from, pos)) != std::string::npos) { ui.replace(pos, from.size(), to); pos += to.size(); }
+  };
+  for (const char *kind : {"can", "logs", "inspector"}) {
+    const auto old_name = std::string("###") + kind + "_" + old_id;
+    const auto new_name = std::string("###") + kind + "_" + new_id;
+    replace(old_name + "]", new_name + "]");
+    char old_hash[16], new_hash[16];
+    snprintf(old_hash, sizeof(old_hash), "0x%08X", ImHashStr(old_name.c_str()));
+    snprintf(new_hash, sizeof(new_hash), "0x%08X", ImHashStr(new_name.c_str()));
+    replace(old_hash, new_hash);
+  }
+  remapped["ui"] = ui;
+  return remapped;
+}
+
 void MainWindow::initializeWorkspaces() {
   std::string error;
   const auto library = Json::parse(settings.workspaces, error);
@@ -105,30 +126,23 @@ void MainWindow::applyWorkspace(const Json &saved_document) {
     auto *loaded = sourceById(old_id);
     auto *replay = dynamic_cast<ReplayStream *>(loaded);
     if (!loaded || dynamic_cast<DummyStream *>(loaded) || saved["route"].string_value().empty() ||
-        (replay && replay->routeReference() == saved["route"].string_value() &&
-         replay->dataDirectory() == saved["data_dir"].string_value())) continue;
+        (replay && replay->routeName() == Route::parseRoute(saved["route"].string_value()).str)) continue;
     std::string new_id;
     do { new_id = "source" + std::to_string(next_source_id_++); }
     while (sourceById(new_id) || std::any_of(document["sources"].array_items().begin(), document["sources"].array_items().end(),
       [&](const auto &s) { return s["id"] == new_id; }));
-    document = cabana::remapWorkspaceSource(document, old_id, new_id);
-    auto remapped = document.object_items();
-    std::string ui = document["ui"].string_value();
-    auto replace = [&](const std::string &from, const std::string &to) {
-      size_t pos = 0;
-      while ((pos = ui.find(from, pos)) != std::string::npos) { ui.replace(pos, from.size(), to); pos += to.size(); }
-    };
-    for (const char *kind : {"can", "logs", "inspector"}) {
-      const auto old_name = std::string("###") + kind + "_" + old_id;
-      const auto new_name = std::string("###") + kind + "_" + new_id;
-      replace(old_name + "]", new_name + "]");
-      char old_hash[16], new_hash[16];
-      snprintf(old_hash, sizeof(old_hash), "0x%08X", ImHashStr(old_name.c_str()));
-      snprintf(new_hash, sizeof(new_hash), "0x%08X", ImHashStr(new_name.c_str()));
-      replace(old_hash, new_hash);
-    }
-    remapped["ui"] = ui;
-    document = remapped;
+    document = remapSource(document, old_id, new_id);
+  }
+  std::map<std::string, std::string> route_sources;
+  for (const auto &view : source_views_) if (auto *route = dynamic_cast<ReplayStream *>(view->stream.get()))
+    route_sources[route->routeName()] = route->source_id;
+  const auto saved_sources_to_bind = document["sources"].array_items();
+  for (const auto &saved : saved_sources_to_bind) {
+    const auto route = Route::parseRoute(saved["route"].string_value()).str;
+    if (route.empty()) continue;
+    const auto id = saved["id"].string_value();
+    auto [it, inserted] = route_sources.emplace(route, id);
+    if (!inserted && it->second != id) document = remapSource(document, id, it->second);
   }
   workspaces_[active_workspace_] = document;
   ++workspace_generation_;
@@ -222,14 +236,54 @@ void MainWindow::importWorkspace(const std::string &path) {
   switchWorkspace(workspaces_.size() - 1);
 }
 
+void MainWindow::mergeSourceSlot(const std::string &old_id, const std::string &new_id) {
+  auto *old = sourceById(old_id);
+  if (!old || !dynamic_cast<DummyStream *>(old)) return;
+  std::string error;
+  Json doc = Json::object{{"charts", Json::parse(charts_widget_->serializeLayout(), error)},
+                        {"timeline", timeline_.snapshot()}, {"ui", inistate::save()}};
+  doc = remapSource(doc, old_id, new_id);
+  // Rebind existing widgets before discarding the placeholder stream.
+  charts_widget_->restoreLayout(doc["charts"].dump(), true);
+  for (auto &camera : camera_panes_) if (camera.source == old_id) {
+    const bool crop = camera.widget->crop();
+    camera.source = new_id;
+    camera.widget = std::make_unique<VideoWidget>(sourceById(new_id), camera.type);
+    camera.widget->setCrop(crop);
+    camera.widget->togglePlayback = [this, new_id, type = camera.type]() {
+      timeline_.selectSource(new_id, type);
+      timeline_.togglePlayback();
+    };
+  }
+  SourceView *from = nullptr, *to = nullptr;
+  for (auto &view : source_views_) {
+    if (view->stream->source_id == old_id) from = view.get();
+    if (view->stream->source_id == new_id) to = view.get();
+  }
+  if (from && to) {
+    to->messages_visible |= from->messages_visible;
+    to->logs_visible |= from->logs_visible;
+    to->inspector_visible |= from->inspector_visible;
+  }
+  if (auto pending = pending_workspace_inspectors_.find(old_id); pending != pending_workspace_inspectors_.end()) {
+    pending_workspace_inspectors_[new_id] = pending->second;
+    pending_workspace_inspectors_.erase(pending);
+  }
+  if (!workspaces_.empty()) workspaces_[active_workspace_] = remapSource(workspaces_[active_workspace_], old_id, new_id);
+  removeSource(old_id);
+  timeline_.restore(doc["timeline"]);
+  const auto ui = doc["ui"].string_value();
+  ImGui::LoadIniSettingsFromMemory(ui.c_str(), ui.size());
+  withSource(new_id, [this]() { restoreSessionState(); });
+}
+
 void MainWindow::openWorkspaceRoutes(const Json &document) {
   // Route references are resolved independently; existing tabs stay usable while loading.
   for (const auto &source : document["sources"].array_items()) {
     const auto route = source["route"].string_value();
     if (route.empty()) continue;
     const auto id = source["id"].string_value();
-    if (auto *loaded = dynamic_cast<ReplayStream *>(sourceById(id)); loaded && loaded->routeReference() == route &&
-        loaded->dataDirectory() == source["data_dir"].string_value()) continue;
+    if (auto *loaded = dynamic_cast<ReplayStream *>(sourceById(id)); loaded && loaded->routeName() == Route::parseRoute(route).str) continue;
     const auto workspace_generation = workspace_generation_;
     const auto source_generation = ++source_load_generation_[id];
     showStatusMessage("Opening saved routes…");
@@ -245,10 +299,18 @@ void MainWindow::openWorkspaceRoutes(const Json &document) {
         if (alive.expired()) return;
         if (workspace_generation != workspace_generation_ || source_load_generation_[source["id"].string_value()] != source_generation) return;
         if (!ok) { MessageBox::warning("Open saved route", "Could not open " + source["route"].string_value(), error); return; }
+        const bool already_loaded = std::any_of(source_views_.begin(), source_views_.end(), [&](const auto &view) {
+          auto *loaded = dynamic_cast<ReplayStream *>(view->stream.get());
+          return loaded && loaded->routeName() == (*stream)->routeName();
+        });
         source_to_replace_ = source["id"].string_value();
         const bool use_default = default_workspace_;
         default_workspace_ = false;
         openStream(std::move(*stream));
+        if (already_loaded) {
+          default_workspace_ = use_default;
+          return;
+        }
         for (const auto &saved : source["dbcs"].array_items()) {
           const std::string path = saved.is_string() ? saved.string_value() : saved["file"].string_value();
           SourceSet buses;
@@ -259,9 +321,10 @@ void MainWindow::openWorkspaceRoutes(const Json &document) {
         default_workspace_ = use_default;
         can->source_label = source["label"].string_value();
         // Recreate camera widgets against the newly opened source endpoint.
-        for (const auto &widget : document["widgets"].array_items()) if (widget["kind"] == "camera" && widget["source"] == source["id"])
+        const auto &current_document = workspaces_[active_workspace_];
+        for (const auto &widget : current_document["widgets"].array_items()) if (widget["kind"] == "camera" && widget["source"] == source["id"])
           addCamera(can->source_id, (VisionStreamType)widget["camera"].int_value(), widget["crop"].bool_value(), widget["id"].string_value());
-        timeline_.restore(document["timeline"]);
+        timeline_.restore(current_document["timeline"]);
         showStatusMessage("Saved route opened", 2000);
       });
     });

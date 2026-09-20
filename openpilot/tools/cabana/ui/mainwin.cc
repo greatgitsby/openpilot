@@ -364,6 +364,18 @@ void MainWindow::releaseStream() {
 }
 
 void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
+  if (!dynamic_cast<DummyStream *>(stream.get())) {
+    for (const auto &view : source_views_) {
+      auto *existing = view->stream.get();
+      if (typeid(*existing) != typeid(*stream) || existing->routeName() != stream->routeName()) continue;
+      const auto id = existing->source_id;
+      const auto slot = std::exchange(source_to_replace_, {});
+      if (!slot.empty() && slot != id) mergeSourceSlot(slot, id);
+      selectSource(id);
+      showStatusMessage("Source already open", 2000);
+      return;
+    }
+  }
   if (stream->liveStreaming() && !dynamic_cast<DummyStream *>(stream.get())) {
     for (const auto &view : source_views_) if (view->stream->liveStreaming() && !dynamic_cast<DummyStream *>(view->stream.get())) {
       MessageBox::information("Live source", "Close the current live source before adding another live connection.");

@@ -1,16 +1,21 @@
 #pragma once
 
+#include <algorithm>
+
 #include "tools/cabana/ui/chart/layout.h"
 
 namespace cabana {
 // Rebind all persisted source references, including timeline maps and chart signals.
 inline json11::Json remapWorkspaceSource(const json11::Json &document, const std::string &old_id, const std::string &new_id) {
   using json11::Json;
+  if (old_id == new_id) return document;
   auto doc = document.object_items();
   Json::array sources, widgets;
   for (const auto &source : document["sources"].array_items()) {
     auto value = source.object_items();
     if (source["id"] == old_id) value["id"] = new_id;
+    if (old_id != new_id && source["id"] == old_id && std::any_of(document["sources"].array_items().begin(), document["sources"].array_items().end(),
+        [&](const auto &other) { return other["id"] == new_id; })) continue;
     sources.push_back(value);
   }
   for (const auto &widget : document["widgets"].array_items()) {
@@ -25,13 +30,16 @@ inline json11::Json remapWorkspaceSource(const json11::Json &document, const std
   for (const char *key : {"offsets", "positions"}) {
     auto values = timeline[key].object_items();
     if (auto it = values.find(old_id); it != values.end()) {
-      values[new_id] = it->second;
+      if (!values.count(new_id)) values[new_id] = it->second;
       values.erase(it);
     }
     timeline[key] = values;
   }
   Json::array linked;
-  for (const auto &id : timeline["linked"].array_items()) linked.push_back(id == old_id ? Json(new_id) : id);
+  for (const auto &id : timeline["linked"].array_items()) {
+    const auto mapped = id == old_id ? Json(new_id) : id;
+    if (std::find(linked.begin(), linked.end(), mapped) == linked.end()) linked.push_back(mapped);
+  }
   timeline["linked"] = linked;
   doc["timeline"] = timeline;
   auto charts = document["charts"].object_items();

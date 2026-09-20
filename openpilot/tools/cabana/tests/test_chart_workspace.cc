@@ -88,6 +88,24 @@ void test_chart_workspaces() {
   REQUIRE(rebound["timeline"]["positions"]["source3"] == 12);
   REQUIRE(rebound["timeline"]["positions"]["source1"].is_null());
   REQUIRE(rebound["charts"]["charts"][0]["signals"][0]["source"] == "source3");
+  // Opening a saved slot that refers to an already open route merges identities.
+  auto duplicate = document.object_items();
+  auto duplicate_sources = document["sources"].array_items();
+  duplicate_sources.push_back(Json::object{{"id", "source3"}, {"label", "Existing route"}, {"route", "route-b"}});
+  duplicate["sources"] = duplicate_sources;
+  auto timeline = document["timeline"].object_items();
+  timeline["linked"] = Json::array{"source1", "source3"};
+  timeline["positions"] = Json::object{{"source1", 12}, {"source3", 25}};
+  duplicate["timeline"] = timeline;
+  const auto merged = cabana::remapWorkspaceSource(duplicate, "source1", "source3");
+  REQUIRE(cabana::validWorkspace(merged));
+  REQUIRE(merged["sources"].array_items().size() == 1);
+  REQUIRE(merged["sources"][0]["label"] == "Existing route");
+  REQUIRE(merged["timeline"]["linked"].array_items().size() == 1);
+  REQUIRE(merged["timeline"]["positions"]["source3"] == 25);
+  REQUIRE(merged["widgets"][0]["source"] == "source3");
+  REQUIRE(merged["charts"]["charts"][0]["signals"][0]["source"] == "source3");
+  REQUIRE(cabana::remapWorkspaceSource(merged, "source3", "source3") == merged);
   auto bad = rebound.object_items();
   auto sources = rebound["sources"].array_items();
   auto source = sources[0].object_items();

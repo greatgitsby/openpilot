@@ -94,6 +94,7 @@ private:
   void applyWorkspace(const json11::Json &document);
   void loadWorkspacePreset(const std::string &path);
   void removeSource(const std::string &id);
+  void mergeSourceSlot(const std::string &old_id, const std::string &new_id);
   void selectSource(const std::string &id);
   void makeDefaultWidgets();
   std::string panelName(const char *kind) const;
