@@ -1024,7 +1024,7 @@ void MainWindow::drawDockspace() {
     const bool stack_buttons = button_width > content_width;
     const float height = padding * 2 + ImGui::GetTextLineHeight() +
                          ImGui::CalcTextSize(intro, nullptr, false, content_width).y +
-                         ImGui::CalcTextSize(hint, nullptr, false, content_width).y + spacing * 3 +
+                         ImGui::CalcTextSize(hint, nullptr, false, content_width).y + spacing * 5 +
                          ImGui::GetFrameHeight() + (stack_buttons ? ImGui::GetFrameHeightWithSpacing() : 0.f);
     ImGui::SetCursorScreenPos(ImVec2(dock_origin.x + (dock_size.x - width) * .5f,
                                    dock_origin.y + std::max(0.f, (dock_size.y - height) * .5f)));
@@ -1050,6 +1050,7 @@ void MainWindow::drawDockspace() {
     pushBoldFont(); centered_text("Your workspace"); popBoldFont();
     centered_text(intro);
     centered_text(hint);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + spacing * 2);
     ImGui::SetCursorPosX(padding + std::max(0.f, (content_width - (stack_buttons ? source_width : button_width)) * .5f));
     if (iconTextButton("welcome_source", icon::PLUS_LG, "Add source")) selectAndOpenStream();
     if (stack_buttons) ImGui::SetCursorPosX(padding + std::max(0.f, (content_width - widget_width) * .5f));
