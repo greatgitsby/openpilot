@@ -204,6 +204,7 @@ void ChartManager::execSignalSelector(std::unique_ptr<SignalSelector> dlg, Chart
 
 void ChartManager::removeChart(ChartView *chart) {
   if (active_chart_ == chart) active_chart_ = nullptr;
+  if (rename_chart_ == chart) rename_chart_ = nullptr;
   if (signal_selector_owner_ == chart) {
     signal_selector_owner_ = nullptr;
     signal_selector_accepted_ = nullptr;
@@ -244,11 +245,23 @@ void ChartManager::draw() {
   updateState();
   deleted_charts_.clear();
   any_plot_hovered_ = false;
+  bool begin_rename = false;
   for (auto *c : currentCharts()) {
     c->resolveSignals();
     c->pollFields();
     bool open = true;
-    if (beginDockablePanel(c->windowName(), &open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    const bool visible = beginDockablePanel(c->windowName(), &open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    auto *window = ImGui::GetCurrentWindow();
+    const bool title_hovered = window->DockIsActive ?
+      (window->DC.DockTabItemStatusFlags & ImGuiItemStatusFlags_HoveredRect) != 0 :
+      (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(window->TitleBarRect().Min, window->TitleBarRect().Max));
+    if (open && title_hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+        !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+      rename_chart_ = c;
+      rename_title_ = c->title;
+      begin_rename = true;
+    }
+    if (visible) {
       if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) active_chart_ = c;
       c->draw(ImGui::GetContentRegionAvail().x);
       any_plot_hovered_ |= c->plotHovered();
@@ -257,6 +270,28 @@ void ChartManager::draw() {
     if (!open) removeChart(c);
   }
   if (!any_plot_hovered_) showValueTip(-1);
+  if (begin_rename && rename_chart_) ImGui::OpenPopup("Rename chart");
+  setNextDialogWindow(ImVec2(420, 0));
+  if (ImGui::BeginPopupModal("Rename chart", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (!rename_chart_) {
+      ImGui::CloseCurrentPopup();
+    } else {
+      ImGui::TextUnformatted("Chart title");
+      if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+      ImGui::SetNextItemWidth(-1);
+      bool save = inputText("##rename_chart_title", &rename_title_, "Automatic title",
+                            ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue);
+      ImGui::TextDisabled("Leave blank to use the signal name.");
+      bool cancel = false;
+      dialogButtons("Rename", &save, &cancel);
+      if (save || cancel) {
+        if (save) rename_chart_->title = utils::trimmed(rename_title_);
+        rename_chart_ = nullptr;
+        ImGui::CloseCurrentPopup();
+      }
+    }
+    ImGui::EndPopup();
+  }
   drawFunctionEditor();
   if (signal_selector_ && !signal_selector_->draw()) {
     auto dlg = std::move(signal_selector_);

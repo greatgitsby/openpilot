@@ -130,6 +130,8 @@ private:
   std::pair<double, double> display_range_;
   uint64_t next_chart_id_ = 1;
   ChartView *active_chart_ = nullptr;
+  ChartView *rename_chart_ = nullptr;
+  std::string rename_title_;
   std::unordered_map<std::string, Connections> source_connections_;
   std::unordered_map<std::string, double> source_offsets_;
   struct BrowserState {
