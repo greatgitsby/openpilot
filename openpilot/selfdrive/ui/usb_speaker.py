@@ -10,6 +10,8 @@ import numpy as np
 
 from openpilot.common.swaglog import cloudlog
 
+USB_OUTPUT_GAIN = 10 ** (12 / 20)  # +12 dB on USB playback only.
+
 
 def find_usb_output(root=Path('/proc/asound')):
   for path in sorted(root.glob('card[0-9]*/stream[0-9]*')):
@@ -79,7 +81,7 @@ class USBSpeaker:
             pending = pending[:0]
           if not len(pending):
             self.callback(output, 960, None, None)
-            pending = (np.clip(output, -1, 1) * 32767).astype('<i2')
+            pending = (np.clip(output * USB_OUTPUT_GAIN, -1, 1) * 32767).astype('<i2')
             pending_at = time.monotonic()
           written = self.lib.snd_pcm_writei(self.pcm, pending.ctypes.data, len(pending))
           if written == -errno.EAGAIN:
