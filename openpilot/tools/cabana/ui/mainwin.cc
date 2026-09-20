@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -1012,14 +1013,47 @@ void MainWindow::drawDockspace() {
   const bool empty = camera_panes_.empty() && (!charts_widget_ || charts_widget_->chartCount() == 0) &&
     std::none_of(source_views_.begin(), source_views_.end(), [](const auto &v) { return v->messages_visible || v->logs_visible || v->inspector_visible; });
   if (empty) {
-    const float width = std::min(420.0f, dock_size.x - 32);
-    ImGui::SetCursorScreenPos(ImVec2(dock_origin.x + std::max(16.0f, (dock_size.x - width) * .5f), dock_origin.y + std::max(16.0f, dock_size.y * .35f)));
-    ImGui::BeginChild("workspace_welcome", ImVec2(width, 140), ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar);
-    pushBoldFont(); ImGui::TextUnformatted("Your workspace"); popBoldFont();
-    ImGui::TextWrapped("Add a chart, camera, or message browser. Drag tabs to arrange your workspace.");
-    ImGui::Spacing();
+    const float padding = ImGui::GetStyle().WindowPadding.x * 3;
+    const float width = std::max(1.f, std::min(480.f, dock_size.x - 32.f));
+    const float content_width = std::max(1.f, width - padding * 2);
+    const char *intro = "Add a chart, camera, or message browser.";
+    const char *hint = "Drag tabs to arrange your workspace.";
+    const float source_width = iconTextButtonWidth(icon::PLUS_LG, "Add source");
+    const float widget_width = iconTextButtonWidth(icon::PLUS_LG, "Add widget");
+    const float button_width = source_width + ImGui::GetStyle().ItemSpacing.x + widget_width;
+    const bool stack_buttons = button_width > content_width;
+    const float height = padding * 2 + ImGui::GetTextLineHeight() +
+                         ImGui::CalcTextSize(intro, nullptr, false, content_width).y +
+                         ImGui::CalcTextSize(hint, nullptr, false, content_width).y + spacing * 3 +
+                         ImGui::GetFrameHeight() + (stack_buttons ? ImGui::GetFrameHeightWithSpacing() : 0.f);
+    ImGui::SetCursorScreenPos(ImVec2(dock_origin.x + (dock_size.x - width) * .5f,
+                                   dock_origin.y + std::max(0.f, (dock_size.y - height) * .5f)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding, padding));
+    ImGui::BeginChild("workspace_welcome", ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar);
+    ImGui::PopStyleVar();
+    const auto centered_text = [&](const char *text) {
+      const ImVec2 pos = ImGui::GetCursorScreenPos();
+      ImGui::Dummy(ImVec2(content_width, ImGui::CalcTextSize(text, nullptr, false, content_width).y));
+      const char *end = text + std::strlen(text);
+      float y = pos.y;
+      while (text < end) {
+        const char *line_end = ImGui::GetFont()->CalcWordWrapPosition(ImGui::GetFontSize(), text, end, content_width);
+        if (line_end == text) ++line_end;
+        const float line_width = ImGui::CalcTextSize(text, line_end).x;
+        ImGui::GetWindowDrawList()->AddText(ImVec2(pos.x + std::max(0.f, (content_width - line_width) * .5f), y),
+                                           ImGui::GetColorU32(ImGuiCol_Text), text, line_end);
+        y += ImGui::GetTextLineHeight();
+        text = line_end;
+        while (text < end && *text == ' ') ++text;
+      }
+    };
+    pushBoldFont(); centered_text("Your workspace"); popBoldFont();
+    centered_text(intro);
+    centered_text(hint);
+    ImGui::SetCursorPosX(padding + std::max(0.f, (content_width - (stack_buttons ? source_width : button_width)) * .5f));
     if (iconTextButton("welcome_source", icon::PLUS_LG, "Add source")) selectAndOpenStream();
-    ImGui::SameLine();
+    if (stack_buttons) ImGui::SetCursorPosX(padding + std::max(0.f, (content_width - widget_width) * .5f));
+    else ImGui::SameLine();
     if (iconTextButton("welcome_widget", icon::PLUS_LG, "Add widget")) ImGui::OpenPopup("welcome_widgets");
     if (dropdown::BeginPopup("welcome_widgets")) { drawAddWidgetMenu(); dropdown::EndPopup(); }
     ImGui::EndChild();
