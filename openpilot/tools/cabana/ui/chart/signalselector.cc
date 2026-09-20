@@ -32,8 +32,12 @@ bool SignalSelector::draw() {
   const std::string source_label = source ? source->source_label : "No sources";
   menuButton("signal_source", "Source: " + source_label, "signal_sources", false, -1);
   if (dropdown::BeginPopup("signal_sources")) {
-    for (auto *candidate : sources()) if (dropdown::Item(candidate->source_label.c_str(), nullptr, candidate == source)) {
-      source_id_ = candidate->source_id; available_dirty_ = true;
+    for (auto *candidate : sources()) {
+      ImGui::PushID(candidate->source_id.c_str());
+      if (dropdown::Item(candidate->source_label.c_str(), nullptr, candidate == source)) {
+        source_id_ = candidate->source_id; available_dirty_ = true;
+      }
+      ImGui::PopID();
     }
     dropdown::EndPopup();
   }
