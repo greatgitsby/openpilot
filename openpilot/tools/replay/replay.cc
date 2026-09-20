@@ -17,8 +17,8 @@ void notifyEvent(Callback &callback, Args &&...args) {
 }
 
 Replay::Replay(const std::string &route, std::vector<std::string> allow, std::vector<std::string> block,
-               SubMaster *sm, uint32_t flags, const std::string &data_dir, bool auto_source)
-    : sm_(sm), flags_(flags), seg_mgr_(std::make_unique<SegmentManager>(route, flags, data_dir, auto_source)) {
+               SubMaster *sm, uint32_t flags, const std::string &data_dir, bool auto_source, const std::string &camera_endpoint)
+    : sm_(sm), flags_(flags), camera_endpoint_(camera_endpoint), seg_mgr_(std::make_unique<SegmentManager>(route, flags, data_dir, auto_source)) {
   std::signal(SIGUSR1, interrupt_sleep_handler);
 
   if (flags_ & REPLAY_FLAG_BENCHMARK) {
@@ -150,6 +150,12 @@ void Replay::checkSeekProgress() {
 
   // Resume the interrupted stream
   interruptStream([]() { return true; });
+  requestCameraPreview();
+}
+
+void Replay::requestCameraPreview() {
+  camera_preview_requested_ = true;
+  stream_cv_.notify_one();
 }
 
 void Replay::seekToFlag(FindFlag flag) {
@@ -163,7 +169,7 @@ void Replay::pause(bool pause) {
     interruptStream([=]() {
       rWarning("%s at %.2f s", pause ? "paused..." : "resuming", currentSeconds());
       user_paused_ = pause;
-      return !pause;
+      return pause ? events_ready_ : true;
     });
   }
 }
@@ -185,7 +191,9 @@ void Replay::handleSegmentMerge() {
 void Replay::startStream(const std::shared_ptr<Segment> segment) {
   const auto &events = segment->log->events;
   route_start_ts_ = events.front().mono_time;
-  cur_mono_time_ += route_start_ts_ - 1;
+  // Running playback starts just before the requested event. A paused preview
+  // must retain the exact seek time or it selects the preceding camera frame.
+  cur_mono_time_ += route_start_ts_ - (user_paused_ ? 0 : 1);
 
   // get datetime from INIT_DATA, fallback to datetime in the route name
   route_date_time_ = route().datetime();
@@ -211,8 +219,12 @@ void Replay::startStream(const std::shared_ptr<Segment> segment) {
     builder.setRoot(event.getCarParams());
     auto words = capnp::messageToFlatArray(builder);
     auto bytes = words.asBytes();
-    Params().put("CarParams", (const char *)bytes.begin(), bytes.size());
-    Params().put("CarParamsPersistent", (const char *)bytes.begin(), bytes.size());
+    // Embedded viewers own their route state and must not overwrite process-wide
+    // vehicle parameters when a second route opens.
+    if (!event_filter_) {
+      Params().put("CarParams", (const char *)bytes.begin(), bytes.size());
+      Params().put("CarParamsPersistent", (const char *)bytes.begin(), bytes.size());
+    }
   } else {
     rWarning("failed to read CarParams from current segment");
   }
@@ -225,7 +237,7 @@ void Replay::startStream(const std::shared_ptr<Segment> segment) {
         camera_size[type] = {fr->width, fr->height};
       }
     }
-    camera_server_ = std::make_unique<CameraServer>(camera_size);
+    camera_server_ = std::make_unique<CameraServer>(camera_size, camera_endpoint_);
   }
 
   timeline_.initialize(seg_mgr_->route_, route_start_ts_, !(flags_ & REPLAY_FLAG_NO_FILE_CACHE),
@@ -281,11 +293,19 @@ void Replay::streamThread() {
   bool streaming_started = false;
 
   while (true) {
-    stream_cv_.wait(lk, [this]() { return exit_ || (events_ready_ && !interrupt_requested_); });
+    // Preview requests intentionally do not take stream_lock_ on the GUI thread.
+    // A bounded wait also handles a notification racing the transition to sleep.
+    if (!stream_cv_.wait_for(lk, std::chrono::milliseconds(100), [this]() {
+      return exit_ || (events_ready_ && (!interrupt_requested_ || (user_paused_ && camera_preview_requested_)));
+    })) continue;
 
     if (exit_) break;
 
     event_data_ = seg_mgr_->getEventData();
+    if (camera_preview_requested_.exchange(false) && user_paused_) {
+      publishCameraPreview();
+      continue;
+    }
     const auto &events = event_data_->events;
     auto first = std::upper_bound(events.cbegin(), events.cend(), Event(cur_which_, cur_mono_time_, {}));
     if (first == events.cend()) {
@@ -330,6 +350,59 @@ void Replay::streamThread() {
     }
     benchmark_cv_.notify_one();
   }
+}
+
+void Replay::publishCameraPreview() {
+  if (!camera_server_) return;
+
+  // Keep the playback cursor fixed and publish one frame per camera. The event
+  // snapshot remains owned until the decoder threads have finished with it.
+  const Event *frames[MAX_CAMERAS] = {};
+  bool wanted[MAX_CAMERAS] = {};
+  int remaining = 0;
+  auto current = event_data_->segments.find(current_segment_);
+  if (current == event_data_->segments.end()) return;
+  for (auto camera : ALL_CAMERAS) {
+    wanted[camera] = current->second->frames[camera] &&
+                     (camera != CabinCam || hasFlag(REPLAY_FLAG_CABIN_CAMERA)) &&
+                     (camera != WideRoadCam || hasFlag(REPLAY_FLAG_WIDE_ROAD));
+    remaining += wanted[camera];
+  }
+  auto selectFrame = [&](const Event &event) {
+    int camera = -1;
+    switch (event.which) {
+      case cereal::Event::NARROW_ROAD_ENCODE_IDX: camera = NarrowRoadCam; break;
+      case cereal::Event::WIDE_ROAD_ENCODE_IDX: camera = WideRoadCam; break;
+      case cereal::Event::CABIN_ENCODE_IDX: camera = CabinCam; break;
+      default: return;
+    }
+    if (!wanted[camera] || frames[camera]) return;
+    auto segment = event_data_->segments.find(event.eidx_segnum);
+    if (segment == event_data_->segments.end() || !segment->second->frames[camera]) return;
+    frames[camera] = &event;
+    --remaining;
+  };
+  const auto &events = event_data_->events;
+  const uint64_t target = cur_mono_time_;
+  const auto after = std::upper_bound(events.begin(), events.end(), target,
+                                      [](uint64_t time, const Event &event) { return time < event.mono_time; });
+  constexpr uint64_t preview_window = 2'000'000'000ULL;
+  // Usually finds all cameras within one frame interval. Bound missing-camera
+  // searches so stepping never walks the whole cached route.
+  for (auto it = after; remaining && it != events.begin();) {
+    --it;
+    if (target - it->mono_time > preview_window) break;
+    selectFrame(*it);
+  }
+  // At route/segment start the first encoded frame can follow the cursor.
+  for (auto it = after; remaining && it != events.end(); ++it) {
+    if (it->mono_time - target > preview_window) break;
+    selectFrame(*it);
+  }
+  for (const Event *frame : frames) {
+    if (frame) publishFrame(frame);
+  }
+  camera_server_->waitForSent();
 }
 
 std::vector<Event>::const_iterator Replay::publishEvents(std::vector<Event>::const_iterator first,

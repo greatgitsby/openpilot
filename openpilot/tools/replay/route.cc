@@ -81,15 +81,13 @@ bool Route::loadSegments() {
 }
 
 bool Route::loadFromAutoSource() {
-  auto origin_prefix = getenv("OPENPILOT_PREFIX");
-  if (origin_prefix) {
-    setenv("OPENPILOT_PREFIX", "", 1);
-  }
-  auto cmd = util::string_format("../auto_source.py \"%s\"", route_string_.c_str());
+  // Scope authentication's environment override to the child, keeping concurrent
+  // replay camera connections in the parent's original namespace.
+  std::string quoted_route = "'";
+  for (char c : route_string_) quoted_route += c == '\'' ? "'\"'\"'" : std::string(1, c);
+  quoted_route += "'";
+  auto cmd = "OPENPILOT_PREFIX= ../auto_source.py " + quoted_route;
   auto log_files = split(util::check_output(cmd), '\n');
-  if (origin_prefix) {
-    setenv("OPENPILOT_PREFIX", origin_prefix, 1);
-  }
 
   const static std::regex rx(R"(\/(\d+)\/)");
   for (int i = 0; i < log_files.size(); ++i) {

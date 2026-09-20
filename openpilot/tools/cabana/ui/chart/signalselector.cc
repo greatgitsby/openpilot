@@ -11,15 +11,7 @@
 #include "tools/cabana/utils/strings.h"
 
 SignalSelector::SignalSelector(std::string title) : title_(std::move(title)) {
-  std::set<MessageId> ids;
-  for (const auto &[id, _] : can->eventsMap()) ids.insert(id);
-  for (const auto &[id, _] : can->lastMessages()) ids.insert(id);
-  for (const auto &id : ids) {
-    if (auto m = dbc()->msg(id)) {
-      msgs_combo_.push_back({m->name + " (" + id.toString() + ")", id});
-    }
-  }
-  std::sort(msgs_combo_.begin(), msgs_combo_.end(), [](auto &a, auto &b) { return a.text < b.text; });
+  source_id_ = can->source_id;
 }
 
 bool SignalSelector::draw() {
@@ -35,6 +27,16 @@ bool SignalSelector::draw() {
     return false;
   }
 
+  auto *source = sourceById(source_id_);
+  if (!source && !sources().empty()) { source = sources().front(); source_id_ = source->source_id; available_dirty_ = true; }
+  const std::string source_label = source ? source->source_label : "No sources";
+  menuButton("signal_source", "Source: " + source_label, "signal_sources", false, -1);
+  if (dropdown::BeginPopup("signal_sources")) {
+    for (auto *candidate : sources()) if (dropdown::Item(candidate->source_label.c_str(), nullptr, candidate == source)) {
+      source_id_ = candidate->source_id; available_dirty_ = true;
+    }
+    dropdown::EndPopup();
+  }
   const float btn_w = iconButtonWidth();
   const float column_w = (ImGui::GetContentRegionAvail().x - btn_w - ImGui::GetStyle().ItemSpacing.x * 2) / 2;
   // the selected list spans the combo row too; both lists end above the Ok/Cancel row
@@ -93,6 +95,7 @@ void SignalSelector::drawList(const char *id, std::vector<ListItem> &list, int *
   clipper.Begin(list.size());
   while (clipper.Step()) for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
     const auto &item = list[i];
+    SourceScope source_scope(sourceById(item.source_id));
     ImGui::PushID(i);
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     if (selectable("##item", i == *current_row)) *current_row = i;
@@ -106,9 +109,9 @@ void SignalSelector::drawList(const char *id, std::vector<ListItem> &list, int *
     drawColorMarker(dl, ImVec2(x, pos.y), toImU32(item.sig ? item.sig->color : CabanaColor{0, 114, 178}));
     x += markerSize() + 4;
     dl->AddText(ImVec2(x, pos.y), ImGui::GetColorU32(i == *current_row ? palette().text_selected : palette().text), item.name().c_str());
-    if (show_msg_name && item.path.empty()) {
+    if (show_msg_name) {
       x += ImGui::CalcTextSize(item.name().c_str()).x;
-      dl->AddText(ImVec2(x, pos.y), ImGui::GetColorU32(i == *current_row ? palette().text_selected : palette().text_disabled), msgLabel(item.msg_id).c_str());
+      dl->AddText(ImVec2(x, pos.y), ImGui::GetColorU32(i == *current_row ? palette().text_selected : palette().text_disabled), ((item.path.empty() ? msgLabel(item.msg_id) : std::string()) + " · " + (sourceById(item.source_id) ? sourceById(item.source_id)->source_label : item.source_id)).c_str());
     }
     ImGui::PopID();
   }
@@ -131,24 +134,35 @@ void SignalSelector::remove(int row) {
 
 void SignalSelector::updateAvailableList() {
   std::vector<ListItem> available;
+  auto *source = sourceById(source_id_);
+  if (!source) { available_list_.clear(); return; }
+  SourceScope scope(source);
+  msgs_combo_.clear();
+  std::set<MessageId> ids;
+  for (const auto &[id, _] : source->eventsMap()) ids.insert(id);
+  for (const auto &[id, _] : source->lastMessages()) ids.insert(id);
+  for (const auto &id : ids) if (auto *message = source->database()->msg(id)) {
+    msgs_combo_.push_back({message->name + " (" + id.toString() + ")", id});
+  }
+  std::sort(msgs_combo_.begin(), msgs_combo_.end(), [](const auto &a, const auto &b) { return a.text < b.text; });
   for (const auto &msg : msgs_combo_) {
     auto *message = dbc()->msg(msg.id);
     if (!message) continue;
     for (auto *sig : message->getSignals()) {
       if (!msgs_combo_filter_.empty() && !utils::containsCI(sig->name + " " + msg.text, msgs_combo_filter_)) continue;
       if (std::none_of(selected_list_.begin(), selected_list_.end(), [&](const auto &item) {
-            return item.msg_id == msg.id && item.sig == sig;
-          })) available.emplace_back(msg.id, sig);
+            return item.source_id == source_id_ && item.msg_id == msg.id && item.sig == sig;
+          })) available.emplace_back(msg.id, sig, source_id_);
     }
   }
   for (const auto &entry : can->fields) {
     const auto &path = entry.first;
     if (!utils::containsCI(path, msgs_combo_filter_)) continue;
-    if (std::none_of(selected_list_.begin(), selected_list_.end(), [&](const auto &item) { return item.path == path; }))
-      available.emplace_back(path);
+    if (std::none_of(selected_list_.begin(), selected_list_.end(), [&](const auto &item) { return item.source_id == source_id_ && item.path == path; }))
+      available.emplace_back(path, source_id_);
   }
   if (available.size() != available_list_.size() || !std::equal(available.begin(), available.end(), available_list_.begin(),
-      [](const auto &a, const auto &b) { return a.path == b.path && a.msg_id == b.msg_id && a.sig == b.sig; })) {
+      [](const auto &a, const auto &b) { return a.source_id == b.source_id && a.path == b.path && a.msg_id == b.msg_id && a.sig == b.sig; })) {
     available_list_ = std::move(available);
     available_row_ = -1;
   }

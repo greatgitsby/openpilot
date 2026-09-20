@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <optional>
 #include <set>
 
@@ -19,12 +20,14 @@ struct LayoutSignal {
   bool visible;
   std::string path;
   CabanaColor color{0, 114, 178};
+  std::string source_id;
 };
 struct LayoutChart {
   int type;
   std::vector<LayoutSignal> signals;
   std::string title;
   std::optional<double> y_min, y_max;
+  std::string widget_id;
 };
 struct Layout {
   int columns;
@@ -38,15 +41,24 @@ struct Layout {
 inline std::optional<Layout> parseLayout(const std::string &contents) {
   using json11::Json;
   std::string error;
-  const auto doc = Json::parse(contents, error);
+  auto doc = Json::parse(contents, error);
+  if (doc["cabana_layout"].int_value() == 4) {
+    if (!doc["charts"].is_array()) return std::nullopt;
+    auto fields = doc.object_items();
+    fields["columns"] = 1;
+    fields["tabs"] = Json::array{doc["charts"]};
+    fields["active_tab"] = 0;
+    doc = fields;
+  }
   auto integer = [](const Json &v, int min, int max) {
     return v.is_number() && v.number_value() >= min && v.number_value() <= max && v.number_value() == v.int_value();
   };
-  if (!error.empty() || !integer(doc["cabana_layout"], 1, 3) || !integer(doc["columns"], 1, 4) ||
+  if (!error.empty() || !integer(doc["cabana_layout"], 1, 4) || !integer(doc["columns"], 1, 4) ||
       !integer(doc["range"], 1, 86400) || !doc["tabs"].is_array() || doc["tabs"].array_items().empty()) return std::nullopt;
   if ((!doc["tab_names"].is_null() && !doc["tab_names"].is_array()) ||
       (!doc["equations"].is_null() && !doc["equations"].is_array())) return std::nullopt;
   Layout result{doc["columns"].int_value(), doc["range"].int_value(), {}};
+  std::set<std::string> widget_ids;
   for (const auto &tab : doc["tabs"].array_items()) {
     if (!tab.is_array()) return std::nullopt;
     auto &charts = result.tabs.emplace_back();
@@ -54,6 +66,12 @@ inline std::optional<Layout> parseLayout(const std::string &contents) {
       if (!integer(c["type"], 0, 2) || !c["signals"].is_array()) return std::nullopt;
       auto &chart = charts.emplace_back(LayoutChart{c["type"].int_value(), {}});
       chart.title = c["title"].string_value();
+      chart.widget_id = c["id"].string_value();
+      if (doc["cabana_layout"].int_value() == 4 || !c["id"].is_null()) {
+        if (!c["id"].is_string() || chart.widget_id.empty() || chart.widget_id.size() > 128 ||
+            chart.widget_id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != std::string::npos ||
+            !widget_ids.insert(chart.widget_id).second) return std::nullopt;
+      }
       for (const auto &key : {"y_min", "y_max"}) {
         if (c[key].is_null()) continue;
         if (!c[key].is_number() || !std::isfinite(c[key].number_value())) return std::nullopt;
@@ -69,6 +87,7 @@ inline std::optional<Layout> parseLayout(const std::string &contents) {
             !integer(s["transform"], 0, 3) || !integer(s["window"], 1, 100000) ||
             !s["scale"].is_number() || !std::isfinite(s["scale"].number_value()) ||
             !s["offset"].is_number() || !std::isfinite(s["offset"].number_value())) return std::nullopt;
+        if (!s["source"].is_null() && !s["source"].is_string()) return std::nullopt;
         const std::string path = s["path"].string_value();
         if (s["path"].is_string() && path.empty()) return std::nullopt;
         const auto id = path.empty() ? MessageId::parse(s["message"].string_value()) : MessageId{};
@@ -76,7 +95,7 @@ inline std::optional<Layout> parseLayout(const std::string &contents) {
         if (!id || !color) return std::nullopt;
         chart.signals.push_back({*id, s["signal"].string_value(),
           {(Transform)s["transform"].int_value(), s["scale"].number_value(), s["offset"].number_value(), s["window"].int_value()},
-          s["visible"].bool_value(), path, *color});
+          s["visible"].bool_value(), path, *color, s["source"].string_value()});
       }
     }
   }

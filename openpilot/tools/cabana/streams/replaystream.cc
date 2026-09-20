@@ -1,22 +1,34 @@
 #include "tools/cabana/streams/replaystream.h"
 
 #include <string>
+#include <stdexcept>
 
 #include "common/timing.h"
 #include "common/util.h"
 #include "tools/cabana/analysis/logfields.h"
 #include "tools/cabana/settings.h"
+#include "tools/cabana/core/source.h"
 
 ReplayStream::ReplayStream() {
-  unsetenv("ZMQ");
-  setenv("COMMA_CACHE", "/tmp/comma_download_cache", 1);
+  static std::once_flag environment_initialized;
+  std::call_once(environment_initialized, []() {
+    unsetenv("ZMQ");
+    setenv("COMMA_CACHE", "/tmp/comma_download_cache", 0);
+  });
 
-  op_prefix = std::make_unique<OpenpilotPrefix>();
+  // Each camera publisher gets its own socket name. OPENPILOT_PREFIX is a
+  // process-wide environment variable and cannot isolate concurrent routes.
+  camera_endpoint_ = "cabana_" + util::random_string(15);
 
+  fields_thread_ = std::thread([this]() { indexFields(); });
+}
+
+void ReplayStream::start() {
+  SourceScope scope(this);
   settings_connection_ = settings.changed.connect([this]() {
     if (replay) replay->setSegmentCacheLimit(settings.max_cached_minutes);
   });
-  fields_thread_ = std::thread([this]() { indexFields(); });
+  replay->start();
 }
 
 ReplayStream::~ReplayStream() {
@@ -41,8 +53,19 @@ void ReplayStream::mergeSegments() {
       std::vector<const CanEvent *> new_events;
       new_events.reserve(seg->log->events.size());
       MessageEventsMap msg_events;
+      std::array<std::vector<double>, MAX_CAMERAS> new_frame_times;
       for (const Event &e : seg->log->events) {
         if (stopping_) return;
+        int camera = -1;
+        switch (e.which) {
+          case cereal::Event::Which::NARROW_ROAD_ENCODE_IDX: camera = NarrowRoadCam; break;
+          case cereal::Event::Which::CABIN_ENCODE_IDX: camera = CabinCam; break;
+          case cereal::Event::Which::WIDE_ROAD_ENCODE_IDX: camera = WideRoadCam; break;
+          default: break;
+        }
+        // LogReader adds a synthetic encode event at the frame SOF.
+        // The original log event can arrive later and is not another frame.
+        if (camera >= 0 && e.eidx_segnum != -1) new_frame_times[camera].push_back(toSeconds(e.mono_time));
         if (e.which == cereal::Event::Which::CAN) {
           capnp::FlatArrayMessageReader reader(e.data);
           auto event = reader.getRoot<cereal::Event>();
@@ -53,7 +76,17 @@ void ReplayStream::mergeSegments() {
           }
         }
       }
-      postToMainThreadAndWait([&]() { insertEvents(new_events, msg_events); });
+      postToMainThreadAndWait([&]() {
+        for (int camera = 0; camera < MAX_CAMERAS; ++camera) {
+          auto &times = frame_times_[camera];
+          const auto &added = new_frame_times[camera];
+          const auto old_size = times.size();
+          times.insert(times.end(), added.begin(), added.end());
+          std::inplace_merge(times.begin(), times.begin() + old_size, times.end());
+          times.erase(std::unique(times.begin(), times.end()), times.end());
+        }
+        insertEvents(new_events, msg_events);
+      });
       {
         std::lock_guard lock(fields_mutex_);
         pending_segments_.push_back(seg);
@@ -86,8 +119,12 @@ void ReplayStream::indexFields() {
 }
 
 bool ReplayStream::loadRoute(const std::string &route, const std::string &data_dir, uint32_t replay_flags, bool auto_source) {
+  route_reference_ = route;
+  data_directory_ = data_dir;
+  replay_flags |= REPLAY_FLAG_CABIN_CAMERA | REPLAY_FLAG_WIDE_ROAD;
+  replay_flags |= REPLAY_FLAG_CABIN_CAMERA | REPLAY_FLAG_WIDE_ROAD;
   replay.reset(new Replay(route, {},
-                          {}, nullptr, replay_flags, data_dir, auto_source));
+                          {}, nullptr, replay_flags, data_dir, auto_source, camera_endpoint_));
   replay->setSegmentCacheLimit(settings.max_cached_minutes);
   replay->installEventFilter([this](const Event *event) { return eventFilter(event); });
 
@@ -120,13 +157,19 @@ bool ReplayStream::loadRoute(const std::string &route, const std::string &data_d
     } else {
       message = "Failed to load route: '" + route + "'";
     }
-    error(message);
+    if (utils::isMainThread()) {
+      SourceScope scope(this);
+      error(message);
+    } else {
+      // Loading precedes UI adoption. The startup loader owns exception delivery
+      // to the main thread; never invoke UI observers or switch globals here.
+      throw std::runtime_error(message);
+    }
   }
   return success;
 }
 
 bool ReplayStream::eventFilter(const Event *event) {
-  static double prev_update_ts = 0;
   if (event->which == cereal::Event::Which::CAN) {
     double current_sec = toSeconds(event->mono_time);
     capnp::FlatArrayMessageReader reader(event->data);
@@ -139,15 +182,52 @@ bool ReplayStream::eventFilter(const Event *event) {
   }
 
   double ts = millis_since_boot();
-  if ((ts - prev_update_ts) > (1000.0 / STREAM_UPDATE_FPS)) {
+  if ((ts - previous_update_ts_) > (1000.0 / STREAM_UPDATE_FPS)) {
     const double sec = toSeconds(event->mono_time);
     postToMainThread([this, sec]() { current_sec_ = sec; updateLastMessages(); });
-    prev_update_ts = ts;
+    previous_update_ts_ = ts;
   }
   return true;
 }
 
 void ReplayStream::pause(bool pause) {
+  SourceScope scope(this);
   replay->pause(pause);
   pause ? paused() : resume();
+}
+
+std::set<CameraType> ReplayStream::availableCameras() const {
+  std::set<CameraType> cameras;
+  if (!replay) return cameras;
+  for (const auto &[number, segment] : replay->route().segments()) {
+    if (!segment.narrow_road_cam.empty() || !segment.qcamera.empty()) cameras.insert(NarrowRoadCam);
+    if (!segment.cabin_cam.empty()) cameras.insert(CabinCam);
+    if (!segment.wide_road_cam.empty()) cameras.insert(WideRoadCam);
+  }
+  return cameras;
+}
+
+std::optional<double> ReplayStream::nextFrameTime(CameraType camera, double relative_sec, bool forward) const {
+  if (camera < 0 || camera >= MAX_CAMERAS) return std::nullopt;
+  const auto &times = frame_times_[camera];
+  constexpr double tolerance = 0.001;
+  if (forward) {
+    auto it = std::upper_bound(times.begin(), times.end(), relative_sec + tolerance);
+    if (it != times.end()) return *it;
+  } else {
+    auto it = std::lower_bound(times.begin(), times.end(), relative_sec - tolerance);
+    if (it != times.begin()) return *std::prev(it);
+  }
+  return std::nullopt;
+}
+
+double ReplayStream::maxSeconds() const {
+  const auto data = replay->getEventData();
+  const auto &segments = replay->route().segments();
+  if (data && !segments.empty()) {
+    auto last = data->segments.find(segments.rbegin()->first);
+    if (last != data->segments.end() && last->second->log && !last->second->log->events.empty())
+      return std::min(replay->maxSeconds(), toSeconds(last->second->log->events.back().mono_time));
+  }
+  return replay->maxSeconds();
 }

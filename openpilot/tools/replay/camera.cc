@@ -9,7 +9,7 @@
 
 const int BUFFER_COUNT = 40;
 
-CameraServer::CameraServer(std::pair<int, int> camera_size[MAX_CAMERAS]) {
+CameraServer::CameraServer(std::pair<int, int> camera_size[MAX_CAMERAS], const std::string &server_name) : server_name_(server_name) {
   for (int i = 0; i < MAX_CAMERAS; ++i) {
     std::tie(cameras_[i].width, cameras_[i].height) = camera_size[i];
   }
@@ -34,7 +34,7 @@ CameraServer::~CameraServer() {
 }
 
 void CameraServer::startVipcServer() {
-  vipc_server_.reset(new VisionIpcServer("camerad"));
+  vipc_server_.reset(new VisionIpcServer(server_name_));
   for (auto &cam : cameras_) {
     cam.cached_buf.clear();
 

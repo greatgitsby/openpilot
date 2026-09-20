@@ -10,8 +10,9 @@
 class SignalSelector {
 public:
   struct ListItem {
-    ListItem(const MessageId &msg_id, const cabana::Signal *sig) : msg_id(msg_id), sig(sig) {}
-    ListItem(std::string path) : path(std::move(path)), sig(nullptr) {}
+    ListItem(const MessageId &msg_id, const cabana::Signal *sig, std::string source_id = {}) : source_id(std::move(source_id)), msg_id(msg_id), sig(sig) {}
+    ListItem(std::string path, std::string source_id = {}) : source_id(std::move(source_id)), path(std::move(path)), sig(nullptr) {}
+    std::string source_id;
     std::string path;
     std::string name() const { return path.empty() ? sig->name : path; }
     MessageId msg_id;
@@ -20,8 +21,8 @@ public:
 
   SignalSelector(std::string title);
   const std::vector<ListItem> &selectedItems() const { return selected_list_; }
-  inline void addSelected(const MessageId &id, const cabana::Signal *sig) { selected_list_.emplace_back(id, sig); }
-  void addFields(const std::string &path) { selected_list_.emplace_back(path); }
+  inline void addSelected(const MessageId &id, const cabana::Signal *sig, const std::string &source_id = {}) { selected_list_.emplace_back(id, sig, source_id); }
+  void addFields(const std::string &path, const std::string &source_id = {}) { selected_list_.emplace_back(path, source_id); }
   void open() { open_ = true; show_ = false; accepted_ = false; }
   bool draw();  // false once the dialog is closed
   bool accepted() const { return accepted_; }
@@ -36,6 +37,7 @@ private:
     std::string text;
     MessageId id;
   };
+  std::string source_id_;
   std::string title_;
   std::vector<ComboItem> msgs_combo_;
   std::string msgs_combo_filter_;

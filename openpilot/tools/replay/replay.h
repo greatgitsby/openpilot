@@ -35,13 +35,14 @@ struct BenchmarkStats {
 class Replay {
 public:
   Replay(const std::string &route, std::vector<std::string> allow, std::vector<std::string> block, SubMaster *sm = nullptr,
-         uint32_t flags = REPLAY_FLAG_NONE, const std::string &data_dir = "", bool auto_source = false);
+         uint32_t flags = REPLAY_FLAG_NONE, const std::string &data_dir = "", bool auto_source = false, const std::string &camera_endpoint = "camerad");
   ~Replay();
   void stop();
   bool load();
   RouteLoadError lastRouteError() const { return route().lastError(); }
   void start(int seconds = 0) { seekTo(min_seconds_ + seconds, false); }
   void pause(bool pause);
+  void requestCameraPreview();
   void seekToFlag(FindFlag flag);
   void seekTo(double seconds, bool relative);
   inline bool isPaused() const { return user_paused_; }
@@ -51,7 +52,7 @@ public:
   void setLoop(bool loop) { loop ? flags_ &= ~REPLAY_FLAG_NO_LOOP : flags_ |= REPLAY_FLAG_NO_LOOP; }
   bool loop() const { return !(flags_ & REPLAY_FLAG_NO_LOOP); }
   const Route &route() const { return seg_mgr_->route_; }
-  inline double currentSeconds() const { return double(cur_mono_time_ - route_start_ts_) / 1e9; }
+  inline double currentSeconds() const { const uint64_t now = cur_mono_time_; return now >= route_start_ts_ ? double(now - route_start_ts_) / 1e9 : 0.; }
   inline std::time_t routeDateTime() const { return route_date_time_; }
   inline uint64_t routeStartNanos() const { return route_start_ts_; }
   inline double toSeconds(uint64_t mono_time) const { return (mono_time - route_start_ts_) / 1e9; }
@@ -86,6 +87,7 @@ private:
                                                    uint64_t &segment_start_time);
   void publishMessage(const Event *e);
   void publishFrame(const Event *e);
+  void publishCameraPreview();
   void checkSeekProgress();
 
   std::unique_ptr<SegmentManager> seg_mgr_;
@@ -100,6 +102,7 @@ private:
   std::atomic<double> seeking_to_ = -1.0;
   std::atomic<bool> exit_ = false;
   std::atomic<bool> interrupt_requested_ = false;
+  std::atomic<bool> camera_preview_requested_ = false;
   bool events_ready_ = false;
   std::time_t route_date_time_ = 0;
   uint64_t route_start_ts_ = 0;
@@ -114,6 +117,7 @@ private:
   std::unique_ptr<CameraServer> camera_server_;
   std::atomic<uint32_t> flags_ = REPLAY_FLAG_NONE;
 
+  std::string camera_endpoint_;
   std::string car_fingerprint_;
   std::atomic<float> speed_ = 1.0;
   std::function<bool(const Event *)> event_filter_ = nullptr;

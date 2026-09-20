@@ -19,6 +19,7 @@ public:
 
 class UndoStack {
 public:
+  explicit UndoStack(AbstractStream *owner = nullptr) : owner_(owner) {}
   void push(UndoCommand *cmd);  // takes ownership and calls redo()
   void undo();
   void redo();
@@ -35,6 +36,7 @@ public:
   Observable<bool> cleanChanged;
 
 private:
+  AbstractStream *owner_ = nullptr;
   void setIndex(int index);
   std::vector<std::unique_ptr<UndoCommand>> commands_;
   int index_ = 0;

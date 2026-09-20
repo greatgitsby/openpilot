@@ -10,6 +10,8 @@
 #include "tools/cabana/dbc/dbcmanager.h"
 #include "tools/cabana/streams/abstractstream.h"
 #include "tools/cabana/ui/app.h"
+#include "tools/cabana/core/source.h"
+#include "tools/cabana/ui/timeline.h"
 #include "tools/cabana/ui/dialogs/settingsdialog.h"
 #include "tools/cabana/ui/dialogs/streamselector.h"
 #include "tools/cabana/ui/helpoverlay.h"
@@ -81,7 +83,47 @@ private:
   void saveSessionState();
   void restoreSessionState();
   void finishClose();
-  void nextFrame(std::function<void()> fn) { next_frame_.push_back(std::move(fn)); }
+  void nextFrame(std::function<void()> fn);
+  void withSource(const std::string &id, std::function<void()> fn);
+  void drawAddWidgetMenu();
+  void drawSourcesMenu();
+  void addCamera(const std::string &source, VisionStreamType type, bool crop = false, const std::string &id = {});
+  void openWorkspaceRoutes(const json11::Json &document);
+  void applyWorkspace(const json11::Json &document);
+  void loadWorkspacePreset(const std::string &path);
+  void removeSource(const std::string &id);
+  void selectSource(const std::string &id);
+  void makeDefaultWidgets();
+  std::string panelName(const char *kind) const;
+  struct SourceView {
+    std::unique_ptr<AbstractStream> stream;
+    std::unique_ptr<MessagesWidget> messages;
+    CenterWidget inspector;
+    bool messages_visible = false, logs_visible = false, inspector_visible = false;
+    std::string fingerprint;
+    std::vector<std::unique_ptr<ToolDialog>> tools;
+    Connections connections;
+  };
+  SourceView &currentSource();
+  std::vector<AbstractStream *> orderedSources() const;
+  std::vector<std::unique_ptr<SourceView>> source_views_;
+  std::string selected_source_;
+  int next_source_id_ = 1;
+  struct CameraPane {
+    std::string id, source;
+    VisionStreamType type;
+    std::unique_ptr<VideoWidget> widget;
+    bool visible = true;
+  };
+  std::vector<CameraPane> camera_panes_;
+  int next_camera_id_ = 1;
+  PlaybackTimeline timeline_;
+  bool default_workspace_ = true;
+  bool include_routes_ = false;
+  std::string source_to_replace_;
+  uint64_t workspace_generation_ = 0;
+  std::unordered_map<std::string, uint64_t> source_load_generation_;
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   void createDockWidgets();
 
   void handleShortcuts();
@@ -103,15 +145,10 @@ private:
   void drawWaitDialog();
 
   std::string startup_layout_;
-  bool details_visible_ = false;
   GLFWwindow *window_;
   std::unique_ptr<AbstractStream> startup_stream_;  // opened on the first frame
   StreamLoader startup_loader_;  // run on a worker after the first frame
-  std::unique_ptr<AbstractStream> stream_;  // `can` points here, or at dummy_ when no stream is open
   DummyStream dummy_;
-  std::unique_ptr<MessagesWidget> messages_widget_;
-  CenterWidget center_widget_;
-  std::unique_ptr<VideoWidget> video_widget_;
   std::unique_ptr<ChartsWidget> charts_widget_;
   StreamSelector stream_selector_;
   SettingsDialog settings_dialog_;
@@ -119,18 +156,13 @@ private:
   std::unordered_map<std::string, std::string> fingerprint_to_dbc_;
   std::vector<std::string> opendbc_names_;
   enum { MAX_RECENT_FILES = 15 };
-  std::string car_fingerprint_;
-  bool messages_visible_ = true;
-  bool log_messages_visible_ = true;
   bool charts_visible_ = true;
-  bool video_visible_ = true;
   bool playback_visible_ = true;
   bool reset_layout_ = false;
   bool full_screen_ = false;
 #ifndef __APPLE__
   int windowed_rect_[4] = {0, 0, 1600, 900};
 #endif
-  std::vector<std::unique_ptr<ToolDialog>> tool_dialogs_;
   bool closing_ = false;
   bool exited_ = false;
   bool window_modified_ = false;
@@ -151,6 +183,4 @@ private:
   } wait_dlg_;
   std::vector<std::function<void()>> next_frame_;
   Connections connections_;
-  Connections stream_connections_;
-  Connections widget_connections_;
 };

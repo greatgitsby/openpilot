@@ -11,6 +11,7 @@
 #include "imgui_internal.h"
 #include "implot.h"
 
+#include "tools/cabana/core/source.h"
 #include "tools/cabana/ui/chart/tiplabel.h"
 #include "tools/cabana/ui/chart/analysis.h"
 #include "tools/cabana/dbc/dbcmanager.h"
@@ -27,12 +28,14 @@ inline constexpr const char *SERIES_TYPE_NAMES[] = {"Line", "Step Line", "Scatte
 // the message part of a legend entry, drawn after the signal name
 inline std::string msgLabel(const MessageId &id) { return " " + msgName(id) + " " + id.toString(); }
 
-class ChartsWidget;
+class ChartManager;
 class ChartView {
 public:
   struct SigItem {
+    std::string source_id;
+    std::string signal_name;
     std::string path;  // cereal path or named equation; empty for decoded CAN
-    std::string name() const { return path.empty() ? sig->name : path; }
+    std::string name() const { return path.empty() ? (sig ? sig->name : signal_name) : path; }
     std::string label() const {
       if (path.empty() || path.front() != '/') return name();
       const auto slash = path.rfind('/');
@@ -43,7 +46,10 @@ public:
       }
       return leaf;
     }
-    std::string description() const { return path.empty() ? msgLabel(msg_id) : ""; }
+    std::string description() const {
+      auto *source = sourceById(source_id);
+      return " · " + (source ? source->source_label : source_id) + (path.empty() ? " · " + msg_id.toString() : "");
+    }
     MessageId msg_id;
     const cabana::Signal *sig = nullptr;
     CabanaColor color;
@@ -59,15 +65,20 @@ public:
     double max = 0;
   };
 
-  ChartView(const std::pair<double, double> &x_range, ChartsWidget *parent);
-  void addFields(const std::string &path, CabanaColor color = {0, 114, 178});
+  ChartView(const std::pair<double, double> &x_range, ChartManager *parent);
+  void addFields(const std::string &path, CabanaColor color = {0, 114, 178}, const std::string &source_id = {});
+  void addPendingSignal(const MessageId &id, const std::string &name, const std::string &source_id, CabanaColor color);
+  void resolveSignals();
+  void detachSource(const std::string &id);
+  std::string widget_id;
+  std::string windowName() const;
   void updateFields();
   void pollFields();
   std::string title;
   std::optional<double> limit_min, limit_max;
-  void addSignal(const MessageId &msg_id, const cabana::Signal *sig);
+  void addSignal(const MessageId &msg_id, const cabana::Signal *sig, const std::string &source_id = {});
   bool hasSignal(const MessageId &msg_id, const cabana::Signal *sig) const;
-  void updateSeries(const cabana::Signal *sig = nullptr, const MessageEventsMap *msg_new_events = nullptr);
+  void updateSeries(const cabana::Signal *sig = nullptr, const MessageEventsMap *msg_new_events = nullptr, const std::string &source_id = {});
   void updatePlot(double cur, double min, double max);
   SeriesType seriesType() const { return series_type_; }
   void configureSignal(size_t index, const chart::TransformSettings &transform, bool visible, std::optional<CabanaColor> color = std::nullopt);
@@ -98,12 +109,13 @@ private:
   void signalRemoved(const cabana::Signal *sig) { removeIf([=](auto &s) { return s.sig == sig; }); }
 
   void appendCanEvents(const cabana::Signal *sig, const std::vector<const CanEvent *> &events,
-                       std::vector<ImPlotPoint> &vals);
+                       std::vector<ImPlotPoint> &vals, AbstractStream *source);
   void rebuildSeries(SigItem &s, size_t begin = 0);
   static void buildSeries(SigItem &s, size_t begin, bool build_tree);
   std::future<void> fields_task_;
   std::shared_ptr<std::vector<SigItem>> fields_result_;
   bool fields_dirty_ = false;
+  size_t fields_revision_ = 0, fields_result_revision_ = 0;
   void drawSignalAnalysis(SigItem &s);
   std::string legendName(const SigItem &s) const;
   static std::string signalUnit(const SigItem &s);
@@ -174,6 +186,7 @@ private:
   SeriesType series_type_ = SeriesType::Line;
   bool can_drop_ = false;
   double tooltip_x_ = -1;
-  ChartsWidget *charts_widget_;
+  ChartManager *charts_widget_;
   Connections connections_;
+  friend class ChartManager;
 };

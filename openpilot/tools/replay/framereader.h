@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,7 @@ public:
 
   int width = 0, height = 0;
 
-  VideoDecoder *decoder_ = nullptr;
+  std::unique_ptr<VideoDecoder> decoder_;
   AVFormatContext *input_ctx = nullptr;
   int video_stream_idx_ = -1;
   int prev_idx = -1;

@@ -14,6 +14,7 @@
 
 #include "tools/replay/py_downloader.h"
 #include "tools/replay/logreader.h"
+#include "tools/replay/framereader.h"
 
 #include "common/tests/native_test.h"
 #include "tools/cabana/analysis/logfields.h"
@@ -871,7 +872,15 @@ void test_signal_tree() {
   REQUIRE(tree.visible({}).empty());
 }
 
+void test_playback_ranges();
+void test_chart_workspaces();
+
+void test_source_isolation();
+
 void test_cabana_core() {
+  test_source_isolation();
+  test_playback_ranges();
+  test_chart_workspaces();
   test_heatmap_counts();
   test_pixel_envelope();
   test_signal_tree();
@@ -903,6 +912,51 @@ void test_cabana_core() {
 }
 
 int main(int argc, char **argv) {
+  if (argc == 4 && std::string(argv[1]) == "--check-videos") {
+    return run_native_test([&]() {
+      FrameReader readers[2];
+      for (int i = 0; i < 2; ++i) REQUIRE(readers[i].loadFromFile(NarrowRoadCam, argv[i + 2], true));
+      REQUIRE(readers[0].decoder_.get() != readers[1].decoder_.get());
+      std::exception_ptr errors[2];
+      uint64_t sums[2] = {};
+      std::thread workers[2];
+      for (int i = 0; i < 2; ++i) workers[i] = std::thread([&, i]() {
+        try {
+          auto &reader = readers[i];
+          std::vector<uint8_t> pixels(reader.width * reader.height * 3 / 2);
+          VisionBuf buffer; buffer.addr = pixels.data();
+          buffer.init_yuv(reader.width, reader.height, reader.width, reader.width * reader.height);
+          auto checksum = [&]() {
+            uint64_t hash = 14695981039346656037ULL;
+            for (auto pixel : pixels) hash = (hash ^ pixel) * 1099511628211ULL;
+            return hash;
+          };
+          std::vector<uint64_t> frame_checksums;
+          for (int frame = 0; frame < (int)reader.getFrameCount(); ++frame) {
+            REQUIRE(reader.get(frame, &buffer));
+            frame_checksums.push_back(checksum());
+            for (auto pixel : pixels) sums[i] += pixel;
+          }
+          // Revisit every frame nonsequentially, including both sides of every
+          // keyframe boundary, and compare all decoded bytes with the first pass.
+          for (int frame = (int)reader.getFrameCount() - 1; frame >= 0; --frame) {
+            REQUIRE(reader.get(frame, &buffer));
+            REQUIRE(checksum() == frame_checksums[frame]);
+          }
+          for (int frame : {98, 99, 100, 101, 122, 123, 124, 0}) {
+            if (frame >= (int)reader.getFrameCount()) continue;
+            REQUIRE(reader.get(frame, &buffer));
+            REQUIRE(checksum() == frame_checksums[frame]);
+          }
+        } catch (...) { errors[i] = std::current_exception(); }
+      });
+      for (auto &worker : workers) worker.join();
+      for (auto &error : errors) if (error) std::rethrow_exception(error);
+      REQUIRE(sums[0] != sums[1]);
+      printf("Concurrent video decode and independent seek passed (%zu / %zu frames)\n", readers[0].getFrameCount(), readers[1].getFrameCount());
+    });
+  }
+
   if (argc == 3 && std::string(argv[1]) == "--check-downloader") {
     return run_native_test([&]() {
       const std::string mode = argv[2];

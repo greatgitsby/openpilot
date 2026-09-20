@@ -1,10 +1,13 @@
 #include "tools/cabana/dbc/dbcmanager.h"
+#include "tools/cabana/core/source.h"
+#include "tools/cabana/streams/abstractstream.h"
 
 #include <algorithm>
 #include <cassert>
 #include <set>
 
 bool DBCManager::open(const SourceSet &sources, const std::string &dbc_file_name, std::string *error) {
+  SourceScope scope(owner_);
   try {
     auto it = std::find_if(dbc_files.begin(), dbc_files.end(),
                            [&](auto &f) { return f.second && f.second->filename == dbc_file_name; });
@@ -22,6 +25,7 @@ bool DBCManager::open(const SourceSet &sources, const std::string &dbc_file_name
 }
 
 bool DBCManager::open(const SourceSet &sources, const std::string &name, const std::string &content, std::string *error) {
+  SourceScope scope(owner_);
   try {
     auto file = std::make_shared<DBCFile>(name, content);
     for (auto s : sources) {
@@ -37,6 +41,7 @@ bool DBCManager::open(const SourceSet &sources, const std::string &name, const s
 }
 
 void DBCManager::close(const SourceSet &sources) {
+  SourceScope scope(owner_);
   for (auto s : sources) {
     dbc_files[s] = nullptr;
   }
@@ -44,6 +49,7 @@ void DBCManager::close(const SourceSet &sources) {
 }
 
 void DBCManager::close(DBCFile *dbc_file) {
+  SourceScope scope(owner_);
   for (auto &[_, f] : dbc_files) {
     if (f.get() == dbc_file) f = nullptr;
   }
@@ -51,11 +57,13 @@ void DBCManager::close(DBCFile *dbc_file) {
 }
 
 void DBCManager::closeAll() {
+  SourceScope scope(owner_);
   dbc_files.clear();
   fileChanged();
 }
 
 void DBCManager::addSignal(const MessageId &id, const cabana::Signal &sig) {
+  SourceScope scope(owner_);
   if (auto m = msg(id)) {
     if (auto s = m->addSignal(sig)) {
       signalAdded(id, s);
@@ -65,6 +73,7 @@ void DBCManager::addSignal(const MessageId &id, const cabana::Signal &sig) {
 }
 
 void DBCManager::updateSignal(const MessageId &id, const std::string &sig_name, const cabana::Signal &sig) {
+  SourceScope scope(owner_);
   if (auto m = msg(id)) {
     if (auto s = m->updateSignal(sig_name, sig)) {
       signalUpdated(s);
@@ -74,6 +83,7 @@ void DBCManager::updateSignal(const MessageId &id, const std::string &sig_name, 
 }
 
 void DBCManager::removeSignal(const MessageId &id, const std::string &sig_name) {
+  SourceScope scope(owner_);
   if (auto m = msg(id)) {
     if (auto s = m->sig(sig_name)) {
       signalRemoved(s);
@@ -84,6 +94,7 @@ void DBCManager::removeSignal(const MessageId &id, const std::string &sig_name) 
 }
 
 void DBCManager::updateMsg(const MessageId &id, const std::string &name, uint32_t size, const std::string &node, const std::string &comment) {
+  SourceScope scope(owner_);
   auto dbc_file = findDBCFile(id);
   assert(dbc_file);  // This should be impossible
   dbc_file->updateMsg(id, name, size, node, comment);
@@ -91,6 +102,7 @@ void DBCManager::updateMsg(const MessageId &id, const std::string &name, uint32_
 }
 
 void DBCManager::removeMsg(const MessageId &id) {
+  SourceScope scope(owner_);
   auto dbc_file = findDBCFile(id);
   assert(dbc_file);  // This should be impossible
   dbc_file->removeMsg(id);
@@ -185,5 +197,5 @@ std::string toString(const SourceSet &ss) {
 
 DBCManager *dbc() {
   static DBCManager dbc_manager;
-  return &dbc_manager;
+  return can ? can->database() : &dbc_manager;
 }

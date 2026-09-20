@@ -13,9 +13,11 @@ typedef std::set<int> SourceSet;
 const SourceSet SOURCE_ALL = {-1};
 inline bool operator<(const std::shared_ptr<DBCFile> &l, const std::shared_ptr<DBCFile> &r) { return l.get() < r.get(); }
 
+class AbstractStream;
+
 class DBCManager {
 public:
-  DBCManager() = default;
+  explicit DBCManager(AbstractStream *owner = nullptr) : owner_(owner) {}
   bool open(const SourceSet &sources, const std::string &dbc_file_name, std::string *error = nullptr);
   bool open(const SourceSet &sources, const std::string &name, const std::string &content, std::string *error = nullptr);
   void close(const SourceSet &sources);
@@ -55,6 +57,7 @@ public:
   Observable<> maskUpdated;
 
 private:
+  AbstractStream *owner_ = nullptr;
   std::map<int, std::shared_ptr<DBCFile>> dbc_files;
 };
 

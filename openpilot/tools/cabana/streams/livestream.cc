@@ -11,6 +11,7 @@
 #include "common/timing.h"
 #include "common/util.h"
 #include "tools/cabana/settings.h"
+#include "tools/cabana/core/source.h"
 
 struct LiveStream::Logger {
   Logger() : start_ts(seconds_since_epoch()), segment_num(-1) {}
@@ -127,15 +128,14 @@ void LiveStream::handleEvent(kj::ArrayPtr<capnp::word> data) {
 }
 
 void LiveStream::updateEvents() {
-  static double prev_speed = 1.0;
 
   if (first_update_ts == 0) {
     first_update_ts = nanos_since_boot();
     first_event_ts = current_event_ts = lastest_event_ts;
   }
 
-  if (paused_ || prev_speed != speed_) {
-    prev_speed = speed_;
+  if (paused_ || previous_speed_ != speed_) {
+    previous_speed_ = speed_;
     first_update_ts = nanos_since_boot();
     first_event_ts = current_event_ts;
     return;
@@ -159,6 +159,7 @@ void LiveStream::updateEvents() {
 }
 
 void LiveStream::seekTo(double sec) {
+  SourceScope scope(this);
   sec = std::max(0.0, sec);
   first_update_ts = nanos_since_boot();
   current_event_ts = first_event_ts = std::min<uint64_t>(sec * 1e9 + begin_event_ts, lastest_event_ts);
@@ -167,6 +168,7 @@ void LiveStream::seekTo(double sec) {
 }
 
 void LiveStream::pause(bool pause) {
+  SourceScope scope(this);
   paused_ = pause;
   pause ? paused() : resume();
 }

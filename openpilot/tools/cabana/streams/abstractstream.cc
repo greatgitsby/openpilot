@@ -6,24 +6,67 @@
 
 #include "common/timing.h"
 #include "tools/cabana/settings.h"
+#include "tools/cabana/commands.h"
+#include "tools/cabana/core/source.h"
 
 static const int EVENT_NEXT_BUFFER_SIZE = 6 * 1024 * 1024;  // 6MB
 
 AbstractStream *can = nullptr;
 
-AbstractStream::AbstractStream() {
+namespace {
+std::vector<AbstractStream *> registered_sources;
+double calc_freq(const AbstractStream *stream, const MessageId &msg_id, double current_sec);
+}
+
+const std::vector<AbstractStream *> &sources() { return registered_sources; }
+AbstractStream *sourceById(const std::string &id) {
+  auto it = std::find_if(registered_sources.begin(), registered_sources.end(),
+                         [&](auto *source) { return source->source_id == id; });
+  return it == registered_sources.end() ? nullptr : *it;
+}
+void registerSource(AbstractStream *stream) {
+  assert(utils::isMainThread());
+  if (stream && std::find(registered_sources.begin(), registered_sources.end(), stream) == registered_sources.end())
+    registered_sources.push_back(stream);
+}
+void unregisterSource(AbstractStream *stream) {
+  assert(utils::isMainThread());
+  registered_sources.erase(std::remove(registered_sources.begin(), registered_sources.end(), stream), registered_sources.end());
+}
+SourceScope::SourceScope(AbstractStream *stream) : previous_(can), previous_alive_(can ? can->lifetime() : std::weak_ptr<bool>{}) {
+  assert(utils::isMainThread());
+  if (stream) can = stream;
+}
+SourceScope::~SourceScope() {
+  can = previous_ && !previous_alive_.expired() ? previous_ : nullptr;
+}
+
+AbstractStream::AbstractStream() : database_(std::make_unique<DBCManager>(this)), undo_stack_(std::make_unique<UndoStack>(this)) {
   event_buffer_ = std::make_unique<MonotonicBuffer>(EVENT_NEXT_BUFFER_SIZE);
 
   // connected first so the stream state is updated before any widget handlers run
   connections_.push_back(seekedTo.connect([this](double sec) { updateLastMsgsTo(sec); }));
   connections_.push_back(seeking.connect([this](double sec) { current_sec_ = sec; }));
-  connections_.push_back(dbc()->fileChanged.connect([this]() { updateMasks(); }));
-  connections_.push_back(dbc()->maskUpdated.connect([this]() { updateMasks(); }));
+  connections_.push_back(database()->fileChanged.connect([this]() { updateMasks(); }));
+  connections_.push_back(database()->maskUpdated.connect([this]() { updateMasks(); }));
+}
+
+AbstractStream::~AbstractStream() {
+  alive_.reset();
+  // A route can fail loading on a worker before it is adopted by the UI.
+  // Only adopted, main-thread sources participate in the active-source registry.
+  if (utils::isMainThread()) {
+    unregisterSource(this);
+    if (can == this) can = nullptr;
+  }
 }
 
 void AbstractStream::postToMainThread(std::function<void()> fn) {
-  utils::runOnMainThread([alive = std::weak_ptr<bool>(alive_), fn = std::move(fn)]() {
-    if (!alive.expired()) fn();
+  utils::runOnMainThread([this, alive = std::weak_ptr<bool>(alive_), fn = std::move(fn)]() {
+    if (!alive.expired()) {
+      SourceScope scope(this);
+      fn();
+    }
   });
 }
 
@@ -55,7 +98,7 @@ void AbstractStream::updateMasks() {
     return;
 
   for (const auto s : sources) {
-    for (const auto &[address, m] : dbc()->getMessages(s)) {
+    for (const auto &[address, m] : database()->getMessages(s)) {
       masks_[{.source = (uint8_t)s, .address = address}] = m.mask;
     }
   }
@@ -107,7 +150,8 @@ void AbstractStream::updateLastMessages() {
   {
     std::lock_guard lk(mutex_);
     for (const auto &id : new_msgs_) {
-      const auto &can_data = messages_[id];
+      auto &can_data = messages_[id];
+      can_data.freq = calc_freq(this, id, can_data.ts);
       current_sec_ = std::max(current_sec_, can_data.ts);
       last_msgs[id] = can_data;
       sources.insert(id.source);
@@ -127,6 +171,7 @@ void AbstractStream::updateLastMessages() {
 }
 
 void AbstractStream::setTimeRange(const std::optional<std::pair<double, double>> &range, bool seek_into_range) {
+  SourceScope scope(this);
   time_range_ = range;
   if (seek_into_range && time_range_ && (current_sec_ < time_range_->first || current_sec_ >= time_range_->second)) {
     seekTo(time_range_->first);
@@ -136,7 +181,7 @@ void AbstractStream::setTimeRange(const std::optional<std::pair<double, double>>
 
 void AbstractStream::updateEvent(const MessageId &id, double sec, const uint8_t *data, uint8_t size) {
   std::lock_guard lk(mutex_);
-  messages_[id].compute(id, data, size, sec, getSpeed(), masks_[id]);
+  messages_[id].compute(id, data, size, sec, getSpeed(), masks_[id], -1);
   new_msgs_.insert(id);
 }
 
@@ -224,8 +269,7 @@ const CanEvent *AbstractStream::newEvent(uint64_t mono_time, const cereal::CanDa
 }
 
 void AbstractStream::mergeEvents(const std::vector<const CanEvent *> &events) {
-  static MessageEventsMap msg_events;
-  std::for_each(msg_events.begin(), msg_events.end(), [](auto &e) { e.second.clear(); });
+  MessageEventsMap msg_events;
 
   // Group events by message ID
   for (auto e : events) {
@@ -277,8 +321,8 @@ inline CabanaColor blend(const CabanaColor &a, const CabanaColor &b) {
 }
 
 // Calculate the frequency from the past one minute data
-double calc_freq(const MessageId &msg_id, double current_sec) {
-  auto [first, last] = can->eventsInRange(msg_id, std::make_pair(current_sec - 59, current_sec));
+double calc_freq(const AbstractStream *stream, const MessageId &msg_id, double current_sec) {
+  auto [first, last] = stream->eventsInRange(msg_id, std::make_pair(current_sec - 59, current_sec));
   int count = std::distance(first, last);
   if (count <= 1) return 0.0;
 
@@ -295,7 +339,10 @@ void CanData::compute(const MessageId &msg_id, const uint8_t *can_data, const in
 
   if (auto sec = seconds_since_boot(); (sec - last_freq_update_ts) >= 1) {
     last_freq_update_ts = sec;
-    freq = !in_freq ? calc_freq(msg_id, ts) : in_freq;
+    if (in_freq > 0) freq = in_freq;
+    // Worker updates use the frequency refreshed by their source on the UI
+    // thread. They must never read its event map while segments are merging.
+    else if (in_freq == 0 && can) freq = calc_freq(can, msg_id, ts);
   }
 
   if (dat.size() != size) {

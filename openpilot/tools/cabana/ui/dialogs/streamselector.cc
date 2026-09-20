@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "common/util.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "tools/cabana/settings.h"
@@ -38,11 +39,7 @@ void OpenReplayWidget::draw() {
       }
     }));
   }
-  checkBox("Road camera", &cameras_[0]);
-  ImGui::SameLine();
-  checkBox("Driver camera", &cameras_[1]);
-  ImGui::SameLine();
-  checkBox("Wide road camera", &cameras_[2]);
+
 }
 
 void OpenReplayWidget::drawPopups() {
@@ -65,10 +62,7 @@ std::unique_ptr<AbstractStream> OpenReplayWidget::open() {
     Connection err = replay_stream->error.connect([](const std::string &msg) {
       MessageBox::warning("Error", msg);
     });
-    uint32_t flags = REPLAY_FLAG_NONE;
-    if (cameras_[1]) flags |= REPLAY_FLAG_CABIN_CAMERA;
-    if (cameras_[2]) flags |= REPLAY_FLAG_WIDE_ROAD;
-    if (flags == REPLAY_FLAG_NONE && !cameras_[0]) flags = REPLAY_FLAG_NO_VIPC;
+    const uint32_t flags = REPLAY_FLAG_NONE;
 
     if (replay_stream->loadRoute(route, data_dir, flags)) {
       return replay_stream;

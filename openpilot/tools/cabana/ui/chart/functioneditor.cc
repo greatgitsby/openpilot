@@ -1,13 +1,15 @@
 #include "tools/cabana/ui/chart/chartswidget.h"
 
 #include <algorithm>
+#include "json11/json11.hpp"
 
 #include "tools/cabana/ui/chart/chart.h"
 #include "tools/cabana/ui/util.h"
 #include "tools/cabana/ui/icons.h"
 #include "tools/cabana/utils/strings.h"
 
-void ChartsWidget::openFunctionEditor(const cabana::Equation *equation) {
+void ChartManager::openFunctionEditor(const cabana::Equation *equation) {
+  function_source_id_ = can->source_id;
   function_draft_ = equation ? *equation : cabana::Equation{"", "", "", "return value", {}};
   function_original_name_ = equation ? equation->name : "";
   function_plot_ = !equation;
@@ -21,8 +23,11 @@ void ChartsWidget::openFunctionEditor(const cabana::Equation *equation) {
   function_editor_show_ = false;
 }
 
-void ChartsWidget::drawFunctionEditor() {
+void ChartManager::drawFunctionEditor() {
   if (!function_editor_open_) return;
+  auto *source = sourceById(function_source_id_);
+  if (!source) { function_editor_open_ = false; return; }
+  SourceScope source_scope(source);
   if (!function_editor_show_) {
     ImGui::OpenPopup("Custom Function");
     function_editor_show_ = true;
@@ -68,6 +73,11 @@ void ChartsWidget::drawFunctionEditor() {
         inputText("##path", &path, "Signal path or function name");
         if (ImGui::BeginDragDropTarget()) {
           if (auto *payload = ImGui::AcceptDragDropPayload("CABANA_TELEMETRY")) path = (const char *)payload->Data;
+          if (auto *payload = ImGui::AcceptDragDropPayload("CABANA_SIGNAL")) {
+            std::string error;
+            const auto signal = json11::Json::parse((const char *)payload->Data, error);
+            if (error.empty() && signal["source"].string_value() == function_source_id_) path = signal["path"].string_value();
+          }
           ImGui::EndDragDropTarget();
         }
         ImGui::TableNextColumn();
@@ -177,7 +187,8 @@ void ChartsWidget::drawFunctionEditor() {
   if (save || remove) {
     // Discard old results, including any in-flight evaluation of the previous definition.
     ++equation_revision_;
-    calculated_.clear();
+    source_calculated_.clear();
+    for (auto *candidate : sources()) dirty_sources_.insert(candidate->source_id);
     equation_errors_.clear();
     for (auto &chart : charts_) chart->updateFields();
     rebuildSignalBrowser();

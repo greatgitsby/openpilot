@@ -1,6 +1,5 @@
 #pragma once
 
-#include <filesystem>
 #include <functional>
 #include <future>
 #include <memory>
@@ -15,14 +14,13 @@
 
 #include "tools/cabana/ui/chart/signalselector.h"
 #include "tools/cabana/ui/chart/signaltree.h"
-#include "tools/cabana/ui/widgets/tabbar.h"
 #include "tools/cabana/commands.h"
+#include "tools/cabana/core/source.h"
 #include "tools/cabana/analysis/equations.h"
 #include "tools/cabana/dbc/dbcmanager.h"
 #include "tools/cabana/streams/abstractstream.h"
 #include "tools/cabana/utils/util.h"
 
-const int CHART_MIN_WIDTH = 300;
 
 // a slider whose value is mapped onto a log10 scale
 class LogSlider {
@@ -49,32 +47,24 @@ private:
 };
 
 class ChartView;
-class ChartsWidget;
+class ChartManager;
 
-class ChartsContainer {
+class ChartManager {
 public:
-  ChartsContainer(ChartsWidget *parent) : charts_widget_(parent) {}
-  void setDropIndicator(const ImVec2 &pt) { drop_indicator_pos_ = pt; }
-  void draw();  // grid layout of the current tab's charts
-  ChartView *getDropAfter(const ImVec2 &pos) const;
-  ChartView *childAt(const ImVec2 &pos) const;
-  const ImRect &geometry() const { return geometry_; }  // screen coordinates
-
-private:
-  void drawDropIndicator();
-
-  ImRect geometry_;
-  ChartsWidget *charts_widget_;
-  ImVec2 drop_indicator_pos_;
-};
-
-class ChartsWidget {
-public:
-  ChartsWidget();
-  ~ChartsWidget();  // out of line: the header users only see a forward declared ChartView
-  void draw();  // content only; MainWindow owns the dockable panel
+  ChartManager();
+  ~ChartManager();  // out of line: the header users only see a forward declared ChartView
+  void draw();  // independent dockable chart windows
+  void newChart();
+  std::vector<std::string> windowNames() const;
+  void syncSources();
+  void removeSource(const std::string &id);
+  void drawAnalysisMenu();
+  std::function<void(double)> seekRequested;
+  std::function<void(bool)> pauseRequested;
+  void requestSeek(double route_seconds) { if (seekRequested) seekRequested(route_seconds); else can->seekTo(route_seconds); }
+  void requestPause(bool paused) { if (pauseRequested) pauseRequested(paused); else can->pause(paused); }
   size_t chartCount() const { return charts_.size(); }
-  std::shared_ptr<const cabana::Samples> fieldsSnapshot(const std::string &path) const;
+  std::shared_ptr<const cabana::Samples> fieldsSnapshot(const std::string &path, const std::string &source_id = {}) const;
   std::string serializeLayout() const;
   enum class LayoutStatus { Restored, MissingCan, Failed };
   LayoutStatus restoreLayout(const std::string &contents, bool defer_missing_can = false);
@@ -83,7 +73,6 @@ public:
   inline bool hasSignal(const MessageId &id, const cabana::Signal *sig) { return findChart(id, sig) != nullptr; }
   std::string whatsThis() const;
 
-  void setColumnCount(int n);
   void removeAll();
 
   void drawSignalBrowser();
@@ -92,9 +81,7 @@ public:
   Observable<> seriesChanged;
 
 private:
-  void handleEvents();  // the back button, focus loss, the chart drag and the value tip leave
-  void newChart();
-  ChartView *createChart(int pos = 0);
+  ChartView *createChart(int pos = 0, bool restoring = false);
   void removeChart(ChartView *chart);
   void splitChart(ChartView *chart);
   ImRect chartVisibleRect(ChartView *chart);
@@ -104,86 +91,54 @@ private:
   void eventsMerged(const MessageEventsMap &new_events);
   void updateState();
   void zoomReset();
-  void startChartDrag(ChartView *chart, const ImVec2 &global_pos);
-  void dragChartMove(const ImVec2 &global_pos);
-  void dragChartRelease(const ImVec2 &global_pos);
-  void cancelChartDrag();
-  bool chartDragActive() const { return drag_.source != nullptr; }
-  void startAutoScroll(const ImVec2 &global_pos);
-  void stopAutoScroll();
-  void doAutoScroll();
-  void drawToolBar();
   void openFunctionEditor(const cabana::Equation *equation = nullptr);
   void drawFunctionEditor();
-  void saveLayout();
-  void loadLayout();
-  void drawPresetsMenu();
   void exportCsv();
   void fitTimeRange();
-  void updateTabBar();
   void setMaxChartRange(int value);
-  void updateLayout();
   void settingChanged();
   void showValueTip(double sec);
-  void newTab();
-  void removeTab(int index);
-  inline std::vector<ChartView *> &currentCharts() { return tab_charts_[tabbar_.tabData(tabbar_.currentIndex())]; }
   ChartView *findChart(const MessageId &id, const cabana::Signal *sig);
   // draws the selector until closed, then runs `accepted` (unless `owner` was removed)
   void execSignalSelector(std::unique_ptr<SignalSelector> dlg, ChartView *owner, std::function<void(SignalSelector &)> accepted);
-  void drawDragPreview();
+  std::vector<ChartView *> currentCharts() const;
 
   LogSlider range_slider_{1000};
   UndoStack zoom_undo_stack_;
 
   std::vector<std::unique_ptr<ChartView>> charts_;
-  std::unordered_map<int, std::vector<ChartView *>> tab_charts_;
-  TabBar tabbar_;
-  std::unordered_map<int, std::string> tab_names_;
   std::vector<cabana::Equation> equations_;
   cabana::Equation function_draft_;
   std::string function_original_name_, function_filter_;
   std::vector<std::string> function_sources_;
   bool function_editor_open_ = false, function_editor_show_ = false, function_plot_ = true;
-  cabana::FieldsSnapshot calculated_;
+  std::unordered_map<std::string, cabana::FieldsSnapshot> source_calculated_;
+  std::unordered_set<std::string> dirty_sources_;
   struct EquationResult {
     cabana::FieldsSnapshot values;
     std::string errors;
     size_t revision = 0;
+    std::string source_id;
   };
   std::shared_ptr<EquationResult> equation_result_;
   std::future<void> equation_task_;
-  bool fields_dirty_ = false;
   size_t equation_revision_ = 0;
   std::string equation_errors_;
-  std::string browser_filter_;
-  std::vector<std::filesystem::path> presets_;
-  size_t browser_field_count_ = 0;
-  chart::SignalTree browser_tree_;
-  bool browser_tree_dirty_ = true;
-  std::unordered_set<std::string> browser_expanded_, browser_search_expanded_;
-  ChartsContainer charts_container_{this};
-  ImGuiWindow *charts_scroll_ = nullptr;  // the scroll area child window
-  ImRect charts_scroll_viewport_;
   int max_chart_range_ = 0;
   std::pair<double, double> display_range_;
-  bool columns_action_visible_ = false;
-  int column_count_ = 1;
-  int current_column_count_ = 0;
-  struct ChartDrag {
-    ChartView *source = nullptr;
-    ImVec2 press_pos;  // global
-    bool active = false;
-  } drag_;
-  // the drag preview is a 50% alpha copy of the whole chart tile, drawn in a window that takes no input
-  ImVec2 drag_preview_pos_;
-  ImVec2 drag_preview_size_;
-  bool drag_preview_visible_ = false;
-  ChartView *drop_target_ = nullptr;
-  int auto_scroll_count_ = 0;
-  ImVec2 auto_scroll_pos_;
-  bool auto_scroll_timer_active_ = false;
-  double auto_scroll_timer_next_ = 0;
+  uint64_t next_chart_id_ = 1;
+  ChartView *active_chart_ = nullptr;
+  std::unordered_map<std::string, Connections> source_connections_;
+  std::unordered_map<std::string, double> source_offsets_;
+  struct BrowserState {
+    std::string filter;
+    size_t field_count = 0;
+    chart::SignalTree tree;
+    bool dirty = true;
+    std::unordered_set<std::string> expanded, search_expanded;
+  };
+  std::unordered_map<std::string, BrowserState> browsers_;
+  std::string function_source_id_;
   bool value_tip_visible_ = false;
   bool any_plot_hovered_ = false;
   std::vector<std::unique_ptr<ChartView>> deleted_charts_;  // freed at the start of the next draw()
@@ -192,15 +147,19 @@ private:
   std::function<void(SignalSelector &)> signal_selector_accepted_;
   Connections connections_;
   friend class ChartView;
-  friend class ChartsContainer;
+
 };
+
+// Compatibility for route-specific browser and inspector clients.
+using ChartsWidget = ChartManager;
 
 class ZoomCommand : public UndoCommand {
 public:
   ZoomCommand(std::pair<double, double> range) : ZoomCommand(range, can->timeRange()) {}
   ZoomCommand(std::pair<double, double> range, std::optional<std::pair<double, double>> previous)
-      : prev_range(previous), range(range) {}
-  void undo() override { can->setTimeRange(prev_range); }
-  void redo() override { can->setTimeRange(range); }
+      : prev_range(previous), range(range), source_id_(can ? can->source_id : "") {}
+  void undo() override { if (auto *source = sourceById(source_id_)) source->setTimeRange(prev_range); }
+  void redo() override { if (auto *source = sourceById(source_id_)) source->setTimeRange(range); }
   std::optional<std::pair<double, double>> prev_range, range;
+  std::string source_id_;
 };

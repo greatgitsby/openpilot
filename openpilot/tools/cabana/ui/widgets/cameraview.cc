@@ -163,6 +163,7 @@ void CameraWidget::vipcThread() {
         continue;
       }
       was_connected = true;
+      utils::runOnMainThread(utils::guarded(alive_, [this]() { connected(); }));
     }
 
     if (VisionBuf *buf = vipc_client->recv(&frame_meta, 100)) {

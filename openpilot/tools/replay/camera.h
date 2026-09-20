@@ -13,7 +13,7 @@
 
 class CameraServer {
 public:
-  CameraServer(std::pair<int, int> camera_size[MAX_CAMERAS] = nullptr);
+  CameraServer(std::pair<int, int> camera_size[MAX_CAMERAS] = nullptr, const std::string &server_name = "camerad");
   ~CameraServer();
   void pushFrame(CameraType type, FrameReader* fr, const Event *event);
   void waitForSent();
@@ -32,6 +32,7 @@ protected:
   void cameraThread(Camera &cam);
   VisionBuf *getFrame(Camera &cam, FrameReader *fr, int32_t segment_id, uint32_t frame_id);
 
+  std::string server_name_;
   Camera cameras_[MAX_CAMERAS] = {
       {.type = NarrowRoadCam, .stream_type = VISION_STREAM_NARROW_ROAD},
       {.type = CabinCam, .stream_type = VISION_STREAM_CABIN},

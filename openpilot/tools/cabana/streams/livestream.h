@@ -48,6 +48,7 @@ private:
   uint64_t first_update_ts = 0;
   bool post_last_event = true;
   double speed_ = 1;
+  double previous_speed_ = 1;
   bool paused_ = false;
 
   struct Logger;

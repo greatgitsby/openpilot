@@ -36,6 +36,8 @@ public:
   bool underMouse() const { return hovered_; }
   bool mouseLeft() const { return left_; }  // the mouse left the slider in the last draw()
   void draw(double thumbnail_time);  // thumbnail_time < 0: no thumbnail marker
+  void drawFilmstrip(float width, float height,
+                     const std::function<void(ImDrawList *, ImVec2, ImVec2)> &background, bool selected = false);
   static constexpr double factor = 1000.0;
 
   Observable<> sliderReleased;
@@ -43,6 +45,7 @@ public:
 private:
   void handleMousePress();
   void paint(double thumbnail_time);
+  void paintTimeline(ImDrawList *p, const ImRect &groove_rect);
   ImRect handleRect() const;
   int pixelPosToRangeValue(float x) const;
   int minimum_ = 0;
@@ -81,40 +84,20 @@ private:
 
 class VideoWidget {
 public:
-  VideoWidget();
+  explicit VideoWidget(AbstractStream *source = nullptr, VisionStreamType type = VISION_STREAM_NARROW_ROAD);
+  std::function<void()> togglePlayback;
   void drawVideo();
-  void drawPlayback();
-  void clearThumbnail() { thumbnail_display_time_ = -1; }
-  float playbackHeight() const;
-  // MainWindow calls this every frame with the video dock visibility, so the camera widget gets its
-  // vipc thread started and stopped
   void setVisible(bool visible);
-  std::string whatsThis() const;
+  bool crop() const { return crop_; }
+  void setCrop(bool crop) { crop_ = crop; }
+  VisionStreamType streamType() const { return stream_type_; }
+  static std::set<VisionStreamType> availableStreams(AbstractStream *source);
+  static const char *cameraName(VisionStreamType type);
 
 private:
-  void showThumbnail(double seconds);
-  void updateSliderThumbnail();  // the thumbnail follows the mouse over the slider
-  std::string formatTime(double sec, bool include_milliseconds = false);
-  void timeRangeChanged();
-  void createCameraWidget();
-  void drawPlaybackController();
-  void skipToEnd();
-  void toggleTimeDisplay();
-  void createSpeedDropdown();
-  void drawSpeedMenuItems();
-  void loopPlaybackClicked();
-  void cropVideoClicked();
-  void vipcAvailableStreamsUpdated(std::set<VisionStreamType> streams);
-  void showRouteInfo();
-
+  AbstractStream *source_;
+  VisionStreamType stream_type_;
+  bool crop_ = false;
   std::unique_ptr<StreamCameraView> cam_widget_;
-  std::string speed_text_;
-  int speed_index_ = -1;  // checked entry of the speed menu
-  bool skip_to_end_enabled_ = true;
-  bool msgs_received_ = false;  // live-stream timestamps resolve when the first messages arrive
-  double thumbnail_display_time_ = -1;
-  std::unique_ptr<Slider> slider_;
-  std::unique_ptr<TabBar> camera_tab_;
-  std::vector<std::unique_ptr<RouteInfoDlg>> route_info_dlgs_;
-  Connections connections_;  // last: disconnected before the widgets its handlers dereference are destroyed
+  Connections connections_;
 };

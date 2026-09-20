@@ -82,6 +82,10 @@ if GetOption('extras'):
   cabana_core_test_env.Append(CPPPATH=[sysconfig.get_config_var('INCLUDEPY')], CPPDEFINES=python_defines, RPATH=python_runtime_paths)
   cabana_core_test_objects = [
     cabana_core_test_env.Object('tests/cabana_core_tests', 'tests/test_cabana.cc'),
+    cabana_core_test_env.Object('tests/cabana_sources_tests', 'tests/test_sources.cc'),
+    cabana_core_test_env.Object('tests/cabana_playback_tests', 'tests/test_playback.cc'),
+    cabana_core_test_env.Object('tests/cabana_chart_workspace_tests', 'tests/test_chart_workspace.cc'),
+    cabana_core_test_env.Object('tests/cabana_commands', 'commands.cc'),
     cabana_core_test_env.Object('tests/cabana_fields', 'analysis/fields.cc'),
     cabana_core_test_env.Object('tests/cabana_live', 'streams/livestream.cc'),
     cabana_core_test_env.Object('tests/cabana_stream', 'streams/abstractstream.cc'),
@@ -98,7 +102,7 @@ if GetOption('extras'):
   ]
   if arch == "Darwin":
     cabana_core_test_env.Append(FRAMEWORKS=['CoreFoundation'])
-  cabana_core_test = cabana_core_test_env.Program('tests/test_cabana', cabana_core_test_objects, LIBS=[File(python_library), replay_lib, common, cereal, messaging])
+  cabana_core_test = cabana_core_test_env.Program('tests/test_cabana', cabana_core_test_objects, LIBS=[File(python_library), replay_lib, common, cereal, messaging, visionipc] + ffmpeg_libs)
   cabana_core_test_env.Requires(cabana_core_test, generated_dbcs)
 
 output_json_file = 'openpilot/tools/cabana/dbc/car_fingerprint_to_dbc.json'

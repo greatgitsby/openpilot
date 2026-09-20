@@ -110,107 +110,94 @@ Cabana includes [openpilot analysis layouts](layouts), including
 `--layout` takes a file path relative to the directory where you run the command,
 or an absolute path. Omitting its value leaves the saved session layout unchanged.
 
-Charts, CAN inspection, and playback share one workspace. **CAN signals** and **openpilot Messages**
-are independent dock panels, initially tabbed together in the sidebar. Drag either panel's title tab
-to show both sources beside each other, move it elsewhere, or float it in a separate window.
-Selecting a CAN message opens **CAN Details**
-in the right-hand inspector, with the bit grid, signal editor, and message history. Close that pane to give
-the space back to charts; selecting the message again reopens it with its inspection tabs intact.
-Browsing openpilot fields leaves CAN details open, so both sources can be compared together.
-This works the same for live streams and recorded routes, including dashcam-only recordings.
+### Widgets and sources
 
-**Layout → openpilot Presets** opens a bundled layout on the current route and selects the
-openpilot browser. The empty chart area also offers **Browse openpilot** and **Presets**.
-Plotting openpilot messages does not need a DBC or CAN data. Sources live on the left, video and charts
-occupy the central workspace, and CAN details open on the right.
-The full-width **Playback** bar stays at the bottom: seeking, play/pause, speed, and loop controls remain
-available when the video is hidden or floated. Its ruler and event strip follow the selected time range.
-Camera selection and crop controls belong to the **Video** pane.
-**CAN signals**, **openpilot Messages**, **CAN Details**, **Charts**, and **Video**
-all follow the same docking rules. Closing a panel hides it and preserves its contents;
-reopen it from **View**. The top-right **Sources**, **Video**, **Inspector**, and **Playback** toggles
-provide quick access to the main panels. Closing a floating panel leaves the rest of the layout in place. Dock
-positions, the selected panel, and panel visibility are remembered between sessions. **View → Reset Window Layout**
-restores the default arrangement.
+Each chart, camera, CAN browser, openpilot browser, and CAN inspector is its own native
+workspace tab. Drag a tab to dock it beside another widget, stack tabs, or float it in a
+separate window. **Add widget** creates charts or opens a browser, inspector, or available
+camera for the selected source. **View → Arrange widgets** restores an automatic arrangement.
+The Default preset starts with message browsers, an empty chart, and an available camera.
 
-Inside **CAN Details**, message tabs select the CAN message being inspected; inside **Charts**, named
-tabs select pages of charts. Those tabs organize a panel's contents. Move the outer panel title tab
-to undock the whole inspector or chart workspace.
+Use **Sources → Add route or live source...** to open additional sources without replacing
+existing ones. Select or rename a source in **Sources**. Browsers and CAN definitions belong
+to their source; chart series retain their source assignment, so one chart can compare routes.
+A saved source without a route can be assigned one through **Choose route for this source...**.
 
-Browse **openpilot Messages** as a tree of messages, fields, and array indices. Search expands matching
-branches and restores your previous expansion state when cleared. Search for fields such as `/carState/vEgo`, `/carControl/actuators/accel`, or
-`/modelV2/position/x/0`. Double-click a field to create a plot, or drag it onto an existing plot
-to compare fields. Arrays, booleans, enums, and nested numeric fields are included. Hover a
-field to inspect its value. Imported equations also appear in the browser.
+Open road and driver cameras as separate widgets to see both at once. Each camera has its
+own **Fit/Fill** overlay: Fit shows the entire frame; Fill crops the edges to fill the widget.
+The overlay stays at 34% opacity until hovered.
 
-Use **+** in the Charts toolbar to create an empty chart, then drag openpilot fields onto it
-or add decoded CAN through **Manage Signals**.
-Empty charts are preserved in saved layouts. For decoded CAN, open **Manage Signals** from
-the chart's menu to search by signal name, message name, or message ID.
-Select several signals to overlay them on one chart. You can also
-add a signal from its message's signal view. Drag chart grips to reorder or merge charts;
-**Split Chart** separates an overlay.
+### Timeline
 
-- **Click** a chart to seek; **drag** to zoom all charts to a time range.
-- **Shift-drag** scrubs playback; **Ctrl-drag** pans; **Ctrl-wheel** zooms around the pointer
+The bottom timeline shows a labeled track, ruler, filmstrip, and playhead for each source.
+Click or drag a filmstrip to seek with preview frames. Select a track to control its playback;
+**Space** plays or pauses, and **Left/Right** step to the previous or next camera frame.
+The toolbar also provides frame stepping and playback speed. **View → Timeline** toggles
+its visibility independently of camera widgets.
+
+Check **Link** on routes to play and seek them together. Position each route at a matching
+event, then choose **Timeline → Align current positions**, or edit each track's offset.
+Workspace time equals route time plus that offset. The Timeline menu can loop the next ten
+seconds or a start/end interval in workspace seconds. Live sources offer **Go live**.
+
+### Plotting signals
+
+Browse openpilot messages as a tree of fields and array indices. Search for paths such as
+`/carState/vEgo`, `/carControl/actuators/accel`, or `/modelV2/position/x/0`.
+Double-click a numeric field to create a chart, or drag it onto an existing chart to overlay
+series. openpilot fields do not require a DBC. For decoded CAN, load the source's DBC and
+use **Manage Signals** in a chart's menu, or add a signal from the CAN inspector.
+
+- Click a chart to seek; drag to zoom the shared time range.
+- Shift-drag scrubs playback; Ctrl-drag pans; Ctrl-wheel zooms around the pointer
   (Cmd instead of Ctrl on macOS).
-- **View → Fit Loaded Data** fits the visible series in the current tab.
-- **View → Follow Playback** restores the rolling time window. Zoom and pan support undo/redo.
-- Click a legend entry to hide/show a series. Right-click it for **transforms and statistics**,
-  also available through the chart's three-dot menu.
+- Use **Fit loaded data** or **Follow playback** in a chart's menu to reset its time range.
+- Click a legend entry to hide or show a series. Its context menu provides transforms and statistics.
+- **Split Chart** separates overlaid series into individual chart widgets.
 
-Transforms include scale/offset, derivative, integral, and a moving average over a configurable
-number of samples. Scale and offset apply first. Derivatives omit the first sample and repeated
-timestamps; integrals use trapezoids starting at zero at the first loaded sample. Moving averages
-use the available samples while the window fills. Transformed series have an asterisk in their
-legend and adjusted units when the source has a known unit. Statistics show sample count, minimum, maximum, and sample mean for
-the visible time range. These operations affect chart values only.
+Transforms include scale/offset, derivative, trapezoidal integral, and moving average.
+Statistics report sample count, minimum, maximum, and mean over the visible time range.
+These operations affect plotted values only. **Export CSV...** in a chart's menu exports
+visible series at their original timestamps, including calculated and transformed values.
 
-### Saved layouts and equations
+### Workspaces, layouts, and functions
 
-Use **Functions → New Function** to build a custom signal. Enter a unique name, browse for
-its primary signal, and write a Python function body, for example `return value * 2.23694`
-to convert `/carState/vEgo` to mph. Add inputs to use `v1`, `v2`, and so on; expand
-**Global code** for numeric constants or initial state. You can also type paths for signals that have
-not loaded yet. **Plot in a new chart** displays the result immediately.
+Use **Workspace: Default** to select, rename, duplicate, or create a blank workspace.
+**Presets** includes Default, Live, and the bundled analysis layouts. A workspace remembers
+widget arrangement, charts, equations, source assignments, camera settings, and timeline
+links, offsets, and loop settings. Changes are saved when switching or exiting;
+**Save workspaces** saves immediately. The first workspace cannot be deleted.
 
-Saved functions appear in the **Functions** menu for editing and in the signal browser for
-plotting. Editing recalculates existing plots and dependent functions. Names stay fixed because
-other signals and charts refer to them. **Delete function** removes its definition and plotted
-series from all tabs. If another function uses it, update or delete that dependent function first.
-Use **Layout → Save Layout** to keep the changes.
+**Open workspace...** imports a workspace JSON file; **Save As...** exports one.
+Enable **Include route references** to save route identifiers, local data directories,
+and DBC file references. **Open saved routes** loads those sources separately. Workspaces
+do not embed logs, video, or DBC contents; referenced files must remain accessible.
+Without route references, a workspace can be reused with other routes.
 
+`--layout` loads a chart layout, including signals, equations, titles, colors, limits,
+and transforms. Older layouts are accepted, with their charts becoming individual widgets.
+Missing openpilot fields show **No data** until samples arrive; decoded CAN needs the
+matching DBC. Use workspace export to preserve the complete arrangement.
 
-**Layout → Open Layout** accepts Cabana JSON. The bundled presets use Python equations
-and preserve named tabs, chart titles, overlaid curves, colors, line styles, fixed Y limits,
-and scale/offset transforms. Panels are arranged in Cabana's chart grid.
-Series default to visible, untransformed values with scale 1, offset 0, and a moving-average
-window of 10 samples. openpilot message fields need only a `path`; CAN signals need `message` and `signal`.
+A chart's **Functions → New Function...** opens the Python function editor. Select a
+primary signal and enter a body such as `return value * 2.23694` for speed in mph.
+Additional inputs are available as `v1`, `v2`, and so on; Global code can define constants
+or initial state. Saved functions appear in the signal browser and Functions menu.
+Editing a function recalculates its plots and dependent functions.
 
-Custom signal expressions use Python.
+### Local UX fixture
 
-Use **Workspace: Default** in the menu bar to select or create a named workspace. The menu also
-lets you rename, duplicate, or delete workspaces (the first workspace is kept). Each workspace
-remembers its docked and floating panels, panel visibility, chart tabs and selected tab, signals,
-and equations. Workspaces are saved when switching or exiting; **Save workspaces** saves immediately.
-**Open...** imports a workspace JSON file and **Save As...** exports the selected workspace for reuse.
-Workspaces contain no route data or DBC definitions. When a workspace needs a CAN definition that
-is not loaded yet, its charts are restored once the matching DBC is loaded.
+Generate two deterministic 15-second routes with CAN, speed signals, and labeled road/driver
+videos for testing source selection, overlays, cameras, linked playback, and looping:
 
-**Layout → Save Layout** saves just the chart layout as Cabana JSON, including equations, tabs,
-chart grouping, colors, limits, signal visibility, transforms, column count, and window duration.
-The selected workspace also restores when Cabana restarts. Layouts contain no route data and can be reused
-on another route. Missing openpilot fields remain visible as **No data** until their data arrives;
-older layouts may reference fields no longer logged by current openpilot. PlotJuggler's optional
-CAN-parser diagnostic fields are not produced by Cabana. Layouts with decoded CAN curves require
-the matching DBC; invalid files or unresolved CAN signals leave the current workspace intact.
+```shell
+python -m openpilot.tools.cabana.tests.generate_ux_fixture /tmp/cabana-ux
+```
 
-**Layout → Export Visible Data to CSV** exports visible series in the current tab and time
-range, including calculated/transformed values and transform settings. The `source` column holds
-`openpilot` for message fields or the CAN message ID. Each row contains one
-sample at its original timestamp; signals with different sample rates are not resampled.
-The right edge of the visible time range is excluded. Narrow panels place toolbar actions in
-an overflow menu (**»**).
+Run this from the repository root with the openpilot Python environment and `ffmpeg`
+(with libx265 and drawtext) installed. Import the generated `workspace.json` through the
+workspace menu, then select **Open saved routes**. The directory also contains a reusable
+`layout.json` and `fixture.dbc`. Rerunning replaces the generated fixture files.
 
 ## Additional Information
 

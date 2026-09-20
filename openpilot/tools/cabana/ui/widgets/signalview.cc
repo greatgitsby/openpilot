@@ -1,4 +1,5 @@
 #include "tools/cabana/ui/widgets/signalview.h"
+#include "json11/json11.hpp"
 
 #include <algorithm>
 #include <cfloat>
@@ -932,6 +933,13 @@ void SignalView::drawIndexWidget(SignalModel::Item *item, const ImRect &rect) {
   if (row_button("plot", icon::GRAPH_UP, checked) && !editor_open_on_press_) {
     item->chart_opened = !checked;
     showChart(model_.msgId(), sig, item->chart_opened, ImGui::GetIO().KeyShift);
+  }
+  if (ImGui::BeginDragDropSource()) {
+    const auto payload = json11::Json(json11::Json::object{{"source", can->source_id},
+      {"message", model_.msgId().toString()}, {"signal", sig->name}}).dump();
+    ImGui::SetDragDropPayload("CABANA_SIGNAL", payload.c_str(), payload.size() + 1);
+    ImGui::TextUnformatted(sig->name.c_str());
+    ImGui::EndDragDropSource();
   }
   ImGui::SetItemTooltip("%s", checked ? "Close Plot" : "Show Plot\nShift-click to add to the previously opened plot");
   ImGui::SameLine(0.0f, spacing);

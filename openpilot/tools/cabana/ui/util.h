@@ -9,6 +9,11 @@
 
 struct GLFWwindow;
 
+// Shared native panel behavior for charts, cameras, browsers, and inspectors.
+void setDefaultPanelDock(ImGuiID dock);
+void dockNewPanel(const std::string &name);
+bool beginDockablePanel(const std::string &name, bool *open, ImGuiWindowFlags flags = 0);
+
 // the dock window identity of the messages panel (the visible title changes, the part after ### is the id)
 constexpr const char *MESSAGES_PANEL_ID = "###MessagesPanel";
 
@@ -82,6 +87,8 @@ inline std::string shortcut(const char *keys) { return std::string(MOD_KEY) + "+
 
 // Use ItemInnerSpacing between related buttons and ItemSpacing between groups.
 bool iconButton(const char *id, const char *icon, const char *tooltip = nullptr);
+// Shared icon control for image/video overlays; idle opacity applies to the whole button.
+bool overlayIconButton(const char *id, const char *icon, const char *tooltip, float idle_opacity = .34f);
 float iconButtonWidth();
 bool stepButton(const char *id, bool increment, const char *tooltip = nullptr);
 struct IconTextButtonOptions {

@@ -20,41 +20,34 @@
 
 using json11::Json;
 
-void ChartsWidget::fitTimeRange() {
+void ChartManager::fitTimeRange() {
   double min = std::numeric_limits<double>::max(), max = std::numeric_limits<double>::lowest();
   for (auto *c : currentCharts()) for (const auto &s : c->signals()) {
     if (!s.visible || s.vals.empty()) continue;
     min = std::min(min, s.vals.front().x);
     max = std::max(max, s.vals.back().x);
   }
-  if (max > min) zoom_undo_stack_.push(new ZoomCommand({min, max}));
+  if (max > min) zoom_undo_stack_.push(new ZoomCommand({min - can->timeline_offset, max - can->timeline_offset}));
 }
 
-std::string ChartsWidget::serializeLayout() const {
-  Json::array tabs, names, equations;
-  for (int i = 0; i < tabbar_.count(); ++i) {
-    const int id = tabbar_.tabData(i);
-    names.push_back(tab_names_.count(id) ? tab_names_.at(id) : "Tab " + std::to_string(i + 1));
-    Json::array charts;
-    auto tab = tab_charts_.find(id);
-    if (tab != tab_charts_.end()) for (auto *c : tab->second) {
-      Json::array signals;
-      for (const auto &s : c->signals()) {
-        Json::object signal{{"color", s.color.toHex()},
-          {"visible", s.visible}, {"transform", (int)s.transform.type}, {"scale", s.transform.scale},
-          {"offset", s.transform.offset}, {"window", s.transform.window}};
-        for (const auto &[key, value] : chart::SIGNAL_DEFAULTS) if (signal.at(key) == value) signal.erase(key);
-        if (s.path.empty()) { signal["message"] = s.msg_id.toString(); signal["signal"] = s.name(); }
-        else signal["path"] = s.path;
-        signals.push_back(signal);
-      }
-      Json::object chart{{"type", (int)c->seriesType()}, {"signals", signals}};
-      if (!c->title.empty()) chart["title"] = c->title;
-      if (c->limit_min) chart["y_min"] = *c->limit_min;
-      if (c->limit_max) chart["y_max"] = *c->limit_max;
-      charts.push_back(chart);
+std::string ChartManager::serializeLayout() const {
+  Json::array charts, equations;
+  for (const auto &c : charts_) {
+    Json::array signals;
+    for (const auto &s : c->signals()) {
+      Json::object signal{{"source", s.source_id}, {"color", s.color.toHex()},
+        {"visible", s.visible}, {"transform", (int)s.transform.type}, {"scale", s.transform.scale},
+        {"offset", s.transform.offset}, {"window", s.transform.window}};
+      for (const auto &[key, value] : chart::SIGNAL_DEFAULTS) if (signal.at(key) == value) signal.erase(key);
+      if (s.path.empty()) { signal["message"] = s.msg_id.toString(); signal["signal"] = s.name(); }
+      else signal["path"] = s.path;
+      signals.push_back(signal);
     }
-    tabs.push_back(charts);
+    Json::object chart{{"id", c->widget_id}, {"type", (int)c->seriesType()}, {"signals", signals}};
+    if (!c->title.empty()) chart["title"] = c->title;
+    if (c->limit_min) chart["y_min"] = *c->limit_min;
+    if (c->limit_max) chart["y_max"] = *c->limit_max;
+    charts.push_back(chart);
   }
   for (const auto &e : equations_) {
     Json::array additional;
@@ -62,8 +55,7 @@ std::string ChartsWidget::serializeLayout() const {
     equations.push_back(Json::object{{"name", e.name}, {"language", "python"}, {"source", e.source}, {"globals", e.globals},
                                    {"function", e.function}, {"additional", additional}});
   }
-  return Json(Json::object{{"cabana_layout", 3}, {"columns", column_count_},
-    {"active_tab", tabbar_.currentIndex()}, {"range", max_chart_range_}, {"tabs", tabs}, {"tab_names", names}, {"equations", equations}}).dump();
+  return Json(Json::object{{"cabana_layout", 4}, {"range", max_chart_range_}, {"charts", charts}, {"equations", equations}}).dump();
 }
 
 static bool writeFile(const std::string &path, const std::string &contents) {
@@ -73,31 +65,7 @@ static bool writeFile(const std::string &path, const std::string &contents) {
   return bool(out);
 }
 
-void ChartsWidget::saveLayout() {
-  FileDialog::getSaveFileName("Save Chart Layout", settings.last_dir + "/charts.json", ".json",
-    [contents = serializeLayout() + '\n'](const std::string &path) {
-      if (!path.empty() && !writeFile(path, contents)) MessageBox::warning("Save Layout", "Could not write the chart layout.");
-    });
-}
-
-void ChartsWidget::loadLayout() {
-  FileDialog::getOpenFileName("Open Chart Layout", settings.last_dir, ".json",
-    [this](const std::string &path) { if (!path.empty()) openLayout(path); });
-}
-
-void ChartsWidget::drawPresetsMenu() {
-  if (ImGui::IsWindowAppearing()) {
-    presets_.clear();
-    std::error_code error;
-    for (const auto &entry : std::filesystem::directory_iterator(executableDir() / "layouts", error)) {
-      if (entry.path().extension() == ".json") presets_.push_back(entry.path());
-    }
-    std::sort(presets_.begin(), presets_.end());
-  }
-  for (const auto &path : presets_) if (dropdown::Item(path.stem().c_str())) openLayout(path.string());
-}
-
-ChartsWidget::LayoutStatus ChartsWidget::openLayout(const std::string &path, bool defer_missing_can) {
+ChartManager::LayoutStatus ChartManager::openLayout(const std::string &path, bool defer_missing_can) {
   const std::string contents = util::read_file(path);
   if (contents.empty()) {
     MessageBox::warning("Open Layout", "Could not read the chart layout");
@@ -110,90 +78,83 @@ ChartsWidget::LayoutStatus ChartsWidget::openLayout(const std::string &path, boo
   return status;
 }
 
-ChartsWidget::LayoutStatus ChartsWidget::restoreLayout(const std::string &contents, bool defer_missing_can) {
+ChartManager::LayoutStatus ChartManager::restoreLayout(const std::string &contents, bool defer_missing_can) {
   auto layout = chart::parseLayout(contents);
   if (!layout) { MessageBox::warning("Open Layout", "This is not a supported Cabana chart layout."); return LayoutStatus::Failed; }
-  // Resolve CAN definitions before replacing charts. Cereal paths may arrive in later segments.
-  for (const auto &tab : layout->tabs) for (const auto &chart : tab) for (const auto &s : chart.signals) {
-    if (!s.path.empty()) continue;
-    auto *msg = dbc()->msg(s.id);
-    if (!msg || !msg->sig(s.name)) {
-      if (!defer_missing_can) MessageBox::warning("Open Layout", "Load the matching DBC first. Missing " + s.id.toString() + " / " + s.name);
-      return defer_missing_can ? LayoutStatus::MissingCan : LayoutStatus::Failed;
-    }
-  }
   removeAll();
   equations_ = layout->equations;
   rebuildSignalBrowser();
   for (size_t i = 0; i < layout->tabs.size(); ++i) {
-    if (i) newTab();
-    if (i < layout->tab_names.size()) tab_names_[tabbar_.tabData(tabbar_.currentIndex())] = layout->tab_names[i];
     for (const auto &saved : layout->tabs[i]) {
-      auto *c = createChart(currentCharts().size());
+      auto *c = createChart(currentCharts().size(), true);
+      if (!saved.widget_id.empty()) {
+        c->widget_id = saved.widget_id;
+        try { next_chart_id_ = std::max<uint64_t>(next_chart_id_, std::stoull(c->widget_id) + 1); } catch (...) {}
+      }
       c->title = saved.title;
       c->limit_min = saved.y_min;
       c->limit_max = saved.y_max;
       c->setSeriesType((SeriesType)saved.type);
       for (const auto &s : saved.signals) {
         const size_t count = c->signals().size();
-        if (s.path.empty()) c->addSignal(s.id, dbc()->msg(s.id)->sig(s.name));
-        else c->addFields(s.path, s.color);
+        const auto source_id = s.source_id.empty() ? can->source_id : s.source_id;
+        if (s.path.empty()) c->addPendingSignal(s.id, s.name, source_id, s.color);
+        else c->addFields(s.path, s.color, source_id);
         if (c->signals().size() != count) c->configureSignal(count, s.transform, s.visible, s.color);
       }
     }
   }
-  tabbar_.setCurrentIndex(layout->active_tab);
-  setColumnCount(layout->columns);
   setMaxChartRange(std::min(layout->range, range_slider_.maximum()));
   range_slider_.setValue(max_chart_range_);
+  for (auto *source : sources()) dirty_sources_.insert(source->source_id);
   fieldsChanged();
-  updateTabBar();
   updateState();
   return LayoutStatus::Restored;
 }
 
-std::shared_ptr<const cabana::Samples> ChartsWidget::fieldsSnapshot(const std::string &path) const {
-  auto derived = calculated_.find(path);
-  if (derived != calculated_.end()) return derived->second;
-  auto raw = can->fields.find(path);
-  return raw == can->fields.end() ? nullptr : raw->second;
+std::shared_ptr<const cabana::Samples> ChartManager::fieldsSnapshot(const std::string &path, const std::string &source_id) const {
+  auto *source = source_id.empty() ? can : sourceById(source_id);
+  if (!source) return nullptr;
+  auto calculated = source_calculated_.find(source->source_id);
+  if (calculated != source_calculated_.end()) {
+    auto derived = calculated->second.find(path);
+    if (derived != calculated->second.end()) return derived->second;
+  }
+  auto raw = source->fields.find(path);
+  return raw == source->fields.end() ? nullptr : raw->second;
 }
 
-void ChartsWidget::fieldsChanged() {
-  fields_dirty_ = true;
-  if (browser_field_count_ != can->fields.size()) {
-    rebuildSignalBrowser();
+void ChartManager::fieldsChanged() {
+  dirty_sources_.insert(can->source_id);
+  if (browsers_.count(can->source_id) && browsers_.at(can->source_id).field_count != can->fields.size()) {
+    browsers_.at(can->source_id).dirty = true;
   }
   pollFields();
 }
 
-void ChartsWidget::rebuildSignalBrowser() {
-  browser_field_count_ = can->fields.size();
-  std::vector<std::string> paths;
-  for (const auto &[path, _] : can->fields) paths.push_back(path);
-  std::unordered_set<std::string> custom_paths;
-  for (const auto &e : equations_) {
-    paths.push_back(e.name);
-    custom_paths.insert(e.name);
-  }
-  browser_tree_.rebuild(paths, custom_paths);
-  browser_tree_dirty_ = true;
+void ChartManager::rebuildSignalBrowser() {
+  for (auto &[_, browser] : browsers_) browser.dirty = true;
+
 }
 
-void ChartsWidget::pollFields() {
+void ChartManager::pollFields() {
   if (equation_task_.valid()) {
     if (equation_task_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
     equation_task_.get();
-    if (equation_result_->revision == equation_revision_) {
-      calculated_.swap(equation_result_->values);
+    if (equation_result_->revision == equation_revision_ && sourceById(equation_result_->source_id)) {
+      source_calculated_[equation_result_->source_id].swap(equation_result_->values);
       equation_errors_ = std::move(equation_result_->errors);
       for (auto &c : charts_) c->updateFields();
       updateState();
     }
     ThreadPool::instance().run([retired = std::move(equation_result_)]() mutable { retired.reset(); });
   }
-  if (!fields_dirty_) return;
-  fields_dirty_ = false;
+  if (dirty_sources_.empty()) return;
+  const auto source_id = *dirty_sources_.begin();
+  dirty_sources_.erase(source_id);
+  auto *source = sourceById(source_id);
+  if (!source) return;
+  SourceScope scope(source);
   // Retain immutable inputs without copying samples on the UI thread.
   cabana::FieldsSnapshot snapshot;
   for (const auto &e : equations_) {
@@ -206,6 +167,7 @@ void ChartsWidget::pollFields() {
   }
   equation_result_ = std::make_shared<EquationResult>();
   equation_result_->revision = equation_revision_;
+  equation_result_->source_id = source_id;
   equation_task_ = ThreadPool::instance().run([equations = equations_, snapshot = std::move(snapshot), result = equation_result_]() mutable {
     std::vector<const cabana::Equation *> pending;
     for (const auto &e : equations) pending.push_back(&e);
@@ -227,19 +189,21 @@ void ChartsWidget::pollFields() {
   });
 }
 
-void ChartsWidget::exportCsv() {
+void ChartManager::exportCsv() {
   // Snapshot the visible tab/range now, so playback or later edits cannot change the export.
   std::ostringstream out;
   out.imbue(std::locale::classic());
   out << "chart,source,name,transform,scale,offset,window,time,value\n" << std::setprecision(17);
-  const auto range = can->timeRange().value_or(display_range_);
+  auto range = can->timeRange().value_or(display_range_);
+  range.first += can->timeline_offset;
+  range.second += can->timeline_offset;
   size_t rows = 0;
   int index = 0;
   for (auto *c : currentCharts()) {
     ++index;
     for (const auto &s : c->signals()) {
       if (!s.visible) continue;
-      const auto prefix = std::to_string(index) + ',' + chart::csvField(s.path.empty() ? s.msg_id.toString() : "openpilot") + ',' +
+      const auto prefix = std::to_string(index) + ',' + chart::csvField(s.source_id + ":" + (s.path.empty() ? s.msg_id.toString() : "openpilot")) + ',' +
         chart::csvField(s.name()) + ',' + chart::csvField(chart::TRANSFORM_NAMES[(int)s.transform.type]) + ',';
       auto first = std::lower_bound(s.vals.begin(), s.vals.end(), range.first, [](const auto &p, double t) { return p.x < t; });
       for (auto it = first; it != s.vals.end() && it->x < range.second; ++it) {
@@ -255,8 +219,23 @@ void ChartsWidget::exportCsv() {
     });
 }
 
-void ChartsWidget::drawSignalBrowser() {
-  // Calculated field previews also update while the Charts panel is hidden.
+void ChartManager::drawSignalBrowser() {
+  syncSources();
+  auto &browser = browsers_[can->source_id];
+  auto &browser_filter_ = browser.filter;
+  auto &browser_tree_ = browser.tree;
+  auto &browser_tree_dirty_ = browser.dirty;
+  auto &browser_expanded_ = browser.expanded;
+  auto &browser_search_expanded_ = browser.search_expanded;
+  if (browser.dirty || browser.field_count != can->fields.size()) {
+    browser.field_count = can->fields.size();
+    std::vector<std::string> paths;
+    std::unordered_set<std::string> custom;
+    for (const auto &[path, _] : can->fields) paths.push_back(path);
+    for (const auto &equation : equations_) { paths.push_back(equation.name); custom.insert(equation.name); }
+    browser.tree.rebuild(paths, custom);
+    browser.dirty = true;
+  }
   pollFields();
   ImGui::SetNextItemWidth(-1.0f);
   const bool filter_changed = inputText("##search_fields", &browser_filter_, "Search openpilot messages...");
@@ -328,7 +307,8 @@ void ChartsWidget::drawSignalBrowser() {
           else ImGui::SetTooltip("%s", path.c_str());
         }
         if (ImGui::BeginDragDropSource()) {
-          ImGui::SetDragDropPayload("CABANA_TELEMETRY", path.c_str(), path.size() + 1);
+          const auto payload = Json(Json::object{{"source", can->source_id}, {"path", path}}).dump();
+          ImGui::SetDragDropPayload("CABANA_SIGNAL", payload.c_str(), payload.size() + 1);
           ImGui::TextUnformatted(path.c_str());
           ImGui::EndDragDropSource();
         }

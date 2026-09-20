@@ -31,36 +31,6 @@ enum AVPixelFormat get_hw_format(AVCodecContext *ctx, const enum AVPixelFormat *
   return AV_PIX_FMT_YUV420P;
 }
 
-struct DecoderManager {
-  VideoDecoder *acquire(CameraType type, AVCodecParameters *codecpar, bool hw_decoder) {
-    auto key = std::tuple(type, codecpar->width, codecpar->height);
-    std::unique_lock lock(mutex_);
-    if (auto it = decoders_.find(key); it != decoders_.end()) {
-      return it->second.get();
-    }
-
-    std::unique_ptr<VideoDecoder> decoder;
-    #ifndef __APPLE__
-    if (!Hardware::PC() && hw_decoder) {
-      decoder = std::make_unique<V4LVideoDecoder>();
-    } else
-    #endif
-    {
-      decoder = std::make_unique<FFmpegVideoDecoder>();
-    }
-
-    if (!decoder->open(codecpar, hw_decoder)) {
-      decoder.reset(nullptr);
-    }
-    decoders_[key] = std::move(decoder);
-    return decoders_[key].get();
-  }
-
-  std::mutex mutex_;
-  std::map<std::tuple<CameraType, int, int>, std::unique_ptr<VideoDecoder>> decoders_;
-};
-
-DecoderManager decoder_manager;
 
 }  // namespace
 
@@ -97,8 +67,14 @@ bool FrameReader::loadFromFile(CameraType type, const std::string &file, bool no
     return false;
   }
 
-  decoder_ = decoder_manager.acquire(type, input_ctx->streams[video_stream_idx_]->codecpar, !no_hw_decoder);
-  if (!decoder_) {
+  // Decoder state belongs to this reader. Concurrent routes can use the same
+  // camera type/resolution and must never share an AVCodecContext.
+#ifndef __APPLE__
+  if (!Hardware::PC() && !no_hw_decoder) decoder_ = std::make_unique<V4LVideoDecoder>();
+  else
+#endif
+  decoder_ = std::make_unique<FFmpegVideoDecoder>();
+  if (!decoder_->open(input_ctx->streams[video_stream_idx_]->codecpar, !no_hw_decoder)) {
     return false;
   }
   width = decoder_->width;

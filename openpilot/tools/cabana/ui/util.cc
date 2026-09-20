@@ -225,6 +225,23 @@ bool iconButton(const char *id, const char *icon, const char *tooltip) {
   return clicked;
 }
 
+bool overlayIconButton(const char *id, const char *icon, const char *tooltip, float idle_opacity) {
+  const ImVec2 min = ImGui::GetCursorScreenPos();
+  const ImVec2 max(min.x + iconButtonWidth(), min.y + ImGui::GetFrameHeight());
+  const bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && ImGui::IsMouseHoveringRect(min, max);
+  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * (hovered ? 1.f : idle_opacity));
+  ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, .75f));
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.15f, .15f, .15f, .95f));
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(.25f, .25f, .25f, 1));
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1, 1, 1, .5f));
+  const bool clicked = iconButton(id, icon);
+  ImGui::PopStyleColor(5);
+  ImGui::PopStyleVar();
+  if (tooltip && *tooltip) ImGui::SetItemTooltip("%s", tooltip);
+  return clicked;
+}
+
 float iconTextButtonWidth(const char *icon, const std::string &text, const IconTextButtonOptions &options) {
   const ImGuiStyle &style = ImGui::GetStyle();
   const float gap = *icon ? (options.icon_gap >= 0.0f ? options.icon_gap : style.ItemInnerSpacing.x) : 0.0f;
@@ -672,4 +689,29 @@ bool fusionSliderInt(const char *label, int *v, int min, int max, float width) {
   drawSliderHandle(dl, ImRect(ImVec2(hx - SLIDER_LENGTH * 0.5f, cy - handle_h * 0.5f),
                               ImVec2(hx + SLIDER_LENGTH * 0.5f, cy + handle_h * 0.5f)));
   return changed;
+}
+
+namespace {
+ImGuiID default_panel_dock = 0;
+}
+
+void setDefaultPanelDock(ImGuiID dock) { default_panel_dock = dock; }
+
+void dockNewPanel(const std::string &name) {
+  if (default_panel_dock && ImGui::DockBuilderGetNode(default_panel_dock))
+    ImGui::DockBuilderDockWindow(name.c_str(), default_panel_dock);
+}
+
+bool beginDockablePanel(const std::string &name, bool *open, ImGuiWindowFlags flags) {
+  ImGui::SetNextWindowSize(ImVec2(650, 400), ImGuiCond_FirstUseEver);
+  if (default_panel_dock && ImGui::DockBuilderGetNode(default_panel_dock))
+    ImGui::SetNextWindowDockID(default_panel_dock, ImGuiCond_FirstUseEver);
+  ImGuiWindowClass window_class;
+  window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+  window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
+  ImGui::SetNextWindowClass(&window_class);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  const bool visible = ImGui::Begin(name.c_str(), open, flags | ImGuiWindowFlags_NoCollapse);
+  ImGui::PopStyleVar();
+  return visible;
 }

@@ -1,4 +1,5 @@
 #include "tools/cabana/commands.h"
+#include "tools/cabana/core/source.h"
 
 #include <cassert>
 #include <cmath>
@@ -6,6 +7,7 @@
 // UndoStack
 
 void UndoStack::push(UndoCommand *cmd) {
+  SourceScope scope(owner_);
   commands_.resize(index_);  // drop any redoable commands
   if (clean_index_ > index_) clean_index_ = -1;
   commands_.emplace_back(cmd);
@@ -14,18 +16,21 @@ void UndoStack::push(UndoCommand *cmd) {
 }
 
 void UndoStack::undo() {
+  SourceScope scope(owner_);
   if (!canUndo()) return;
   commands_[index_ - 1]->undo();
   setIndex(index_ - 1);
 }
 
 void UndoStack::redo() {
+  SourceScope scope(owner_);
   if (!canRedo()) return;
   commands_[index_]->redo();
   setIndex(index_ + 1);
 }
 
 void UndoStack::clear() {
+  SourceScope scope(owner_);
   bool was_clean = isClean();
   commands_.clear();
   index_ = clean_index_ = 0;
@@ -34,6 +39,7 @@ void UndoStack::clear() {
 }
 
 void UndoStack::setClean() {
+  SourceScope scope(owner_);
   if (!isClean()) {
     clean_index_ = index_;
     cleanChanged(true);
@@ -41,6 +47,7 @@ void UndoStack::setClean() {
 }
 
 void UndoStack::setIndex(int index) {
+  SourceScope scope(owner_);
   bool was_clean = isClean();
   index_ = index;
   indexChanged();
@@ -49,7 +56,7 @@ void UndoStack::setIndex(int index) {
 
 UndoStack *UndoStack::instance() {
   static UndoStack undo_stack;
-  return &undo_stack;
+  return can ? can->undoStack() : &undo_stack;
 }
 
 // EditMsgCommand

@@ -100,6 +100,7 @@ public:
   float height() const { return rect_.GetHeight(); }
 
   Observable<> clicked;
+  Observable<> connected;  // invoked on the main thread after a VIPC connection
   Observable<std::set<VisionStreamType>> availableStreamsUpdated;  // invoked on the main thread
 
 private:

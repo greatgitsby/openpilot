@@ -21,10 +21,18 @@
 #include "tools/cabana/utils/util.h"
 #include "tools/replay/util.h"
 
+class UndoStack;
+
 class AbstractStream {
 public:
   AbstractStream();
-  virtual ~AbstractStream() = default;
+  virtual ~AbstractStream();
+  DBCManager *database() const { return database_.get(); }
+  UndoStack *undoStack() const { return undo_stack_.get(); }
+  std::weak_ptr<bool> lifetime() const { return alive_; }
+  std::string source_id;
+  std::string source_label;
+  double timeline_offset = 0;  // workspace seconds = route seconds + offset
   virtual void start() = 0;
   virtual bool liveStreaming() const { return true; }
   virtual void seekTo(double ts) {}
@@ -41,7 +49,7 @@ public:
   void setTimeRange(const std::optional<std::pair<double, double>> &range, bool seek_into_range = true);
   const std::optional<std::pair<double, double>> &timeRange() const { return time_range_; }
 
-  inline double currentSec() const { return current_sec_; }
+  virtual double currentSec() const { return current_sec_; }
   inline uint64_t toMonoTime(double sec) const { return beginMonoTime() + std::max(sec, 0.0) * 1e9; }
   inline double toSeconds(uint64_t mono_time) const { return mono_time > beginMonoTime() ? (mono_time - beginMonoTime()) / 1e9 : 0.0; }
 
@@ -90,6 +98,8 @@ private:
   void updateLastMsgsTo(double sec);
   void updateMasks();
 
+  std::unique_ptr<DBCManager> database_;
+  std::unique_ptr<UndoStack> undo_stack_;
   MessageEventsMap events_;
   std::unordered_map<MessageId, CanData> last_msgs;
   std::unique_ptr<MonotonicBuffer> event_buffer_;
@@ -112,5 +122,5 @@ public:
   void start() override {}
 };
 
-// A global pointer referring to the unique AbstractStream object
+// Main-thread active source for legacy widgets; scoped with SourceScope.
 extern AbstractStream *can;
