@@ -15,6 +15,7 @@ public:
   void setSources(const std::vector<AbstractStream *> &sources);
   void selectSource(const std::string &id, VisionStreamType camera = VISION_STREAM_NARROW_ROAD);
   const std::string &selectedSource() const { return selected_id_; }
+  uint64_t selectionRevision() const { return selection_revision_; }
   float height(size_t max_tracks = 3) const;
   void draw(bool expanded = true);
   void tick();
@@ -44,6 +45,7 @@ private:
 
   std::vector<AbstractStream *> sources_;
   std::string selected_id_;
+  uint64_t selection_revision_ = 0;
   VisionStreamType selected_camera_ = VISION_STREAM_NARROW_ROAD;
   std::set<std::string> linked_;
   std::string linked_master_id_;

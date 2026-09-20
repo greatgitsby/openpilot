@@ -129,6 +129,7 @@ void MainWindow::captureWorkspace() {
   doc["charts"] = Json::parse(charts_widget_->serializeLayout(), error);
   doc["ui"] = inistate::save();
   doc["timeline"] = timeline_.snapshot();
+  doc["selected_source"] = selected_source_;
   doc["timeline_visible"] = playback_visible_;
   doc["timeline_expanded"] = playback_expanded_;
   doc["timeline_height"] = playback_height_;
@@ -283,6 +284,12 @@ void MainWindow::applyWorkspace(const Json &saved_document) {
     const auto &ui = document["ui"].string_value();
     if (!ui.empty()) ImGui::LoadIniSettingsFromMemory(ui.c_str(), ui.size());
     reset_layout_ = ui.empty();
+  }
+  const auto selected = document["selected_source"].is_string() ? document["selected_source"].string_value() : document["timeline"]["selected"].string_value();
+  if (auto *source = sourceById(selected)) {
+    selected_source_ = selected;
+    can = source;
+    updateWindowTitle();
   }
 }
 

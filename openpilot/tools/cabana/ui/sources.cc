@@ -38,7 +38,7 @@ void MainWindow::selectSource(const std::string &id) {
   if (auto *source = sourceById(id)) {
     selected_source_ = id;
     can = source;
-    timeline_.selectSource(id);
+    if (!dynamic_cast<DummyStream *>(source)) timeline_.selectSource(id);
     updateWindowTitle();
   }
 }
@@ -143,9 +143,10 @@ void MainWindow::drawSourcesMenu() {
   ImGui::Separator();
   for (auto &view : source_views_) {
     auto *source = view->stream.get();
+    const bool unloaded = dynamic_cast<DummyStream *>(source);
     ImGui::PushID(source->source_id.c_str());
-    if (dropdown::Item(source->source_label.c_str(), nullptr, source->source_id == selected_source_)) selectSource(source->source_id);
-    ImGui::SetItemTooltip("%s", source->routeName().c_str());
+    if (dropdown::Item(source->source_label.c_str(), unloaded ? "Not loaded" : nullptr, source->source_id == selected_source_)) selectSource(source->source_id);
+    ImGui::SetItemTooltip("%s", unloaded ? "Unloaded workspace source. Choose a route or live source to load it." : source->routeName().c_str());
     ImGui::PopID();
   }
   ImGui::Separator();
@@ -153,11 +154,12 @@ void MainWindow::drawSourcesMenu() {
     std::string name = source->source_label;
     if (inputText("Name", &name) && !name.empty()) source->source_label = name;
     if (dynamic_cast<DummyStream *>(source)) {
-      if (dropdown::Item("Choose route for this source...")) {
+      if (dropdown::Item("Choose route or live source...")) {
         source_to_replace_ = source->source_id;
         selectAndOpenStream();
       }
-    } else if (dropdown::Item("Close selected source")) closeStream();
+    }
+    if (dropdown::Item(dynamic_cast<DummyStream *>(source) ? "Remove unloaded source" : "Close selected source")) closeStream();
   }
   dropdown::EndMenu();
 }

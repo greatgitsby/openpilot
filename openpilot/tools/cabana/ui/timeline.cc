@@ -75,6 +75,7 @@ AbstractStream *PlaybackTimeline::source(const std::string &id) const {
 AbstractStream *PlaybackTimeline::selected() const { return source(selected_id_); }
 
 void PlaybackTimeline::selectSource(const std::string &id, VisionStreamType camera) {
+  ++selection_revision_;
   selected_id_ = id;
   selected_camera_ = camera;
   if (linked_.count(id)) linked_master_id_ = id;

@@ -66,6 +66,7 @@ inline json11::Json remapWorkspaceSource(const json11::Json &document, const std
   using json11::Json;
   if (old_id == new_id) return document;
   auto doc = document.object_items();
+  if (doc["selected_source"] == old_id) doc["selected_source"] = new_id;
   Json::array sources, widgets;
   for (const auto &source : document["sources"].array_items()) {
     auto value = source.object_items();

@@ -79,6 +79,7 @@ void test_chart_workspaces() {
 {
   const Json document = Json::object{
     {"cabana_workspace", 2}, {"name", "Comparison"}, {"ui", ""},
+    {"selected_source", "source1"},
     {"sources", Json::array{Json::object{{"id", "source1"}, {"label", "Saved route"}, {"route", "route-b"},
       {"inspector", Json::object{{"active", "0:123"}, {"messages", Json::array{"0:123", "1:456"}}}}}}},
     {"widgets", Json::array{Json::object{{"kind", "inspector"}, {"source", "source1"}},
@@ -92,6 +93,7 @@ void test_chart_workspaces() {
   const auto rebound = cabana::remapWorkspaceSource(document, "source1", "source3");
   REQUIRE(cabana::validWorkspace(rebound));
   REQUIRE(rebound["sources"][0]["id"] == "source3");
+  REQUIRE(rebound["selected_source"] == "source3");
   REQUIRE(rebound["sources"][0]["route"] == "route-b");
   REQUIRE(rebound["sources"][0]["inspector"] == document["sources"][0]["inspector"]);
   REQUIRE(rebound["widgets"][0]["source"] == "source3");
@@ -113,6 +115,7 @@ void test_chart_workspaces() {
   timeline["positions"] = Json::object{{"source1", 12}, {"source3", 25}};
   duplicate["timeline"] = timeline;
   const auto merged = cabana::remapWorkspaceSource(duplicate, "source1", "source3");
+  REQUIRE(merged["selected_source"] == "source3");
   REQUIRE(cabana::validWorkspace(merged));
   REQUIRE(merged["sources"].array_items().size() == 1);
   REQUIRE(merged["sources"][0]["label"] == "Existing route");

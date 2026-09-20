@@ -1146,7 +1146,7 @@ void MainWindow::drawVideoPanel() {
     if (visible) {
       if ((ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) && ImGui::IsMouseClicked(0)) {
         selected_source_ = source->source_id;
-        timeline_.selectSource(source->source_id, camera.type);
+        if (!dynamic_cast<DummyStream *>(source)) timeline_.selectSource(source->source_id, camera.type);
       }
       camera.widget->drawVideo();
     }
@@ -1212,6 +1212,7 @@ void MainWindow::draw() {
   if (auto *selected = sourceById(selected_source_)) can = selected;
   timeline_.setSources(orderedSources());
   timeline_.tick();
+  const auto timeline_selection = timeline_.selectionRevision();
   if (ImGui::GetTopMostPopupModal() == nullptr) {
     handleShortcuts();
   } else {
@@ -1219,7 +1220,9 @@ void MainWindow::draw() {
   }
   if (!full_screen_) drawMenuBar();
   drawDockspace();
-  if (auto *selected = sourceById(timeline_.selectedSource())) {
+  // Only explicit timeline actions change the source being inspected. Falling
+  // back to a playable route must not steal selection from an unloaded slot.
+  if (timeline_.selectionRevision() != timeline_selection) if (auto *selected = sourceById(timeline_.selectedSource())) {
     selected_source_ = selected->source_id;
     can = selected;
   }
@@ -1232,6 +1235,7 @@ void MainWindow::draw() {
     for (auto it = source->tools.begin(); it != source->tools.end();) it = (*it)->draw() ? it + 1 : source->tools.erase(it);
   }
   drawVideoPanel();
+  if (auto *selected = sourceById(selected_source_)) can = selected;
   drawChartsPanel();
 
   stream_selector_.draw();
