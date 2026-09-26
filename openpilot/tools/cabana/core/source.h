@@ -7,8 +7,6 @@
 
 #include "tools/cabana/streams/abstractstream.h"
 
-class AbstractStream;
-
 // Main-thread compatibility bridge for legacy widgets. New data access should use
 // the owning stream explicitly. Nested scopes restore the previous source.
 class SourceScope {
