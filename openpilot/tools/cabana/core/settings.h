@@ -27,8 +27,4 @@ struct CabanaSettingsState {
   std::string last_route_dir;
   std::vector<std::string> recent_files;
   DragDirection drag_direction = MsbFirst;
-
-  std::string recent_dbc_file;
-  std::string active_msg_id;
-  std::vector<std::string> selected_msg_ids;
 };

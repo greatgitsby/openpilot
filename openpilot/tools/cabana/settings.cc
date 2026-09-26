@@ -490,9 +490,6 @@ void settingsOp(Store &s, SettingOperation op) {
   op(s, "drag_direction", (int &)settings.drag_direction);
   op(s, "suppress_defined_signals", settings.suppress_defined_signals);
   op(s, "crop_video", settings.crop_video);
-  op(s, "recent_dbc_file", settings.recent_dbc_file);
-  op(s, "active_msg_id", settings.active_msg_id);
-  op(s, "selected_msg_ids", settings.selected_msg_ids);
 }
 
 }  // namespace
