@@ -6,74 +6,48 @@
 #include "imgui.h"
 #include "tools/cabana/streams/devicestream.h"
 
-JoystickWidget::~JoystickWidget() { stop(); }
-
-void JoystickWidget::stop() {
-  if (sending_) {
-    if (device_) device_->sendJoystick(0, 0);
-  }
-  armed_ = sending_ = false;
-  device_ = nullptr;
-}
-
 void JoystickWidget::draw() {
   auto *device = dynamic_cast<DeviceStream *>(can);
-  if (device != device_) stop();
-  device_ = device;
   if (!device || !device->remote()) {
     stop();
-    ImGui::TextWrapped("Open a device WebRTC stream to use joystick controls.");
+    ImGui::TextWrapped("Open a device WebRTC stream to drive a comma body.");
     return;
   }
-  bool mode = device->joystick_ready;
-  if (ImGui::Checkbox("Device joystick mode", &mode)) {
-    stop();
-    device->setJoystickMode(mode);
-  }
-  if (!device->joystick_status.empty()) ImGui::TextWrapped("%s", device->joystick_status.c_str());
-  if (!device->joystick_ready) {
-    stop();
-    ImGui::TextWrapped("Enable joystick mode while the car is off, then start the car.");
-    return;
-  }
-  if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) || ImGui::GetIO().AppFocusLost) stop();
+  const auto &io = ImGui::GetIO();
+  if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) || io.AppFocusLost || ImGui::IsKeyPressed(ImGuiKey_Escape)) stop();
   ImGui::Checkbox("Arm controls", &armed_);
   ImGui::SliderFloat("Output limit", &limit_, 0.05f, 1.0f, "%.2f");
-  ImGui::TextWrapped("Hold W/S for gas/brake, A/D for steering, or drag the pad. Release to center. Escape disarms.");
-  const float size = std::clamp(ImGui::GetContentRegionAvail().x, 80.0f, 240.0f);
-  const ImVec2 pos = ImGui::GetCursorScreenPos();
-  const ImVec2 center(pos.x + size / 2, pos.y + size / 2);
+  ImGui::TextWrapped("Drives a comma body. Hold W/S for gas/brake, A/D for steering, or drag the pad. Release to center. Escape disarms.");
+
+  const float size = std::clamp(ImGui::GetContentRegionAvail().x, 80.0f, 240.0f), radius = size / 2;
+  const ImVec2 pos = ImGui::GetCursorScreenPos(), center(pos.x + radius, pos.y + radius);
   ImGui::InvisibleButton("joystick_pad", ImVec2(size, size));
   float gas = 0, steer = 0;
-  const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::GetIO().AppFocusLost;
-  if (!focused || ImGui::IsKeyPressed(ImGuiKey_Escape)) stop();
-  if (armed_ && focused) {
-    if (ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-      gas = std::clamp((center.y - ImGui::GetIO().MousePos.y) / (size / 2), -1.0f, 1.0f);
-      steer = std::clamp((center.x - ImGui::GetIO().MousePos.x) / (size / 2), -1.0f, 1.0f);
-      // Match Connect's minimum output for a displaced mouse axis.
-      const auto mouse_output = [](float value) {
-        return value == 0 ? 0.0f : std::copysign(std::max(std::abs(value), 0.20f), value);
-      };
-      gas = mouse_output(gas);
-      steer = mouse_output(steer);
-    } else if (!ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive()) {
-      gas = (float)ImGui::IsKeyDown(ImGuiKey_W) - (float)ImGui::IsKeyDown(ImGuiKey_S);
-      steer = (float)ImGui::IsKeyDown(ImGuiKey_A) - (float)ImGui::IsKeyDown(ImGuiKey_D);
-    }
+  if (armed_ && ImGui::IsItemActive()) {
+    // Like Connect, a displaced mouse axis outputs at least 0.2.
+    auto axis = [&](float offset) {
+      const float value = std::clamp(offset / radius, -1.0f, 1.0f);
+      return value == 0 ? 0.0f : std::copysign(std::max(std::abs(value), 0.2f), value);
+    };
+    gas = axis(center.y - io.MousePos.y);
+    steer = axis(center.x - io.MousePos.x);
+  } else if (armed_ && !io.WantTextInput && !ImGui::IsAnyItemActive()) {
+    gas = ImGui::IsKeyDown(ImGuiKey_W) - ImGui::IsKeyDown(ImGuiKey_S);
+    steer = ImGui::IsKeyDown(ImGuiKey_A) - ImGui::IsKeyDown(ImGuiKey_D);
   }
+
   auto *draw = ImGui::GetWindowDrawList();
   draw->AddRectFilled(pos, ImVec2(pos.x + size, pos.y + size), ImGui::GetColorU32(ImGuiCol_FrameBg), 8);
   draw->AddLine(ImVec2(center.x, pos.y), ImVec2(center.x, pos.y + size), ImGui::GetColorU32(ImGuiCol_Border));
   draw->AddLine(ImVec2(pos.x, center.y), ImVec2(pos.x + size, center.y), ImGui::GetColorU32(ImGuiCol_Border));
-  draw->AddCircleFilled(ImVec2(center.x - steer * (size / 2 - 12), center.y - gas * (size / 2 - 12)), 12,
+  draw->AddCircleFilled(ImVec2(center.x - steer * (radius - 12), center.y - gas * (radius - 12)), 12,
                         ImGui::GetColorU32(armed_ ? ImGuiCol_SliderGrabActive : ImGuiCol_TextDisabled));
   ImGui::Text("Gas / brake: %+.2f   Steering: %+.2f", gas * limit_, steer * limit_);
-  if (!armed_) {
-    stop();
-  } else if (ImGui::GetTime() - last_send_ >= 0.05) {
-    if (!device->sendJoystick(gas * limit_, steer * limit_)) stop();
-    else { sending_ = true; device_ = device; }
+
+  // 20 Hz while armed, then one centered command. The body also stops by itself when commands stop.
+  if ((armed_ || sending_) && ImGui::GetTime() - last_send_ >= 0.05) {
+    device->sendJoystick(gas * limit_, steer * limit_);
+    sending_ = armed_;
     last_send_ = ImGui::GetTime();
   }
 }

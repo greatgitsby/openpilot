@@ -3,8 +3,8 @@
 #include <arpa/inet.h>
 #include <algorithm>
 #include <atomic>
-#include <cmath>
 #include <cerrno>
+#include <cmath>
 #include <csignal>
 #include <cstring>
 #include <fcntl.h>
@@ -12,8 +12,8 @@
 #include <poll.h>
 #include <thread>
 #include <unistd.h>
-#include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <utility>
 
 #include "openpilot/cereal/services.h"
@@ -26,6 +26,7 @@ bool isStreamService(const std::string &name) {
   return name.size() < 10 || name.compare(name.size() - 10, 10, "EncodeData") != 0;
 }
 }  // namespace
+
 DeviceStream::DeviceStream(std::string dongle_id)
     : dongle_id_(std::move(dongle_id)), camera_server_("cabana-webrtc-" + std::to_string(getpid()) + "-" + std::to_string(next_camera_server++)) {}
 
@@ -35,139 +36,102 @@ DeviceStream::~DeviceStream() {
 }
 
 void DeviceStream::setCamera(VisionStreamType type) {
-  if (bridge_fd_ < 0 || type > VISION_STREAM_WIDE_ROAD || camera_type_ == type) return;
-  const uint8_t camera = type;
-  if (sendControl(&camera, sizeof(camera))) camera_type_ = type;
+  if (bridge_fd_ >= 0 && camera_type_ != type) {
+    camera_type_ = type;
+    sendControl('V', type, 0);
+  }
 }
 
-bool DeviceStream::sendJoystick(float gas, float steer, bool cancel) {
-  const int8_t command[] = {'J', (int8_t)std::lround(std::clamp(gas, -1.0f, 1.0f) * 100),
-                           (int8_t)std::lround(std::clamp(steer, -1.0f, 1.0f) * 100), (int8_t)cancel};
-  return sendControl(command, sizeof(command));
+void DeviceStream::sendJoystick(float gas, float steer) {
+  auto percent = [](float value) { return (int8_t)std::lround(std::clamp(value, -1.0f, 1.0f) * 100); };
+  sendControl('J', percent(gas), percent(steer));
 }
 
-void DeviceStream::setJoystickMode(bool enabled) {
-  const uint8_t command[] = {'M', (uint8_t)enabled};
-  sendControl(command, sizeof(command));
-}
-
-bool DeviceStream::sendControl(const void *data, size_t size) {
-  if (bridge_fd_ < 0) return false;
-  int flags = MSG_DONTWAIT;
-#ifdef MSG_NOSIGNAL
-  flags |= MSG_NOSIGNAL;
-#endif
-  if (::send(bridge_fd_, data, size, flags) == (ssize_t)size) return true;
-  // Never continue on a partially written control frame.
-  ::shutdown(bridge_fd_, SHUT_RDWR);
-  joystick_ready = false;
-  joystick_status = "Control connection closed. Reconnect to continue.";
-  return false;
+void DeviceStream::sendControl(char kind, int8_t a, int8_t b) {
+  const char command[] = {kind, (char)a, (char)b};
+  if (bridge_fd_ >= 0) (void)!::write(bridge_fd_, command, sizeof(command));
 }
 
 void DeviceStream::stopBridge() {
-  if (bridge_fd_ >= 0) {
-    ::close(bridge_fd_);
-    bridge_fd_ = -1;
-  }
+  if (bridge_fd_ >= 0) ::close(bridge_fd_);
+  bridge_fd_ = -1;
   if (bridge_pid <= 0) return;
   ::kill(bridge_pid, SIGTERM);
-  for (int i = 0; i < 30; ++i) {
-    int status = 0;
-    pid_t r = ::waitpid(bridge_pid, &status, WNOHANG);
-    if (r == bridge_pid || (r < 0 && errno == ECHILD)) {
-      bridge_pid = -1;
-      return;
+  // Reap off the UI thread: the helper closes its connection before exiting.
+  std::thread([pid = bridge_pid]() {
+    for (int i = 0; i < 30; ++i) {
+      if (::waitpid(pid, nullptr, WNOHANG) != 0) return;
+      usleep(100000);
     }
-    usleep(100000);
-  }
-  ::kill(bridge_pid, SIGKILL);
-  ::waitpid(bridge_pid, nullptr, 0);
+    ::kill(pid, SIGKILL);
+    ::waitpid(pid, nullptr, 0);
+  }).detach();
   bridge_pid = -1;
 }
 
 void DeviceStream::start() {
   if (remote()) {
-    int output[2];
-    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, output) != 0) {
+    int fds[2];
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
       error(std::string("Failed to start WebRTC: ") + strerror(errno));
       return;
     }
+    for (int fd : fds) ::fcntl(fd, F_SETFD, FD_CLOEXEC);  // dup2 gives the helper inheritable copies
     const std::string root = (executableDir() / "../../..").lexically_normal().string();
     bridge_pid = ::fork();
     if (bridge_pid == 0) {
-      ::close(output[0]);
-      ::dup2(output[1], STDOUT_FILENO);
-      ::dup2(output[1], STDIN_FILENO);
-      ::close(output[1]);
+      ::dup2(fds[1], STDIN_FILENO);
+      ::dup2(fds[1], STDOUT_FILENO);
       if (::chdir(root.c_str()) == 0) {
-        ::setenv("PWD", root.c_str(), 1);
         execlp("python3", "python3", "-m", "openpilot.tools.cabana.webrtc", dongle_id_.c_str(),
                "--server", camera_server_.c_str(), static_cast<char *>(nullptr));
       }
       _exit(127);
     }
-    ::close(output[1]);
+    ::close(fds[1]);
     if (bridge_pid < 0) {
-      ::close(output[0]);
+      ::close(fds[0]);
       error(std::string("Failed to start WebRTC: ") + strerror(errno));
       return;
     }
-    bridge_fd_ = output[0];
-#ifdef SO_NOSIGPIPE
-    int no_sigpipe = 1;
-    ::setsockopt(bridge_fd_, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
-#endif
-    ::fcntl(bridge_fd_, F_SETFD, FD_CLOEXEC);
+    bridge_fd_ = fds[0];
+    ::fcntl(bridge_fd_, F_SETFL, O_NONBLOCK);
+    std::signal(SIGPIPE, SIG_IGN);  // writes to an exited helper fail instead
   }
   LiveStream::start();
 }
 
-bool DeviceStream::readPipe(void *data, size_t size) {
+bool DeviceStream::readBridge(void *data, size_t size) {
   auto *out = static_cast<char *>(data);
-  while (size && !exit_) {
-    pollfd fd{bridge_fd_, POLLIN, 0};
-    int ready = ::poll(&fd, 1, 100);
-    if (ready < 0 && errno == EINTR) continue;
-    if (ready < 0) return false;
-    if (ready == 0) continue;
+  while (size > 0 && !exit_) {
+    pollfd fd = {bridge_fd_, POLLIN, 0};
+    if (::poll(&fd, 1, 100) <= 0) continue;
     ssize_t n = ::read(bridge_fd_, out, size);
-    if (n < 0 && errno == EINTR) continue;
-    if (n <= 0) return false;
-    out += n;
-    size -= n;
+    if (n == 0 || (n < 0 && errno != EINTR && errno != EAGAIN)) return false;
+    if (n > 0) {
+      out += n;
+      size -= n;
+    }
   }
   return size == 0;
 }
 
 void DeviceStream::streamThread() {
   if (remote()) {
+    // Packets from openpilot/tools/cabana/webrtc.py: size (including kind), kind, payload
     std::string failure = "WebRTC helper stopped. Check the terminal and reopen the stream to reconnect.";
-    while (!exit_) {
-      uint32_t length;
-      if (!readPipe(&length, sizeof(length))) break;
-      length = ntohl(length);
-      if (length < 1 || length > 1024 * 1024 + 1) break;
-      char kind;
-      if (!readPipe(&kind, 1)) break;
-      --length;
-      if (kind == 'J' && length >= 1) {
-        std::string status(length, '\0');
-        if (!readPipe(status.data(), length)) break;
-        postToMainThread([this, status]() {
-          joystick_ready = status[0] != 0;
-          joystick_status = status.substr(1);
-        });
-        continue;
-      }
-      if (kind == 'E') {
-        failure.resize(length);
-        readPipe(failure.data(), length);
+    uint32_t size;
+    char kind;
+    while (readBridge(&size, sizeof(size)) && readBridge(&kind, 1)) {
+      size = ntohl(size) - 1;
+      if (kind == 'E' && size < 4096) {
+        failure.resize(size);
+        readBridge(failure.data(), size);
         break;
       }
-      if (kind != 'C' || length == 0 || length % sizeof(capnp::word)) break;
-      auto words = kj::heapArray<capnp::word>(length / sizeof(capnp::word));
-      if (!readPipe(words.begin(), length)) break;
+      if (kind != 'C' || size == 0 || size % sizeof(capnp::word) || size > (1 << 20)) break;
+      auto words = kj::heapArray<capnp::word>(size / sizeof(capnp::word));
+      if (!readBridge(words.begin(), size)) break;
       try {
         handleEvent(words.asPtr());
       } catch (const kj::Exception &e) {
@@ -175,7 +139,10 @@ void DeviceStream::streamThread() {
         break;
       }
     }
-    if (!exit_) postToMainThread([this, failure]() { joystick_ready = false; joystick_status = failure; error(failure); });
+    if (!exit_) {
+      ::shutdown(bridge_fd_, SHUT_RDWR);  // the helper exits once its connection closes
+      postToMainThread([this, failure]() { error(failure); });
+    }
     return;
   }
 
