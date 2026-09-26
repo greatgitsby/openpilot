@@ -1,15 +1,11 @@
 #pragma once
 
-class DeviceStream;
-
 class JoystickWidget {
 public:
-  ~JoystickWidget();
   void draw();
-  void stop();
+  void stop() { armed_ = false; }
 
 private:
-  DeviceStream *device_ = nullptr;
   bool armed_ = false;
   bool sending_ = false;
   float limit_ = 1.0f;

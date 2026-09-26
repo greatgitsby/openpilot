@@ -1,14 +1,17 @@
 import asyncio
 import json
+import os
 import time
+import zlib
 
 import capnp
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.cereal import messaging, log
 from teleoprtc.tracks import VIDEO_CLOCK_RATE
 
-from openpilot.system.webrtc.webrtcd import CerealOutgoingMessageProxy, CerealIncomingMessageProxy, ServerState, handle_get_stream
-from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack
+from openpilot.system.webrtc.webrtcd import CAN_PREFIX, CAN_WINDOW, CerealOutgoingMessageProxy, CerealIncomingMessageProxy, ServerState, \
+                                            StreamSession, handle_get_stream
+from openpilot.system.webrtc.device.video import LiveStreamVideoStreamTrack, V4L2_BUF_FLAG_KEYFRAME
 
 
 class TestStreamSession(OpenpilotTestCase):
@@ -40,6 +43,25 @@ class TestStreamSession(OpenpilotTestCase):
 
     channel.send.assert_called_once_with(expected_json)
 
+  def test_outgoing_proxy_can(self, mocker):
+    events = [os.urandom(4096) for _ in range(100)]
+    sock = mocker.Mock()
+    sock.receive.side_effect = [*events, None]
+    sub_sock = mocker.patch.object(messaging, "sub_sock", return_value=sock)
+    channel = mocker.Mock()
+    proxy = CerealOutgoingMessageProxy(["can"])
+    proxy.add_channel(channel)
+    sub_sock.assert_called_once_with("can", conflate=False)
+
+    # unacknowledged bytes are limited to CAN_WINDOW
+    proxy.update()
+    assert CAN_WINDOW <= proxy.can_sent < CAN_WINDOW + 5000
+    session = mocker.Mock(outgoing_bridge=proxy)
+    StreamSession.message_handler(session, json.dumps({"type": "canAck", "data": {"bytes": proxy.can_sent}}).encode())
+    proxy.update()
+    received = [zlib.decompress(call.args[0].removeprefix(CAN_PREFIX)) for call in channel.send.call_args_list]
+    assert received == events
+
   def test_incoming_proxy(self, mocker):
     tested_msgs = [
       {"type": "customReservedRawData0", "data": "test"}, # primitive
@@ -66,7 +88,6 @@ class TestStreamSession(OpenpilotTestCase):
 
   def test_livestream_track(self, mocker):
     fake_msg = messaging.new_message("livestreamCabinEncodeData")
-    fake_msg.livestreamCabinEncodeData.idx.flags = 8
 
     config = {"receive.return_value": fake_msg.to_bytes()}
     mocker.patch("msgq.SubSocket", spec=True, **config)
@@ -81,6 +102,17 @@ class TestStreamSession(OpenpilotTestCase):
         start_pts = packet.pts
       assert abs(i + packet.pts - (start_pts + (((time.monotonic_ns() - start_ns) * VIDEO_CLOCK_RATE) // 1_000_000_000))) < 450 #5ms
       assert bytes(packet) == b""
+
+  def test_keyframe_request_clears(self, mocker):
+    keyframe = messaging.new_message("livestreamWideRoadEncodeData")
+    keyframe.livestreamWideRoadEncodeData.idx.flags = V4L2_BUF_FLAG_KEYFRAME
+    mocker.patch("msgq.SubSocket", spec=True, **{"receive.return_value": keyframe.to_bytes()})
+    params = mocker.patch("openpilot.system.webrtc.device.video.Params").return_value
+    track = LiveStreamVideoStreamTrack("wideRoad")
+    self.loop.run_until_complete(track.recv())
+    track.request_keyframe()
+    self.loop.run_until_complete(track.recv())
+    assert [call.args[1] for call in params.put.call_args_list] == [False, True, False]
 
   def test_stream_rejects_non_json_content_type(self):
     response = self.loop.run_until_complete(handle_get_stream(ServerState(), b"{}", "text/plain"))
