@@ -34,7 +34,6 @@ public:
 
 private:
   std::string route_;
-  bool cameras_[3] = {true, false, false};
   RoutesDialog routes_dialog_;
   // guards dialog continuations that outlive the stream selector
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);

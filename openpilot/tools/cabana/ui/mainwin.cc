@@ -33,10 +33,6 @@
 
 namespace {
 // dock window ids (the visible titles change, the part after ### is the identity)
-constexpr const char *VIDEO_PANEL = "###VideoPanel";
-constexpr const char *CENTER_PANEL = "CAN Details###CenterWidget";
-constexpr const char *CHARTS_PANEL = "Charts###ChartsPanel";
-constexpr const char *LOG_MESSAGES_PANEL = "openpilot Messages###LogMessagesPanel";
 constexpr const char *JOYSTICK_WINDOW = "Joystick###JoystickWindow";
 }  // namespace
 
@@ -372,10 +368,11 @@ void MainWindow::releaseStream() {
 }
 
 void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
+  auto *incoming = stream.get();
   if (!dynamic_cast<DummyStream *>(stream.get())) {
     for (const auto &view : source_views_) {
       auto *existing = view->stream.get();
-      if (typeid(*existing) != typeid(*stream) || existing->routeName() != stream->routeName()) continue;
+      if (typeid(*existing) != typeid(*incoming) || existing->routeName() != stream->routeName()) continue;
       const auto id = existing->source_id;
       const auto slot = std::exchange(source_to_replace_, {});
       if (!slot.empty() && slot != id) mergeSourceSlot(slot, id);
