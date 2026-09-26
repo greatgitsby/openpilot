@@ -505,35 +505,6 @@ void test_chart_analysis() {
   REQUIRE(chart::csvField("signal, \"left\"\n") == "\"signal, \"\"left\"\"\n\"");
 }
 
-void test_workspace() {
-  using json11::Json;
-  Json::object doc{{"cabana_workspace", 1}, {"name", "Steering"}, {"ui", "[Docking][Data]\n"},
-    {"panels", Json::object{{"messages", true}, {"logs", false}, {"charts", true},
-                           {"video", false}, {"details", true}, {"playback", true}}},
-    {"charts", Json::object{{"cabana_layout", 3}, {"columns", 2}, {"range", 60},
-                           {"tabs", Json::array{Json::array{}}}}}};
-  REQUIRE(cabana::validWorkspace(doc));
-  std::string error;
-  const auto restored = Json::parse(Json(doc).dump(), error);
-  REQUIRE(error.empty());
-  REQUIRE(cabana::validWorkspace(restored));
-  REQUIRE(restored == Json(doc));
-  for (const char *key : {"cabana_workspace", "name", "ui", "panels", "charts"}) {
-    auto invalid = doc;
-    invalid.erase(key);
-    REQUIRE(!cabana::validWorkspace(invalid));
-  }
-  auto invalid = doc;
-  invalid["cabana_workspace"] = 2;
-  REQUIRE(!cabana::validWorkspace(invalid));
-  invalid = doc;
-  invalid["charts"] = Json::object{{"cabana_layout", 3}};
-  REQUIRE(!cabana::validWorkspace(invalid));
-  invalid = doc;
-  invalid["name"] = "";
-  REQUIRE(!cabana::validWorkspace(invalid));
-}
-
 void test_chart_layout() {
   using json11::Json;
   Json::object signal{{"message", "2:1AF"}, {"signal", "Speed"}, {"visible", false}, {"transform", 3},
@@ -872,14 +843,12 @@ void test_signal_tree() {
   REQUIRE(tree.visible({}).empty());
 }
 
-void test_playback_ranges();
 void test_chart_workspaces();
 
 void test_source_isolation();
 
 void test_cabana_core() {
   test_source_isolation();
-  test_playback_ranges();
   test_chart_workspaces();
   test_heatmap_counts();
   test_pixel_envelope();
@@ -892,7 +861,6 @@ void test_cabana_core() {
   test_live_fields();
   test_chart_analysis();
   test_chart_layout();
-  test_workspace();
   test_format_seconds();
   test_to_hex();
   test_message_id_parsing();

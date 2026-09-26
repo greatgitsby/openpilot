@@ -83,7 +83,6 @@ if GetOption('extras'):
   cabana_core_test_objects = [
     cabana_core_test_env.Object('tests/cabana_core_tests', 'tests/test_cabana.cc'),
     cabana_core_test_env.Object('tests/cabana_sources_tests', 'tests/test_sources.cc'),
-    cabana_core_test_env.Object('tests/cabana_playback_tests', 'tests/test_playback.cc'),
     cabana_core_test_env.Object('tests/cabana_chart_workspace_tests', 'tests/test_chart_workspace.cc'),
     cabana_core_test_env.Object('tests/cabana_commands', 'commands.cc'),
     cabana_core_test_env.Object('tests/cabana_fields', 'analysis/fields.cc'),

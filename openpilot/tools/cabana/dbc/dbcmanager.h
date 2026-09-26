@@ -23,6 +23,7 @@ public:
   void close(const SourceSet &sources);
   void close(DBCFile *dbc_file);
   void closeAll();
+  void adopt(const DBCManager &other);  // share another source's files, e.g. when a route replaces a placeholder
 
   void addSignal(const MessageId &id, const cabana::Signal &sig);
   void updateSignal(const MessageId &id, const std::string &sig_name, const cabana::Signal &sig);

@@ -35,8 +35,9 @@ public:
   void showStatusMessage(const std::string &msg, int timeout_ms = 0);
   void loadFile(const std::string &fn, SourceSet s = SOURCE_ALL, std::function<void()> then = {});
 
-  void selectAndOpenStream();
-  void openStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file = {});
+  // `slot` fills that workspace source, keeping its widgets and saved references.
+  void selectAndOpenStream(const std::string &slot = {});
+  void openStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file = {}, const std::string &slot = {});
   void closeStream();
   void exportToCSV();
 
@@ -50,7 +51,7 @@ public:
 private:
   bool hasStream() const { return dynamic_cast<const DummyStream *>(can) == nullptr; }
   void releaseStream();
-  void startStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file);
+  void startStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file, std::string slot);
   void loadStartupStream(const std::string &dbc_file);
   void remindSaveChanges(std::function<void()> then);
   void closeFile(SourceSet s, std::function<void()> then);
@@ -72,7 +73,7 @@ private:
   void toggleFullScreen();
   void updateWindowTitle();
   void eventsMerged();
-  void initializeWorkspaces();
+  void initializeWorkspaces(bool use_default);
   void resetBuiltinWorkspace();
   void captureWorkspace();
   void persistWorkspaces();
@@ -81,20 +82,20 @@ private:
   void importWorkspace(const std::string &path);
   json11::Json::array workspaces_;
   int active_workspace_ = 0;
-  std::string pending_workspace_layout_;
   std::map<std::string, json11::Json> pending_workspace_inspectors_;
 
-  void saveSessionState();
   void restoreSessionState();
   void finishClose();
   void nextFrame(std::function<void()> fn);
   void withSource(const std::string &id, std::function<void()> fn);
   void drawAddWidgetMenu();
   void drawSourcesMenu();
-  void addCamera(const std::string &source, VisionStreamType type, bool crop = false, const std::string &id = {});
+  void addCamera(const std::string &source, VisionStreamType type, bool crop, const std::string &id = {});
+  std::unique_ptr<VideoWidget> createVideoWidget(const std::string &source, VisionStreamType type, bool crop);
+  void rebindCameras(const std::string &from, const std::string &to);
   void openWorkspaceRoutes(const json11::Json &document);
-  void applyWorkspace(const json11::Json &document);
-  void loadWorkspacePreset(const std::string &path);
+  void applyWorkspace(json11::Json document);
+  std::string newSourceId(const json11::Json &document = {});
   void removeSource(const std::string &id);
   void mergeSourceSlot(const std::string &old_id, const std::string &new_id);
   std::string sourceSlotRoute(const std::string &id) const;
@@ -111,6 +112,7 @@ private:
     std::vector<std::unique_ptr<ToolDialog>> tools;
     Connections connections;
   };
+  void releaseView(SourceView &view);
   SourceView &currentSource();
   std::vector<AbstractStream *> orderedSources() const;
   std::vector<std::unique_ptr<SourceView>> source_views_;
@@ -127,7 +129,6 @@ private:
   PlaybackTimeline timeline_;
   bool default_workspace_ = true;
   bool include_routes_ = false;
-  std::string source_to_replace_;
   uint64_t workspace_generation_ = 0;
   std::unordered_map<std::string, uint64_t> source_load_generation_;
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
@@ -151,7 +152,6 @@ private:
   void drawStatusBar();
   void drawWaitDialog();
 
-  std::string startup_layout_;
   GLFWwindow *window_;
   std::unique_ptr<AbstractStream> startup_stream_;  // opened on the first frame
   StreamLoader startup_loader_;  // run on a worker after the first frame
@@ -164,7 +164,6 @@ private:
   std::unordered_map<std::string, std::string> fingerprint_to_dbc_;
   std::vector<std::string> opendbc_names_;
   enum { MAX_RECENT_FILES = 15 };
-  bool charts_visible_ = true;
   bool playback_visible_ = true;
   bool playback_expanded_ = true;
   float playback_height_ = 0;  // Zero uses the initial height for the number of routes.

@@ -62,6 +62,12 @@ void DBCManager::closeAll() {
   fileChanged();
 }
 
+void DBCManager::adopt(const DBCManager &other) {
+  SourceScope scope(owner_);
+  dbc_files = other.dbc_files;
+  fileChanged();
+}
+
 void DBCManager::addSignal(const MessageId &id, const cabana::Signal &sig) {
   SourceScope scope(owner_);
   if (auto m = msg(id)) {

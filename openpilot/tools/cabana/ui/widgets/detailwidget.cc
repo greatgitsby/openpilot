@@ -163,15 +163,11 @@ std::pair<std::string, std::vector<std::string>> DetailWidget::serializeMessageI
 }
 
 void DetailWidget::restoreTabs(const std::string &active_msg_id, const std::vector<std::string>& msg_ids) {
-  for (const auto& str_id : msg_ids) {
-    MessageId id = MessageId::fromString(str_id);
-    if (dbc()->msg(id) != nullptr)
-      findOrAddTab(id);
+  // Tabs belong to their source, so messages without a DBC definition come back too.
+  for (const auto &str_id : msg_ids) {
+    if (auto id = MessageId::parse(str_id)) findOrAddTab(*id);
   }
-
-  auto active_id = MessageId::fromString(active_msg_id);
-  if (dbc()->msg(active_id) != nullptr)
-    setMessage(active_id);
+  if (auto active_id = MessageId::parse(active_msg_id)) setMessage(*active_id);
 }
 
 void DetailWidget::refresh() {

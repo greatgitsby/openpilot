@@ -12,14 +12,6 @@ struct MainWindowState {
   int size[2] = {0, 0};
   bool maximized = false;
   bool has_geometry = false;
-  float video_splitter_ratio = -1.0f;  // < 0: video at its size hint
-  int workspace_version = 0;
-  bool details_visible = false;
-  bool messages_visible = true;
-  bool log_messages_visible = true;
-  bool charts_visible = true;
-  bool video_visible = true;
-  bool playback_visible = true;
   bool joystick_visible = true;
 };
 

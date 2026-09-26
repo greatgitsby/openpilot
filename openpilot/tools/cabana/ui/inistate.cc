@@ -25,7 +25,6 @@ void *readOpen(ImGuiContext *, ImGuiSettingsHandler *, const char *name) {
 void readLine(ImGuiContext *, ImGuiSettingsHandler *, void *entry, const char *line) {
   auto *state = (MainWindowState *)entry;
   int x = 0, y = 0, flag = 0;
-  float ratio = 0.0f;
   if (sscanf(line, "Pos=%d,%d", &x, &y) == 2) {
     state->pos[0] = x;
     state->pos[1] = y;
@@ -35,44 +34,18 @@ void readLine(ImGuiContext *, ImGuiSettingsHandler *, void *entry, const char *l
     state->has_geometry = true;
   } else if (sscanf(line, "Maximized=%d", &flag) == 1) {
     state->maximized = flag != 0;
-  } else if (sscanf(line, "VideoSplitterRatio=%f", &ratio) == 1) {
-    state->video_splitter_ratio = ratio;
-  } else if (sscanf(line, "WorkspaceVersion=%d", &flag) == 1) {
-    state->workspace_version = flag;
-  } else if (sscanf(line, "LogMessagesVisible=%d", &flag) == 1) {
-    state->log_messages_visible = flag != 0;
   } else if (sscanf(line, "JoystickVisible=%d", &flag) == 1) {
     state->joystick_visible = flag != 0;
-  } else if (sscanf(line, "ChartsVisible=%d", &flag) == 1) {
-    state->charts_visible = flag != 0;
-  } else if (sscanf(line, "DetailsVisible=%d", &flag) == 1) {
-    state->details_visible = flag != 0;
-  } else if (sscanf(line, "MessagesVisible=%d", &flag) == 1) {
-    state->messages_visible = flag != 0;
-  } else if (sscanf(line, "PlaybackVisible=%d", &flag) == 1) {
-    state->playback_visible = flag != 0;
-  } else if (sscanf(line, "VideoVisible=%d", &flag) == 1) {
-    state->video_visible = flag != 0;
   }
 }
 
-void writeAll(ImGuiContext *, ImGuiSettingsHandler *handler, ImGuiTextBuffer *buf) {
-  buf->appendf("[%s][MainWindow]\n", handler->TypeName);
+void writeAll(ImGuiContext *, ImGuiSettingsHandler *, ImGuiTextBuffer *buf) {
+  buf->append("[Cabana][MainWindow]\n");
   if (main_window.has_geometry) {
     buf->appendf("Pos=%d,%d\n", main_window.pos[0], main_window.pos[1]);
     buf->appendf("Size=%d,%d\n", main_window.size[0], main_window.size[1]);
   }
-  buf->appendf("Maximized=%d\n", main_window.maximized ? 1 : 0);
-  buf->appendf("VideoSplitterRatio=%.4f\n", main_window.video_splitter_ratio);
-  buf->appendf("WorkspaceVersion=%d\n", main_window.workspace_version);
-  buf->appendf("LogMessagesVisible=%d\n", main_window.log_messages_visible ? 1 : 0);
-  buf->appendf("DetailsVisible=%d\n", main_window.details_visible ? 1 : 0);
-  buf->appendf("MessagesVisible=%d\n", main_window.messages_visible ? 1 : 0);
-  buf->appendf("VideoVisible=%d\n", main_window.video_visible ? 1 : 0);
-  buf->appendf("PlaybackVisible=%d\n", main_window.playback_visible ? 1 : 0);
-  buf->appendf("ChartsVisible=%d\n", main_window.charts_visible ? 1 : 0);
-  buf->appendf("JoystickVisible=%d\n", main_window.joystick_visible ? 1 : 0);
-  buf->append("\n");
+  buf->appendf("Maximized=%d\nJoystickVisible=%d\n\n", main_window.maximized ? 1 : 0, main_window.joystick_visible ? 1 : 0);
 }
 
 std::string migrateQtHeaderState(const qtstate::QtHeaderState &header) {
@@ -102,19 +75,10 @@ std::string migrateQtHeaderState(const qtstate::QtHeaderState &header) {
 }
 
 std::string migrateQtState() {
-  auto geometry = qtstate::parseQtGeometry(settings.geometry);
-  auto splitter = qtstate::parseQtSplitter(settings.video_splitter_state);
-
   ImGuiTextBuffer buf;
-  if (geometry || splitter) {
-    buf.append("[Cabana][MainWindow]\n");
-    if (geometry) {
-      buf.appendf("Pos=%d,%d\n", geometry->x, geometry->y);
-      buf.appendf("Size=%d,%d\n", geometry->w, geometry->h);
-      buf.appendf("Maximized=%d\n", geometry->maximized ? 1 : 0);
-    }
-    if (splitter) buf.appendf("VideoSplitterRatio=%.4f\n", splitter->ratio);
-    buf.append("\n");
+  if (auto geometry = qtstate::parseQtGeometry(settings.geometry)) {
+    buf.appendf("[Cabana][MainWindow]\nPos=%d,%d\nSize=%d,%d\nMaximized=%d\n\n",
+                geometry->x, geometry->y, geometry->w, geometry->h, geometry->maximized ? 1 : 0);
   }
   if (auto header = qtstate::parseQtHeaderState(settings.message_header_state)) {
     buf.append(migrateQtHeaderState(*header).c_str());
@@ -166,13 +130,7 @@ std::string save() {
 
 std::string saveWindowGeometry() {
   ImGuiTextBuffer buf;
-  buf.append("[Cabana][MainWindow]\n");
-  if (main_window.has_geometry) {
-    buf.appendf("Pos=%d,%d\n", main_window.pos[0], main_window.pos[1]);
-    buf.appendf("Size=%d,%d\n", main_window.size[0], main_window.size[1]);
-  }
-  buf.appendf("Maximized=%d\nWorkspaceVersion=4\nJoystickVisible=%d\n\n",
-              main_window.maximized ? 1 : 0, main_window.joystick_visible ? 1 : 0);
+  writeAll(nullptr, nullptr, &buf);
   return buf.c_str();
 }
 

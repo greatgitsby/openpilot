@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 
+#include "tools/cabana/settings.h"
 #include "tools/cabana/ui/icons.h"
 #include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/ui/util.h"
@@ -56,15 +57,7 @@ void MainWindow::removeSource(const std::string &id) {
   camera_panes_.erase(std::remove_if(camera_panes_.begin(), camera_panes_.end(), [&](const auto &p) { return p.source == id; }), camera_panes_.end());
   const auto found = std::find_if(source_views_.begin(), source_views_.end(), [&](const auto &v) { return v->stream->source_id == id; });
   if (found == source_views_.end()) return;
-  {
-    auto &view = **found;
-    SourceScope scope(view.stream.get());
-    view.tools.clear();
-    view.connections.clear();
-    view.inspector.clear();
-    view.messages.reset();
-    unregisterSource(view.stream.get());
-  }
+  releaseView(**found);
   can = &dummy_;
   source_views_.erase(found);
   if (source_views_.empty()) openStream(std::make_unique<DummyStream>());
@@ -73,31 +66,37 @@ void MainWindow::removeSource(const std::string &id) {
   showStatusMessage("Source closed", 2000);
 }
 
+std::unique_ptr<VideoWidget> MainWindow::createVideoWidget(const std::string &source, VisionStreamType type, bool crop) {
+  auto widget = std::make_unique<VideoWidget>(sourceById(source), type);
+  widget->setCrop(crop);
+  widget->togglePlayback = [this, source, type]() {
+    timeline_.selectSource(source, type);
+    timeline_.togglePlayback();
+  };
+  return widget;
+}
+
+// Camera panes keep their id and framing when their source's stream is replaced or merged.
+void MainWindow::rebindCameras(const std::string &from, const std::string &to) {
+  for (auto &camera : camera_panes_) {
+    if (camera.source == from) camera.widget = createVideoWidget(camera.source = to, camera.type, camera.widget->crop());
+  }
+}
+
 void MainWindow::addCamera(const std::string &source_id, VisionStreamType type, bool crop, const std::string &id) {
   auto *source = sourceById(source_id);
   if (!source) return;
-  SourceScope scope(source);
   // A remote connection transmits one camera at a time. Replace its existing pane.
   if (auto *device = dynamic_cast<DeviceStream *>(source); device && device->remote()) {
     camera_panes_.erase(std::remove_if(camera_panes_.begin(), camera_panes_.end(),
       [&](const auto &pane) { return pane.source == source_id; }), camera_panes_.end());
   }
-  CameraPane pane;
-  pane.id = id;
-  if (pane.id.empty()) do {
+  CameraPane pane{id, source_id, type, createVideoWidget(source_id, type, crop)};
+  while (pane.id.empty() || std::any_of(camera_panes_.begin(), camera_panes_.end(), [&](const auto &p) { return p.id == pane.id; })) {
     pane.id = "camera" + std::to_string(next_camera_id_++);
-  } while (std::any_of(camera_panes_.begin(), camera_panes_.end(), [&](const auto &p) { return p.id == pane.id; }));
-  pane.source = source_id;
-  pane.type = type;
-  pane.widget = std::make_unique<VideoWidget>(source, type);
-  pane.widget->setCrop(crop);
-  pane.widget->togglePlayback = [this, source_id, type]() {
-    timeline_.selectSource(source_id, type);
-    timeline_.togglePlayback();
-  };
+  }
   if (id.empty()) dockNewPanel("###camera_" + pane.id);
   camera_panes_.push_back(std::move(pane));
-  if (!source->liveStreaming()) source->seekTo(source->currentSec());
 }
 
 void MainWindow::makeDefaultWidgets() {
@@ -106,7 +105,7 @@ void MainWindow::makeDefaultWidgets() {
   view.logs_visible = true;
   const auto available = VideoWidget::availableStreams(can);
   if (!available.empty() && std::none_of(camera_panes_.begin(), camera_panes_.end(), [&](const auto &p) { return p.source == can->source_id; }))
-    addCamera(can->source_id, *available.begin());
+    addCamera(can->source_id, *available.begin(), settings.crop_video);
   if (charts_widget_ && charts_widget_->chartCount() == 0) charts_widget_->newChart();
   reset_layout_ = true;
 }
@@ -135,7 +134,7 @@ void MainWindow::drawAddWidgetMenu() {
   for (auto type : available) {
     if (dropdown::Item(VideoWidget::cameraName(type))) {
       const auto source = can->source_id;
-      nextFrame([this, source, type]() { addCamera(source, type); });
+      nextFrame([this, source, type]() { addCamera(source, type, settings.crop_video); });
     }
   }
   if (available.empty()) {
@@ -161,10 +160,7 @@ void MainWindow::drawSourcesMenu() {
     std::string name = source->source_label;
     if (inputText("Name", &name) && !name.empty()) source->source_label = name;
     if (dynamic_cast<DummyStream *>(source)) {
-      if (dropdown::Item("Choose route or live source...")) {
-        source_to_replace_ = source->source_id;
-        selectAndOpenStream();
-      }
+      if (dropdown::Item("Choose route or live source...")) selectAndOpenStream(source->source_id);
     }
     if (dropdown::Item(dynamic_cast<DummyStream *>(source) ? "Remove unloaded source" : "Close selected source")) closeStream();
   }

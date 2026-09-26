@@ -20,6 +20,7 @@
 #include "tools/cabana/ui/app.h"
 #include "tools/cabana/ui/dialogs/filedialog.h"
 #include "tools/cabana/ui/dialogs/messagebox.h"
+#include "tools/cabana/ui/icons.h"
 #include "tools/cabana/ui/inistate.h"
 #include "tools/cabana/ui/threadpool.h"
 #include "tools/cabana/ui/tools/findsignal.h"
@@ -31,17 +32,10 @@
 #include "tools/replay/py_downloader.h"
 #include "tools/replay/util.h"
 
-namespace {
-// dock window ids (the visible titles change, the part after ### is the identity)
-constexpr const char *VIDEO_PANEL = "###VideoPanel";
-constexpr const char *CENTER_PANEL = "CAN Details###CenterWidget";
-constexpr const char *CHARTS_PANEL = "Charts###ChartsPanel";
-constexpr const char *LOG_MESSAGES_PANEL = "openpilot Messages###LogMessagesPanel";
 constexpr const char *JOYSTICK_WINDOW = "Joystick###JoystickWindow";
-}  // namespace
 
 MainWindow::MainWindow(GLFWwindow *window, std::unique_ptr<AbstractStream> stream, StreamLoader stream_loader,
-                       const std::string &dbc_file, const std::string &layout) : startup_layout_(layout), window_(window) {
+                       const std::string &dbc_file, const std::string &layout) : window_(window) {
   can = &dummy_;
   reset_layout_ = true;
   joystick_visible_ = inistate::main_window.joystick_visible;
@@ -66,13 +60,21 @@ MainWindow::MainWindow(GLFWwindow *window, std::unique_ptr<AbstractStream> strea
   openStream(std::make_unique<DummyStream>());
   charts_widget_ = std::make_unique<ChartsWidget>();
   currentSource().inspector.setChartsWidget(charts_widget_.get());
-  charts_widget_->seekRequested = [this](double seconds) { timeline_.seek(seconds); };
-  charts_widget_->pauseRequested = [this](bool paused) { timeline_.setPaused(paused); };
+  // Charts report route seconds of the selected source; the timeline moves that source's group.
+  auto control_selected = [this]() {
+    if (dynamic_cast<DummyStream *>(can)) return false;
+    if (timeline_.selectedSource() != can->source_id) timeline_.selectSource(can->source_id);
+    return true;
+  };
+  charts_widget_->seekRequested = [this, control_selected](double seconds) { if (control_selected()) timeline_.seek(seconds); };
+  charts_widget_->pauseRequested = [this, control_selected](bool paused) { if (control_selected()) timeline_.setPaused(paused); };
   connections_.push_back(charts_widget_->showLogMessages.connect([this]() {
     currentSource().logs_visible = true;
     selectPanelTab(panelName("logs").c_str());
   }));
-  initializeWorkspaces();
+  // A startup layout goes into the session-only Default workspace instead of replacing a saved one.
+  initializeWorkspaces(!layout.empty());
+  if (!layout.empty()) charts_widget_->openLayout(layout);
 
   startup_stream_ = std::move(stream);
   startup_loader_ = std::move(stream_loader);
@@ -239,9 +241,10 @@ void MainWindow::dbcFileChanged() {
   nextFrame([this]() { restoreSessionState(); });
 }
 
-void MainWindow::selectAndOpenStream() {
-  stream_selector_.open([this](std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
-    if (stream) openStream(std::move(stream), dbc_file);
+void MainWindow::selectAndOpenStream(const std::string &slot) {
+  stream_selector_.open([this, slot](std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
+    // The slot may have been filled or removed while the dialog was open.
+    if (stream) openStream(std::move(stream), dbc_file, dynamic_cast<DummyStream *>(sourceById(slot)) ? slot : "");
   });
 }
 
@@ -352,117 +355,110 @@ MainWindow::~MainWindow() {
   can = nullptr;
 }
 
-// the tool dialogs are connected into the messages widget, and the video widget's RouteInfoDlg keeps a raw
-// pointer to the replay, so the dialogs go first and the widgets before the stream; the stream's destructor
-// joins the threads that read the global `can`
+// the tool dialogs are connected into the messages widget and the widgets go before the stream; the
+// stream's destructor joins the threads that read the global `can`
 void MainWindow::releaseStream() {
   camera_panes_.clear();
   charts_widget_.reset();
   joystick_widget_->stop();
-  for (auto &view : source_views_) {
-    SourceScope scope(view->stream.get());
-    view->tools.clear();
-    view->connections.clear();
-    view->inspector.clear();
-    view->messages.reset();
-    unregisterSource(view->stream.get());
-  }
+  for (auto &view : source_views_) releaseView(*view);
   can = &dummy_;
   source_views_.clear();
 }
 
-void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
+void MainWindow::releaseView(SourceView &view) {
+  SourceScope scope(view.stream.get());
+  view.tools.clear();
+  view.connections.clear();
+  view.inspector.clear();
+  view.messages.reset();
+  unregisterSource(view.stream.get());
+}
+
+void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file, const std::string &slot) {
   if (!dynamic_cast<DummyStream *>(stream.get())) {
     for (const auto &view : source_views_) {
       auto *existing = view->stream.get();
       if (typeid(*existing) != typeid(*stream) || existing->routeName() != stream->routeName()) continue;
       const auto id = existing->source_id;
-      const auto slot = std::exchange(source_to_replace_, {});
       if (!slot.empty() && slot != id) mergeSourceSlot(slot, id);
       bindSourceSlots(id);
       selectSource(id);
       showStatusMessage("Source already open", 2000);
       return;
     }
-  }
-  if (stream->liveStreaming() && !dynamic_cast<DummyStream *>(stream.get())) {
-    for (const auto &view : source_views_) if (view->stream->liveStreaming() && !dynamic_cast<DummyStream *>(view->stream.get())) {
+    if (stream->liveStreaming() && std::any_of(source_views_.begin(), source_views_.end(), [](const auto &view) {
+          return view->stream->liveStreaming() && !dynamic_cast<DummyStream *>(view->stream.get()); })) {
       MessageBox::information("Live source", "Close the current live source before adding another live connection.");
       return;
     }
   }
-  startStream(std::move(stream), dbc_file);
+  startStream(std::move(stream), dbc_file, slot);
   bindSourceSlots(selected_source_);
 }
 
-void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file) {
+void MainWindow::startStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file, std::string id) {
   if (joystick_widget_) joystick_widget_->stop();
-  std::string id = source_to_replace_;
-  source_to_replace_.clear();
+  const bool into_slot = !id.empty();
+  // Without an explicit slot, fill a placeholder saved for this route, else the selected or first one without a route.
+  auto placeholder = [&](const std::string &candidate, const std::string &route) {
+    return dynamic_cast<DummyStream *>(sourceById(candidate)) && sourceSlotRoute(candidate) == route;
+  };
   if (id.empty() && dynamic_cast<ReplayStream *>(stream.get())) {
-    for (const auto &view : source_views_) {
-      if (dynamic_cast<DummyStream *>(view->stream.get()) && sourceSlotRoute(view->stream->source_id) == stream->routeName()) {
-        id = view->stream->source_id;
-        break;
-      }
-    }
+    for (const auto &view : source_views_) if (placeholder(view->stream->source_id, stream->routeName())) { id = view->stream->source_id; break; }
   }
-  if (id.empty() && dynamic_cast<DummyStream *>(sourceById(selected_source_)) && sourceSlotRoute(selected_source_).empty()) id = selected_source_;
-  if (id.empty()) for (const auto &view : source_views_) {
-    if (dynamic_cast<DummyStream *>(view->stream.get()) && sourceSlotRoute(view->stream->source_id).empty()) {
-      id = view->stream->source_id;
-      break;
-    }
-  }
+  if (id.empty() && placeholder(selected_source_, "")) id = selected_source_;
+  if (id.empty()) for (const auto &view : source_views_) if (placeholder(view->stream->source_id, "")) { id = view->stream->source_id; break; }
   SourceView *view = nullptr;
   for (auto &candidate : source_views_) if (candidate->stream->source_id == id) view = candidate.get();
-  struct SavedCamera { std::string id; VisionStreamType type; bool crop; };
-  std::vector<SavedCamera> slot_cameras;
-  if (view && dynamic_cast<DummyStream *>(view->stream.get())) {
-    for (const auto &camera : camera_panes_) if (camera.source == id && camera.visible)
-      slot_cameras.push_back({camera.id, camera.type, camera.widget->crop()});
-  }
+  const bool filling = view && dynamic_cast<DummyStream *>(view->stream.get()) && !dynamic_cast<DummyStream *>(stream.get());
   if (view) {
-    SourceScope scope(view->stream.get());
-    if (charts_widget_) charts_widget_->removeSource(id);
-    camera_panes_.erase(std::remove_if(camera_panes_.begin(), camera_panes_.end(), [&](auto &p) { return p.source == id; }), camera_panes_.end());
-    view->tools.clear();
-    view->connections.clear();
-    view->inspector.clear();
-    view->messages.reset();
-    unregisterSource(view->stream.get());
+    // A DBC opened before any route stays with the source that replaces its placeholder.
+    if (filling && dbc_file.empty()) stream->database()->adopt(*view->stream->database());
+    if (filling) stream->source_label = view->stream->source_label;
+    if (charts_widget_) { SourceScope scope(view->stream.get()); charts_widget_->removeSource(id); }
+    releaseView(*view);
   } else {
-    auto source = std::make_unique<SourceView>();
-    view = source.get();
-    source_views_.push_back(std::move(source));
-    if (id.empty()) do { id = "source" + std::to_string(next_source_id_++); } while (sourceById(id));
+    source_views_.push_back(std::make_unique<SourceView>());
+    view = source_views_.back().get();
+    if (id.empty()) id = newSourceId();
   }
   ++source_load_generation_[id];
   can = &dummy_;
   stream->source_id = id;
-  stream->source_label = dynamic_cast<DummyStream *>(stream.get()) ? "Source " + std::to_string(source_views_.size()) : stream->routeName();
+  // A saved route slot keeps its name; otherwise sources are named after their route.
+  if (dynamic_cast<DummyStream *>(stream.get())) stream->source_label = "Source " + std::to_string(source_views_.size());
+  else if (!filling || sourceSlotRoute(id).empty()) stream->source_label = stream->routeName();
   view->stream = std::move(stream);
   registerSource(view->stream.get());
   selected_source_ = id;
   can = view->stream.get();
   SourceScope scope(can);
-  const std::string source_id = id;
-  view->connections.push_back(dbc()->fileChanged.connect([this, source_id]() {
-    withSource(source_id, [this]() { dbcFileChanged(); });
+  view->connections.push_back(dbc()->fileChanged.connect([this, id]() {
+    withSource(id, [this]() { dbcFileChanged(); });
   }));
-  view->connections.push_back(UndoStack::instance()->cleanChanged.connect([this, source_id](bool clean) {
-    withSource(source_id, [this, clean]() { window_modified_ = !clean; updateWindowTitle(); });
+  view->connections.push_back(UndoStack::instance()->cleanChanged.connect([this, id](bool clean) {
+    withSource(id, [this, clean]() { window_modified_ = !clean; updateWindowTitle(); });
   }));
   view->connections.push_back(can->error.connect([](const std::string &message) { MessageBox::warning("Source", message); }));
   createDockWidgets();
-  view->connections.push_back(can->eventsMerged.connect([this, source_id](const MessageEventsMap &) {
-    withSource(source_id, [this]() { eventsMerged(); });
+  view->connections.push_back(can->eventsMerged.connect([this, id](const MessageEventsMap &) {
+    withSource(id, [this]() { eventsMerged(); });
   }));
   if (!dbc_file.empty()) loadFile(dbc_file);
+  if (filling) {
+    for (const auto &saved : workspaces_[active_workspace_]["sources"].array_items()) if (saved["id"] == id) {
+      for (const auto &file : saved["dbcs"].array_items()) {
+        SourceSet buses;
+        for (const auto &bus : file["buses"].array_items()) buses.insert(bus.int_value());
+        if (std::filesystem::exists(file["file"].string_value())) loadFile(file["file"].string_value(), buses.empty() ? SOURCE_ALL : buses);
+      }
+    }
+  }
   if (!dbc()->dbcCount()) dbc()->open(SOURCE_ALL, std::string(), std::string());
   can->start();
-  for (const auto &camera : slot_cameras) addCamera(id, camera.type, camera.crop, camera.id);
-  if (default_workspace_) makeDefaultWidgets();
+  rebindCameras(id, id);
+  if (default_workspace_ && !into_slot && !dynamic_cast<DummyStream *>(can)) makeDefaultWidgets();
   timeline_.setSources(orderedSources());
   timeline_.selectSource(id);
   updateWindowTitle();
@@ -697,18 +693,11 @@ void MainWindow::finishClose() {
     glfwGetWindowSize(window_, &state.size[0], &state.size[1]);
   }
   state.has_geometry = state.size[0] > 0 && state.size[1] > 0;
-  state.workspace_version = 4;
-  state.log_messages_visible = currentSource().logs_visible;
-  state.charts_visible = charts_visible_;
   state.joystick_visible = joystick_visible_;
-  state.details_visible = currentSource().inspector_visible;
-  state.messages_visible = currentSource().messages_visible;
-  state.video_visible = !camera_panes_.empty();
-  state.playback_visible = playback_visible_;
-  const bool builtin = !workspaces_.empty() && !workspaces_[active_workspace_]["builtin"].string_value().empty();
-  settings.ui_state = builtin ? inistate::saveWindowGeometry() : inistate::save();
-
-  saveSessionState();
+  // Docking and table state live in the workspace; the app keeps only the OS window.
+  settings.ui_state = inistate::saveWindowGeometry();
+  captureWorkspace();
+  persistWorkspaces();
   settings.save();
   exited_ = true;
 }
@@ -751,48 +740,14 @@ void MainWindow::toggleFullScreen() {
 #endif
 }
 
-void MainWindow::saveSessionState() {
-  captureWorkspace();
-  persistWorkspaces();
-  settings.recent_dbc_file = "";
-  settings.active_msg_id = "";
-  settings.selected_msg_ids.clear();
-
-  const auto files = dbc()->nonEmptyDBCFiles();
-  if (!files.empty()) settings.recent_dbc_file = files.front()->filename;
-
-  if (auto *detail = currentSource().inspector.getDetailWidget()) {
-    auto [active_id, ids] = detail->serializeMessageIds();
-    settings.active_msg_id = active_id;
-    settings.selected_msg_ids = ids;
-  }
-}
-
+// Saved inspector tabs open once their source is loaded; the tabs belong to that source.
 void MainWindow::restoreSessionState() {
-  if (!charts_widget_) return;
-  if (!pending_workspace_layout_.empty()) {
-    if (charts_widget_->restoreLayout(pending_workspace_layout_, true) == ChartsWidget::LayoutStatus::Restored)
-      pending_workspace_layout_.clear();
-  }
-  // CAN layouts may need the DBC loaded by eventsMerged(). dbcFileChanged() retries while definitions are missing.
-  if (!startup_layout_.empty()) {
-    if (charts_widget_->openLayout(startup_layout_, true) != ChartsWidget::LayoutStatus::MissingCan) {
-      startup_layout_.clear();
-      pending_workspace_layout_.clear();
-    }
-  }
-  if (dynamic_cast<DummyStream *>(can) || dbc()->nonEmptyDBCCount() == 0) return;
-  auto pending = pending_workspace_inspectors_.find(can->source_id);
-  if (pending == pending_workspace_inspectors_.end()) return;
+  if (dynamic_cast<DummyStream *>(can)) return;
+  auto pending = pending_workspace_inspectors_.extract(can->source_id);
+  if (pending.empty()) return;
   std::vector<std::string> ids;
-  for (const auto &id : pending->second["messages"].array_items()) ids.push_back(id.string_value());
-  // DBC file changes can arrive separately. Keep unresolved tabs pending until
-  // every saved message has a definition, including messages on other buses.
-  if (!std::all_of(ids.begin(), ids.end(), [](const auto &id) { return dbc()->msg(MessageId::fromString(id)) != nullptr; })) return;
-  const auto active = pending->second["active"].string_value();
-  if (!active.empty() && !dbc()->msg(MessageId::fromString(active))) return;
-  if (!ids.empty()) currentSource().inspector.ensureDetailWidget()->restoreTabs(active, ids);
-  pending_workspace_inspectors_.erase(pending);
+  for (const auto &id : pending.mapped()["messages"].array_items()) ids.push_back(id.string_value());
+  if (!ids.empty()) currentSource().inspector.ensureDetailWidget()->restoreTabs(pending.mapped()["active"].string_value(), ids);
 }
 
 void MainWindow::handleShortcuts() {
@@ -848,7 +803,7 @@ void MainWindow::drawPlaybackBar(float height) {
   const bool loaded = std::any_of(source_views_.begin(), source_views_.end(), [](const auto &view) {
     return !dynamic_cast<DummyStream *>(view->stream.get());
   });
-  const auto &saved_sources = workspaces_.empty() ? json11::Json::array{} : workspaces_[active_workspace_]["sources"].array_items();
+  const auto &saved_sources = workspaces_[active_workspace_]["sources"].array_items();
   const bool has_references = std::any_of(saved_sources.begin(), saved_sources.end(), [](const auto &source) {
     return !source["route"].string_value().empty();
   });
@@ -1082,21 +1037,6 @@ void MainWindow::drawDockspace() {
   ImGui::End();
 }
 
-namespace {
-// Every workspace panel uses the same docking and floating behavior. Keep the title
-// strip visible so moving and closing a panel are always available.
-void setNextPanelClass() {
-  ImGuiWindowClass window_class;
-  window_class.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
-  window_class.DockNodeFlagsOverrideSet = ImGuiDockNodeFlags_NoWindowMenuButton;
-  ImGui::SetNextWindowClass(&window_class);
-}
-
-bool beginPanel(const char *name, bool *open, ImGuiWindowFlags flags = 0) {
-  return beginDockablePanel(name, open, flags);
-}
-}  // namespace
-
 void MainWindow::showMessage(const MessageId &id) {
   currentSource().inspector.setMessage(id);
   currentSource().inspector_visible = true;
@@ -1115,8 +1055,7 @@ void MainWindow::selectPanelTab(const char *name) {
 
 void MainWindow::drawMessagesPanel() {
   const std::string name = panelName("can");
-  setNextPanelClass();
-  if (beginPanel(name.c_str(), &currentSource().messages_visible) && currentSource().messages) {
+  if (beginDockablePanel(name.c_str(), &currentSource().messages_visible) && currentSource().messages) {
     help_overlay_.add(currentSource().messages->whatsThis(), ImGui::GetCurrentWindow()->Rect());
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", currentSource().messages->title().c_str());
@@ -1128,8 +1067,7 @@ void MainWindow::drawMessagesPanel() {
 }
 
 void MainWindow::drawLogMessagesPanel() {
-  setNextPanelClass();
-  if (beginPanel(panelName("logs").c_str(), &currentSource().logs_visible) && charts_widget_) {
+  if (beginDockablePanel(panelName("logs").c_str(), &currentSource().logs_visible) && charts_widget_) {
     help_overlay_.add("<b>openpilot Messages</b><br />Search to filter messages and fields.<br />"
                       "Double-click a field to create a chart.<br />Drag a field onto a chart to compare.",
                       ImGui::GetCurrentWindow()->Rect());
@@ -1149,8 +1087,7 @@ void MainWindow::drawVideoPanel() {
     if (!source || !camera.widget) continue;
     SourceScope scope(source);
     const std::string name = std::string(VideoWidget::cameraName(camera.type)) + " · " + source->source_label + "###camera_" + camera.id;
-    setNextPanelClass();
-    const bool visible = beginPanel(name.c_str(), &camera.visible, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    const bool visible = beginDockablePanel(name.c_str(), &camera.visible, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     camera.widget->setVisible(visible && camera.visible);
     if (visible) {
       if ((ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) && ImGui::IsMouseClicked(0)) {
@@ -1165,10 +1102,9 @@ void MainWindow::drawVideoPanel() {
 }
 
 void MainWindow::drawDetailsPanel() {
-  setNextPanelClass();
   auto *detail = currentSource().inspector.getDetailWidget();
   const std::string title = panelName("inspector");
-  if (beginPanel(title.c_str(), &currentSource().inspector_visible, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+  if (beginDockablePanel(title.c_str(), &currentSource().inspector_visible, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     if (detail) {
       currentSource().inspector.draw();
     } else {
@@ -1237,8 +1173,7 @@ void MainWindow::draw() {
   }
   bool joystick_drawn = false;
   if (joystick_visible_) {
-    setNextPanelClass();
-    if (beginPanel(JOYSTICK_WINDOW, &joystick_visible_) && joystick_widget_) {
+    if (beginDockablePanel(JOYSTICK_WINDOW, &joystick_visible_) && joystick_widget_) {
       joystick_widget_->draw();
       joystick_drawn = joystick_visible_;
     }
