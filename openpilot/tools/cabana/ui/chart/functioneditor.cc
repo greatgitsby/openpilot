@@ -8,7 +8,7 @@
 #include "tools/cabana/ui/icons.h"
 #include "tools/cabana/utils/strings.h"
 
-void ChartManager::openFunctionEditor(const cabana::Equation *equation) {
+void ChartsWidget::openFunctionEditor(const cabana::Equation *equation) {
   function_source_id_ = can->source_id;
   function_draft_ = equation ? *equation : cabana::Equation{"", "", "", "return value", {}};
   function_original_name_ = equation ? equation->name : "";
@@ -23,7 +23,7 @@ void ChartManager::openFunctionEditor(const cabana::Equation *equation) {
   function_editor_show_ = false;
 }
 
-void ChartManager::drawFunctionEditor() {
+void ChartsWidget::drawFunctionEditor() {
   if (!function_editor_open_) return;
   auto *source = sourceById(function_source_id_);
   if (!source) { function_editor_open_ = false; return; }
@@ -72,11 +72,10 @@ void ChartManager::drawFunctionEditor() {
         ImGui::SetNextItemWidth(-1);
         inputText("##path", &path, "Signal path or function name");
         if (ImGui::BeginDragDropTarget()) {
-          if (auto *payload = ImGui::AcceptDragDropPayload("CABANA_TELEMETRY")) path = (const char *)payload->Data;
           if (auto *payload = ImGui::AcceptDragDropPayload("CABANA_SIGNAL")) {
             std::string error;
             const auto signal = json11::Json::parse((const char *)payload->Data, error);
-            if (error.empty() && signal["source"].string_value() == function_source_id_) path = signal["path"].string_value();
+            if (signal["source"] == function_source_id_ && !signal["path"].string_value().empty()) path = signal["path"].string_value();
           }
           ImGui::EndDragDropTarget();
         }
@@ -129,52 +128,48 @@ void ChartManager::drawFunctionEditor() {
   ImGui::EndChild();
 
   const auto name = editing ? e.name : utils::trimmed(e.name);
+  const auto uses = [&](const cabana::Equation &f, const std::string &input) {
+    return utils::trimmed(f.source) == input || std::any_of(f.additional.begin(), f.additional.end(), [&](const auto &p) { return utils::trimmed(p) == input; });
+  };
   std::string error;
   if (name.empty() || utils::trimmed(e.source).empty() || utils::trimmed(e.function).empty()) {
     error = "Enter a name, primary signal, and function body.";
-  } else if ((!editing && std::any_of(equations_.begin(), equations_.end(), [&](const auto &other) { return other.name == name; })) ||
-             can->fields.count(name)) {
-    error = "This name is already used by a signal or function.";
-  } else if (utils::trimmed(e.source) == name || std::any_of(e.additional.begin(), e.additional.end(), [&](const auto &p) { return utils::trimmed(p) == name; })) {
+  } else if (name[0] == '/' || (!editing && std::any_of(equations_.begin(), equations_.end(), [&](const auto &other) { return other.name == name; }))) {
+    error = "Choose a name that is not used by another function and does not start with '/'.";
+  } else if (uses(e, name)) {
     error = "A function cannot use itself as an input.";
   } else if (std::any_of(e.additional.begin(), e.additional.end(), [](const auto &p) { return utils::trimmed(p).empty(); })) {
     error = "Choose a signal for each additional input or remove it.";
   }
+  const auto calculation_error = equationError(function_source_id_, function_original_name_);
+  const auto status = !error.empty() ? error : !calculation_error.empty() ? "Calculation failed: " + calculation_error :
+                      "Saved with the workspace. Calculation errors are shown on its charts.";
   ImGui::SetCursorPosY(footer_top);
   ImGui::Separator();
   checkBox("Plot in a new chart", &function_plot_);
   ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-  ImGui::TextWrapped("%s", error.empty() ? "Saved with the layout. Calculation errors appear above the charts." : error.c_str());
+  ImGui::TextWrapped("%s", status.c_str());
   ImGui::PopStyleColor();
   ImGui::SetCursorPosY(content_bottom - ImGui::GetFrameHeight());
   bool remove = false;
   if (editing) {
     std::string dependents;
     for (const auto &other : equations_) {
-      if (other.name != function_original_name_ && (other.source == function_original_name_ ||
-          std::find(other.additional.begin(), other.additional.end(), function_original_name_) != other.additional.end())) {
-        if (!dependents.empty()) dependents += ", ";
-        dependents += other.name;
-      }
+      if (other.name != function_original_name_ && uses(other, function_original_name_)) dependents += (dependents.empty() ? "" : ", ") + other.name;
     }
     ImGui::BeginDisabled(!dependents.empty());
     remove = ImGui::Button("Delete function");
     ImGui::EndDisabled();
     disabledItemTooltip(dependents.empty() ? "Remove this function from the layout and all charts." :
                         ("Update or delete these functions first: " + dependents).c_str());
+    ImGui::SameLine();
   }
-  if (editing) ImGui::SameLine();
   bool save = false, cancel = false;
   dialogButtons(editing ? "Save" : "Create", &save, &cancel, error.empty());
   if (remove) {
     equations_.erase(std::remove_if(equations_.begin(), equations_.end(),
       [&](const auto &other) { return other.name == function_original_name_; }), equations_.end());
-    // Removing a series may remove its chart, so retain a separate list while walking all tabs.
-    std::vector<ChartView *> charts;
-    for (const auto &chart : charts_) charts.push_back(chart.get());
-    for (auto *chart : charts) {
-      chart->removeIf([&](const auto &signal) { return signal.path == function_original_name_; });
-    }
+    for (auto &chart : charts_) chart->removeIf([&](const auto &signal) { return signal.path == function_original_name_; });
   }
   if (save) {
     e.name = name;
@@ -185,16 +180,8 @@ void ChartManager::drawFunctionEditor() {
     else *existing = e;
   }
   if (save || remove) {
-    // Discard old results, including any in-flight evaluation of the previous definition.
-    ++equation_revision_;
-    source_calculated_.clear();
-    for (auto *candidate : sources()) dirty_sources_.insert(candidate->source_id);
-    equation_errors_.clear();
-    for (auto &chart : charts_) chart->updateFields();
-    rebuildSignalBrowser();
-    fieldsChanged();
-    if (save && function_plot_) createChart()->addFields(e.name);
-    updateState();
+    equationsChanged();
+    if (save && function_plot_) newChart()->addFields(function_source_id_, e.name);
   }
   if (save || remove || cancel) {
     function_editor_open_ = false;

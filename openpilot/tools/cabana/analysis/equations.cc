@@ -104,7 +104,12 @@ std::vector<Sample> evaluateEquation(const Equation &equation, const FieldsSnaps
     for (size_t i = 0; i < inputs.size(); ++i) {
       setArg(i + 2, nearestValue(*inputs[i], sample.x));
     }
-    auto output = checked(PyObject_Vectorcall(function.get(), argv.data(), argv.size(), nullptr));
+    PyPtr output(PyObject_Vectorcall(function.get(), argv.data(), argv.size(), nullptr));
+    if (!output && (PyErr_ExceptionMatches(PyExc_ArithmeticError) || PyErr_ExceptionMatches(PyExc_ValueError))) {
+      PyErr_Clear();  // skip samples the math is undefined for, such as a division by zero at standstill
+      continue;
+    }
+    if (!output) pythonError();
     double time = sample.x;
     PyObject *value = output.get();
     if (PyTuple_Check(value)) {

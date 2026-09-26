@@ -1,26 +1,28 @@
 #define IMGUI_DEFINE_MATH_OPERATORS  // ImVec2 arithmetic, must precede imgui.h
 #include "tools/cabana/ui/chart/chart.h"
 
-#include "tools/cabana/ui/threadpool.h"
-
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <limits>
-#include "json11/json11.hpp"
 
+#include "json11/json11.hpp"
 #include "tools/cabana/core/settings.h"
 #include "tools/cabana/settings.h"
 #include "tools/cabana/ui/chart/chartswidget.h"
 #include "tools/cabana/ui/chart/downsample.h"
 #include "tools/cabana/ui/icons.h"
+#include "tools/cabana/ui/threadpool.h"
 #include "tools/cabana/ui/util.h"
 #include "tools/cabana/utils/strings.h"
 
 const int X_TICK_COUNT = 5;
 const double MIN_ZOOM_SECONDS = 0.01;  // 10ms
 const double EPSILON = 1e-6;
+// PlotJuggler's series colors, for log fields and functions
+const CabanaColor FIELD_COLORS[] = {{31, 119, 180}, {214, 39, 40}, {26, 201, 56}, {255, 127, 14},
+                                    {241, 76, 193}, {148, 103, 189}, {23, 190, 207}, {188, 189, 34}};
 static inline bool xLessThan(const ImPlotPoint &p, double x) { return p.x < (x - EPSILON); }
 static inline bool isNull(const ImPlotPoint &p) { return p.x == 0 && p.y == 0; }
 
@@ -42,11 +44,8 @@ static void addTextEllipsis(ImDrawList *dl, ImFont *font, ImU32 col, const ImVec
   ImGui::PopFont();
 }
 
-ChartView::ChartView(const std::pair<double, double> &x_range, ChartManager *parent)
-    : x_min_(x_range.first), x_max_(x_range.second), charts_widget_(parent) {
+ChartView::ChartView(ChartsWidget *parent) : charts_widget_(parent) {
   series_type_ = (SeriesType)settings.chart_series_type;
-
-
 }
 
 void ChartView::drawMenuActions() {
@@ -56,78 +55,74 @@ void ChartView::drawMenuActions() {
     }
   }
   ImGui::Separator();
+  if (std::exchange(focus_title_, false)) ImGui::SetKeyboardFocusHere();
   inputText("##chart_title", &title, "Chart title");
-  ImGui::TextDisabled("Chart range: %s", utils::formatSeconds(charts_widget_->max_chart_range_).c_str());
-  if (charts_widget_->range_slider_.draw("##chart_range", 180)) {
-    charts_widget_->setMaxChartRange(charts_widget_->range_slider_.value());
-  }
-  if (dropdown::Item("Fit loaded data")) charts_widget_->fitTimeRange();
-  if (dropdown::Item("Follow playback")) charts_widget_->zoomReset();
-  if (dropdown::BeginMenu("Functions")) { charts_widget_->drawAnalysisMenu(); dropdown::EndMenu(); }
-  if (dropdown::Item("Export CSV...")) charts_widget_->exportCsv();
+  auto *charts = charts_widget_;
+  ImGui::TextDisabled("Chart range: %s", utils::formatSeconds(charts->max_chart_range_).c_str());
+  if (charts->range_slider_.draw("##chart_range", 180)) charts->max_chart_range_ = settings.chart_range = charts->range_slider_.value();
+  if (dropdown::Item("Fit loaded data")) charts->fitTimeRange();
+  if (dropdown::Item("Follow playback")) charts->zoomReset();
+  if (dropdown::BeginMenu("Functions")) { charts->drawAnalysisMenu(); dropdown::EndMenu(); }
+  if (dropdown::Item("Export CSV...")) charts->exportCsv();
   if (dropdown::Item("Manage Signals")) manageSignals();
   if (dropdown::BeginMenu("Transforms and Statistics")) {
-    for (size_t i = 0; i < sigs_.size(); ++i) {
-      ImGui::PushID((int)i);
-      if (dropdown::BeginMenu((sigs_[i].name() + sigs_[i].description()).c_str())) {
-        drawSignalAnalysis(sigs_[i]);
+    for (auto &s : sigs_) {
+      ImGui::PushID(&s);
+      if (dropdown::BeginMenu((s.name() + s.description()).c_str())) {
+        drawSignalAnalysis(s);
         dropdown::EndMenu();
       }
       ImGui::PopID();
     }
     dropdown::EndMenu();
   }
-  if (dropdown::Item("Split Chart", nullptr, false, sigs_.size() > 1)) charts_widget_->splitChart(this);
+  if (dropdown::Item("Split Chart", nullptr, false, sigs_.size() > 1)) charts->splitChart(this);
 }
 
 // the buttons and their menus are drawn every frame, at the rects updateLayout() placed them at
 void ChartView::createToolButtons() {
-  ImGui::SetCursorScreenPos(layout_.close_btn_rect.Min);
-  bool add_clicked = iconButton("add_signals", icon::PLUS_LG, "Add or manage signals");
+  ImGui::SetCursorScreenPos(layout_.add_btn_rect.Min);
+  if (iconButton("add_signals", icon::PLUS_LG, "Add or manage signals")) manageSignals();
 
   ImGui::SetCursorScreenPos(layout_.manage_btn_rect.Min);
-  if (iconButton("manage_btn", icon::THREE_DOTS_VERTICAL, "")) ImGui::OpenPopup("manage_menu");
+  if (iconButton("manage_btn", icon::THREE_DOTS_VERTICAL, "") || focus_title_) ImGui::OpenPopup("manage_menu");
   if (dropdown::BeginPopup("manage_menu")) {
     drawMenuActions();
     dropdown::EndPopup();
   }
-
-  if (add_clicked) manageSignals();
 }
 
-void ChartView::addSignal(const MessageId &msg_id, const cabana::Signal *sig, const std::string &source_id) {
-  const auto id = source_id.empty() ? can->source_id : source_id;
-  if (!sig || std::any_of(sigs_.begin(), sigs_.end(), [&](const auto &s) { return s.source_id == id && s.msg_id == msg_id && s.sig == sig; })) return;
+void ChartView::addSignal(const std::string &source_id, const MessageId &msg_id, const std::string &name) {
+  add({.source_id = source_id, .msg_id = msg_id, .signal_name = name, .color = nextColor()});  // the DBC color once resolved
+}
 
-  sigs_.push_back({.source_id = id, .signal_name = sig->name, .msg_id = msg_id, .sig = sig, .color = uniqueColor(sig->color)});
-  updateSeries(sig);
+void ChartView::addFields(const std::string &source_id, const std::string &path) {
+  add({.source_id = source_id, .path = path, .color = nextColor()});
+}
+
+void ChartView::add(SigItem item) {
+  if (std::any_of(sigs_.begin(), sigs_.end(), [&](const auto &s) { return sameSignal(s, item); })) return;
+  sigs_.push_back(std::move(item));
+  if (sigs_.back().path.empty()) resolveSignals();
+  else updateFields();
   charts_widget_->seriesChanged();
 }
 
-void ChartView::addFields(const std::string &path, CabanaColor color, const std::string &source_id) {
-  const auto id = source_id.empty() ? can->source_id : source_id;
-  if (std::any_of(sigs_.begin(), sigs_.end(), [&](const auto &s) { return s.source_id == id && s.path == path; })) return;
-  sigs_.push_back({.source_id = id, .path = path, .color = uniqueColor(color)});
-  updateFields();
-  charts_widget_->seriesChanged();
-}
-
-void ChartView::updateFields() {
-  ++fields_revision_;
-  fields_dirty_ = true;
-  pollFields();
+// the first series color that is not in use yet
+CabanaColor ChartView::nextColor() const {
+  for (const auto &color : FIELD_COLORS) {
+    if (std::none_of(sigs_.begin(), sigs_.end(), [&](const auto &s) { return s.color == color; })) return color;
+  }
+  return FIELD_COLORS[sigs_.size() % std::size(FIELD_COLORS)];
 }
 
 void ChartView::pollFields() {
   if (fields_task_.valid()) {
     if (fields_task_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
     fields_task_.get();
-    for (size_t i = 0; fields_result_revision_ == fields_revision_ && i < std::min(sigs_.size(), fields_result_->size()); ++i) {
-      auto &ready = (*fields_result_)[i];
-      auto &s = sigs_[i];
-      if (ready.path.empty() || s.path != ready.path || s.source_id != ready.source_id) continue;
-      if (s.transform.type != ready.transform.type || s.transform.scale != ready.transform.scale ||
-          s.transform.offset != ready.transform.offset || s.transform.window != ready.transform.window) continue;
+    for (size_t i = 0; fields_task_revision_ == fields_revision_ && i < std::min(sigs_.size(), fields_result_->size()); ++i) {
+      auto &s = sigs_[i], &ready = (*fields_result_)[i];
+      if (s.path.empty() || !sameSignal(s, ready)) continue;
       s.raw_vals.swap(ready.raw_vals);
       s.vals.swap(ready.vals);
       s.step_vals.swap(ready.step_vals);
@@ -138,40 +133,30 @@ void ChartView::pollFields() {
     updateAxisY();
     ThreadPool::instance().run([retired = std::move(fields_result_)]() mutable { retired.reset(); });
   }
-  if (!fields_dirty_) return;
-  fields_dirty_ = false;
-  if (std::none_of(sigs_.begin(), sigs_.end(), [](const auto &s) { return !s.path.empty(); })) return;
-  fields_result_revision_ = fields_revision_;
+  if (fields_task_revision_ == fields_revision_) return;
+  fields_task_revision_ = fields_revision_;
   fields_result_ = std::make_shared<std::vector<SigItem>>();
-  std::vector<double> origins;
-  std::vector<std::shared_ptr<const cabana::Samples>> samples;
+  std::vector<std::pair<std::shared_ptr<const cabana::Samples>, double>> inputs;  // the samples, and the chart time origin
   for (const auto &s : sigs_) {
-    auto &item = fields_result_->emplace_back();
-    if (s.path.empty()) continue;
-    item.source_id = s.source_id;
-    item.path = s.path;
-    item.transform = s.transform;
-    auto *source = sourceById(s.source_id);
-    origins.push_back(source ? source->beginMonoTime() * 1e-9 - source->timeline_offset : 0);
-    samples.push_back(charts_widget_->fieldsSnapshot(s.path, s.source_id));
+    auto *source = s.path.empty() ? nullptr : sourceById(s.source_id);
+    fields_result_->push_back({.source_id = s.source_id, .path = s.path, .transform = s.transform});
+    inputs.emplace_back(source ? charts_widget_->fieldsSnapshot(s.path, s.source_id) : nullptr,
+                        source ? source->beginMonoTime() * 1e-9 - source->timeline_offset : 0);
   }
-  fields_task_ = ThreadPool::instance().run([result = fields_result_, samples = std::move(samples), origins = std::move(origins)]() {
-    size_t index = 0;
-    for (auto &s : *result) {
-      if (s.path.empty()) continue;
-      const double origin = origins[index];
-      const auto &points = samples[index++];
-      if (points) {
-        s.raw_vals.reserve(points->size());
-        for (const auto &p : *points) s.raw_vals.emplace_back(p.x - origin, p.y);
+  fields_task_ = ThreadPool::instance().run([result = fields_result_, inputs = std::move(inputs)]() {
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      auto &s = (*result)[i];
+      if (const auto &[samples, origin] = inputs[i]; samples) {
+        s.raw_vals.reserve(samples->size());
+        for (const auto &p : *samples) s.raw_vals.emplace_back(p.x - origin, p.y);
       }
-      buildSeries(s, 0, true);
+      if (!s.path.empty()) buildSeries(s, 0, true);
     }
   });
 }
 
 bool ChartView::hasSignal(const MessageId &msg_id, const cabana::Signal *sig) const {
-  return std::any_of(sigs_.cbegin(), sigs_.cend(), [&](auto &s) { return s.source_id == can->source_id && s.msg_id == msg_id && s.sig == sig; });
+  return std::any_of(sigs_.cbegin(), sigs_.cend(), [&](auto &s) { return s.msg_id == msg_id && s.sig == sig; });
 }
 
 void ChartView::removeIf(std::function<bool(const SigItem &s)> predicate) {
@@ -197,36 +182,30 @@ void ChartView::signalUpdated(const cabana::Signal *sig) {
 
 void ChartView::manageSignals() {
   auto dlg = std::make_unique<SignalSelector>("Manage Chart");
-  for (auto &s : sigs_) {
-    if (s.path.empty() && s.sig) dlg->addSelected(s.msg_id, s.sig, s.source_id);
-    else if (!s.path.empty()) dlg->addFields(s.path, s.source_id);
-  }
+  for (auto &s : sigs_) dlg->addSelected({s.source_id, s.path, s.msg_id, s.signal_name, s.color});
   // runs once the dialog is accepted, dropped if the chart is removed first
   charts_widget_->execSignalSelector(std::move(dlg), this, [this](SignalSelector &selector) {
     const auto &items = selector.selectedItems();
-    for (const auto &s : items) {
-      if (s.path.empty()) addSignal(s.msg_id, s.sig, s.source_id);
-      else addFields(s.path, {0, 114, 178}, s.source_id);
+    for (const auto &it : items) {
+      if (it.path.empty()) addSignal(it.source_id, it.msg_id, it.signal_name);
+      else addFields(it.source_id, it.path);
     }
     removeIf([&](auto &s) {
-      if (s.path.empty() && !s.sig) return false;
-      return std::none_of(items.cbegin(), items.cend(), [&](auto &it) { return s.source_id == it.source_id && s.path == it.path && s.msg_id == it.msg_id && s.sig == it.sig; });
+      return std::none_of(items.cbegin(), items.cend(), [&](auto &it) { return sameSignal(s, it); });
     });
   });
 }
 
 void ChartView::updateLayout() {
   const ImGuiStyle &style = ImGui::GetStyle();
-  // WindowPadding can be zero in a borderless pane or drag preview. Chart
-  // content always uses the shared control gap, independently of its parent.
+  // WindowPadding can be zero in a borderless pane. Chart content always uses the shared control gap, independently of its parent.
   layout_.content_rect = layout_.rect;
   layout_.content_rect.Expand(-style.ItemSpacing.x);
   const ImVec2 top_left = layout_.content_rect.Min;
-  layout_.move_icon_rect = ImRect(top_left, top_left);
   const ImVec2 btn_size(iconButtonWidth(), iconButtonWidth());
-  const ImVec2 close_min(layout_.content_rect.Max.x - btn_size.x, top_left.y);
-  layout_.close_btn_rect = ImRect(close_min, close_min + btn_size);
-  const ImVec2 manage_min(close_min.x - btn_size.x - ImGui::GetStyle().ItemSpacing.x, top_left.y);
+  const ImVec2 add_min(layout_.content_rect.Max.x - btn_size.x, top_left.y);
+  layout_.add_btn_rect = ImRect(add_min, add_min + btn_size);
+  const ImVec2 manage_min(add_min.x - btn_size.x - ImGui::GetStyle().ItemSpacing.x, top_left.y);
   layout_.manage_btn_rect = ImRect(manage_min, manage_min + btn_size);
 
   ImFont *bold = boldFont();
@@ -234,10 +213,10 @@ void ChartView::updateLayout() {
   const float fm_height = ImGui::GetTextLineHeight();
   const int marker_size = markerSize();
   const int row_height = std::max<int>(marker_size, fm_height) + fm_height + style.ItemInnerSpacing.y;  // + the signal value line
-  const int legend_left = layout_.move_icon_rect.Max.x + style.ItemSpacing.x;
+  const int legend_left = top_left.x;
   const int legend_right = std::max<int>(layout_.manage_btn_rect.Min.x - ImGui::GetStyle().ItemSpacing.x, legend_left + 10);
 
-  // layout legend entries left-to-right, wrapping between the move icon and the buttons
+  // layout legend entries left-to-right, wrapping before the buttons
   layout_.legend_rects.clear();
   int x = legend_left, y = top_left.y;
   for (auto &s : sigs_) {
@@ -272,46 +251,34 @@ void ChartView::updatePlot(double cur, double min, double max) {
   }
 }
 
-void ChartView::appendCanEvents(const cabana::Signal *sig, const std::vector<const CanEvent *> &events,
-                                std::vector<ImPlotPoint> &vals, AbstractStream *source) {
-  vals.reserve(vals.size() + events.size());
-
-  double value = 0;
-  for (const CanEvent *e : events) {
-    if (sig->getValue(e->dat, e->size, &value)) {
-      const double ts = source->toSeconds(e->mono_time) + source->timeline_offset;
-      vals.emplace_back(ts, value);
-    }
-  }
-}
-
 void ChartView::updateSeries(const cabana::Signal *sig, const MessageEventsMap *msg_new_events, const std::string &source_id) {
   for (auto &s : sigs_) {
-    auto *source = sourceById(s.source_id);
-    if (source && s.sig && s.path.empty() && (!sig || s.sig == sig) && (source_id.empty() || s.source_id == source_id)) {
-      size_t begin = 0;
-      if (!msg_new_events) s.raw_vals.clear();
-      const auto &events = msg_new_events ? *msg_new_events : source->eventsMap();
-      auto it = events.find(s.msg_id);
-      if (msg_new_events && it == events.end()) continue;
-      if (it != events.end()) {
-        std::vector<ImPlotPoint> incoming;
-        appendCanEvents(s.sig, it->second, incoming, source);
-        const size_t old_size = s.raw_vals.size();
-        if (old_size && (incoming.empty() || incoming.front().x >= s.raw_vals.back().x)) begin = old_size;
-        s.raw_vals.insert(s.raw_vals.end(), incoming.begin(), incoming.end());
-        if (begin == 0) std::inplace_merge(s.raw_vals.begin(), s.raw_vals.begin() + old_size, s.raw_vals.end(),
-                          [](const auto &a, const auto &b) { return a.x < b.x; });
-      }
-      rebuildSeries(s, begin);
-    }
+    if (s.sig && (!sig || s.sig == sig) && (source_id.empty() || s.source_id == source_id)) loadSeries(s, msg_new_events);
   }
   updateAxisY();
 }
 
-void ChartView::rebuildSeries(SigItem &s, size_t begin) {
+// decodes all events of a CAN signal, or appends new ones
+void ChartView::loadSeries(SigItem &s, const MessageEventsMap *new_events) {
   auto *source = sourceById(s.source_id);
-  buildSeries(s, begin, !source || !source->liveStreaming());
+  if (!source) return;
+  const auto &events = new_events ? *new_events : source->eventsMap();
+  auto it = events.find(s.msg_id);
+  if (new_events && it == events.end()) return;
+  if (!new_events) s.raw_vals.clear();
+  size_t begin = s.raw_vals.size();
+  double value = 0;
+  if (it != events.end()) {
+    for (const CanEvent *e : it->second) {
+      if (s.sig->getValue(e->dat, e->size, &value)) s.raw_vals.emplace_back(source->toSeconds(e->mono_time) + source->timeline_offset, value);
+    }
+  }
+  // events of an earlier route segment are merged in, and the whole series is rebuilt
+  if (begin > 0 && begin < s.raw_vals.size() && s.raw_vals[begin].x < s.raw_vals[begin - 1].x) {
+    std::inplace_merge(s.raw_vals.begin(), s.raw_vals.begin() + begin, s.raw_vals.end(), [](const auto &a, const auto &b) { return a.x < b.x; });
+    begin = 0;
+  }
+  buildSeries(s, begin, !source->liveStreaming());
 }
 
 void ChartView::buildSeries(SigItem &s, size_t begin, bool build_tree) {
@@ -332,14 +299,11 @@ void ChartView::buildSeries(SigItem &s, size_t begin, bool build_tree) {
   s.track_pt = {};
 }
 
-void ChartView::configureSignal(size_t index, const chart::TransformSettings &transform, bool visible, std::optional<CabanaColor> color) {
-  if (index >= sigs_.size()) return;
-  auto &s = sigs_[index];
+void ChartView::configureSignal(SigItem &s, const chart::TransformSettings &transform) {
   s.transform = transform;
-  if (!s.path.empty()) { ++fields_revision_; fields_dirty_ = true; }
-  s.visible = visible;
-  if (color) s.color = *color;
-  rebuildSeries(s);
+  auto *source = sourceById(s.source_id);
+  buildSeries(s, 0, !source || !source->liveStreaming());
+  if (!s.path.empty()) updateFields();  // a load in progress still has the previous transform
   updateAxisY();
   hideTip();
 }
@@ -364,8 +328,7 @@ void ChartView::drawSignalAnalysis(SigItem &s) {
     pending_signal_removal_ = &s - sigs_.data();
     ImGui::CloseCurrentPopup();
   }
-  const std::string description = s.description();
-  if (!description.empty()) ImGui::TextDisabled("%s", description.c_str());
+  ImGui::TextDisabled("%s", s.description().c_str());
   ImGui::Separator();
   auto transform = s.transform;
   int type = (int)transform.type;
@@ -379,9 +342,7 @@ void ChartView::drawSignalAnalysis(SigItem &s) {
   }
   ImGui::TextDisabled("Scale and offset apply before the transform.");
   if (ImGui::Button("Reset to original")) { transform = {}; changed = true; }
-  if (changed && std::isfinite(transform.scale) && std::isfinite(transform.offset)) {
-    configureSignal(&s - sigs_.data(), transform, s.visible);
-  }
+  if (changed && std::isfinite(transform.scale) && std::isfinite(transform.offset)) configureSignal(s, transform);
   ImGui::Separator();
   auto [first, last] = visibleRange(s.vals);
   ImGui::Text("Visible range: %.3f–%.3f s", x_min_, x_max_);
@@ -429,7 +390,7 @@ void ChartView::updateAxisY() {
     s.min = std::numeric_limits<double>::max();
     s.max = std::numeric_limits<double>::lowest();
     if (first == last) continue;
-    if (can->liveStreaming()) {
+    if (auto *source = sourceById(s.source_id); source && source->liveStreaming()) {
       for (auto it = first; it != last; ++it) {
         if (it->y < s.min) s.min = it->y;
         if (it->y > s.max) s.max = it->y;
@@ -494,7 +455,6 @@ double ChartView::niceNumber(double x, bool ceiling) {
 }
 
 void ChartView::drawContextMenu() {
-  if (drawing_ghost_) return;
   // the menu opens on right press; a right release with no menu open reaches handleMouseRelease
   if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && layout_.plot_area.Contains(ImGui::GetMousePos()) &&
       ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
@@ -518,16 +478,14 @@ void ChartView::drawContextMenu() {
 }
 
 void ChartView::handleMousePress() {
-  if (drawing_ghost_) return;
   const ImVec2 pos = ImGui::GetMousePos();
-  // a press on the close/manage buttons does not reach the widget
+  // a press on the add/manage buttons does not reach the widget
   const bool widget_pressed = !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) &&
                               ImGui::IsMouseClicked(ImGuiMouseButton_Left) && layout_.rect.Contains(pos) &&
                               ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
-                              !layout_.close_btn_rect.Contains(pos) && !layout_.manage_btn_rect.Contains(pos);
+                              !layout_.add_btn_rect.Contains(pos) && !layout_.manage_btn_rect.Contains(pos);
   if (!widget_pressed) return;
   press_pos_ = pos;
-  if (layout_.move_icon_rect.Contains(pos)) return;  // the move icon press is handled by the grip item (startChartDrag)
 
   if (ImGui::GetIO().KeyCtrl && layout_.plot_area.Contains(pos)) {
     mouse_mode_ = MouseMode::Pan;
@@ -537,7 +495,7 @@ void ChartView::handleMousePress() {
     // Save current playback state when scrubbing
     resume_after_scrub_ = !can->isPaused();
     if (resume_after_scrub_) {
-      charts_widget_->requestPause(true);
+      charts_widget_->pauseRequested(true);
     }
     mouse_mode_ = MouseMode::Scrub;
   } else if (layout_.plot_area.Contains(pos)) {
@@ -547,7 +505,6 @@ void ChartView::handleMousePress() {
 }
 
 void ChartView::handleMouseMove() {
-  if (drawing_ghost_) return;
   const ImVec2 pos = ImGui::GetMousePos();
   const ImVec2 delta = ImGui::GetIO().MouseDelta;
   // a click alone must not hide the tip
@@ -557,7 +514,7 @@ void ChartView::handleMouseMove() {
 
   if (mouse_mode_ == MouseMode::Scrub && ImGui::GetIO().KeyShift) {
     if (layout_.plot_area.Contains(pos)) {
-      charts_widget_->requestSeek(std::clamp(secondsAtPoint(pos) - can->timeline_offset, can->minSeconds(), can->maxSeconds()));
+      charts_widget_->seekRequested(std::clamp(secondsAtPoint(pos) - can->timeline_offset, can->minSeconds(), can->maxSeconds()));
     }
   }
 
@@ -586,7 +543,6 @@ void ChartView::handleMouseMove() {
 }
 
 void ChartView::handleMouseRelease() {
-  if (drawing_ghost_) return;
   const bool left_released = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
   const bool right_released = ImGui::IsMouseReleased(ImGuiMouseButton_Right) && layout_.plot_area.Contains(ImGui::GetMousePos());
   if (!left_released && !right_released) return;
@@ -600,7 +556,7 @@ void ChartView::handleMouseRelease() {
     double max = std::clamp(secondsAtPoint(rubber_rect_.Max) - can->timeline_offset, can->minSeconds(), can->maxSeconds());
     if (rubber_rect_.GetWidth() <= 10) {
       // Small movements are still clicks; use the same threshold as drag-to-zoom.
-      charts_widget_->requestSeek(std::clamp(secondsAtPoint(press_pos_) - can->timeline_offset, can->minSeconds(), can->maxSeconds()));
+      charts_widget_->seekRequested(std::clamp(secondsAtPoint(press_pos_) - can->timeline_offset, can->minSeconds(), can->maxSeconds()));
     } else if ((max - min) > MIN_ZOOM_SECONDS) {
       charts_widget_->zoom_undo_stack_.push(new ZoomCommand({min, max}));
     }
@@ -612,49 +568,13 @@ void ChartView::handleMouseRelease() {
   if (mouse_mode_ == MouseMode::Scrub) {
     mouse_mode_ = MouseMode::None;
     if (resume_after_scrub_) {
-      charts_widget_->requestPause(false);
+      charts_widget_->pauseRequested(false);
       resume_after_scrub_ = false;
     }
   }
 }
 
-void ChartView::takeSignalsFrom(ChartView *source) {
-  for (auto &s : source->sigs_) {
-    s.color = uniqueColor(s.color);
-    sigs_.push_back(std::move(s));
-  }
-  source->sigs_.clear();
-  updateFields();
-  updateAxisY();
-  charts_widget_->removeChart(source);
-}
-
-std::vector<ChartView::SigItem> ChartView::takeExtraSignals() {
-  std::vector<SigItem> extra;
-  for (auto it = sigs_.begin() + 1; it != sigs_.end(); ++it) {
-    if (it->sig) it->color = it->sig->color;
-    extra.push_back(std::move(*it));
-  }
-  sigs_.resize(1);
-  updateAxisY();
-  return extra;
-}
-
-void ChartView::adoptSignal(SigItem s) {
-  sigs_.push_back(std::move(s));
-  updateFields();
-  updateAxisY();
-}
-
 void ChartView::showTip(double sec) {
-  ImRect tip_area(ImVec2(layout_.rect.Min.x, layout_.plot_area.Min.y), ImVec2(layout_.rect.Max.x, layout_.plot_area.Max.y));
-  ImRect visible_rect = charts_widget_->chartVisibleRect(this);
-  visible_rect.ClipWith(tip_area);
-  if (visible_rect.GetWidth() <= 0 || visible_rect.GetHeight() <= 0) {
-    tip_label_.hide();
-    return;
-  }
-
   tooltip_x_ = xPos(sec);
   float x = -1;
   std::vector<TipLine> text_list;
@@ -678,7 +598,7 @@ void ChartView::showTip(double sec) {
   // the heading shows the shared hover time, so every chart agrees even when their samples do not align
   ImVec2 pt(x, layout_.plot_area.Min.y);
   text_list.insert(text_list.begin(), TipLine{.name = formatNumber(sec, 2) + " s"});
-  tip_label_.showText(pt, text_list, visible_rect);
+  tip_label_.showText(pt, text_list, tipArea());
 }
 
 void ChartView::hideTip() {
@@ -689,24 +609,15 @@ void ChartView::hideTip() {
 
 void ChartView::draw(float width) {
   ImGui::PushID(this);
-  width = std::max(width, 1.0f);
   layout_.plot_hovered = false;
-  // the tile geometry is known before the child is entered, so it stays valid when imgui culls a scrolled out chart
   const ImVec2 tile_pos = ImGui::GetCursorScreenPos();
-  ImVec2 tile_size(width, std::max(1.0f, ImGui::GetContentRegionAvail().y));
+  const ImVec2 tile_size(std::max(width, 1.0f), std::max(1.0f, ImGui::GetContentRegionAvail().y));
   layout_.rect = ImRect(tile_pos, tile_pos + tile_size);
-  updateLayout();
-
-  layout_.rect.Max.y = tile_pos.y + tile_size.y;
   if (ImGui::BeginChild("chart", tile_size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
     updateLayout();
-    paint();
+    drawStaticLayer();
     drawContextMenu();
-    // Keep the tip above the plot, but below popup menus and other windows.
-    ImRect visible_rect = charts_widget_->chartVisibleRect(this);
-    visible_rect.ClipWith(ImRect(ImVec2(layout_.rect.Min.x, layout_.plot_area.Min.y),
-                               ImVec2(layout_.rect.Max.x, layout_.plot_area.Max.y)));
-    if (!drawing_ghost_ && visible_rect.GetWidth() > 0 && visible_rect.GetHeight() > 0) tip_label_.draw(visible_rect);
+    tip_label_.draw(tipArea());  // above the plot, but below popup menus and other windows
   }
   ImGui::EndChild();
   ImGui::PopID();
@@ -714,23 +625,6 @@ void ChartView::draw(float width) {
     const int index = std::exchange(pending_signal_removal_, -1);
     int i = 0;
     removeIf([index, &i](const SigItem &) { return i++ == index; });
-  }
-}
-
-void ChartView::drawGhost(float width) {
-  // the ghost is drawn in its own window: keep the geometry of the live tile so hit testing stays correct
-  drawing_ghost_ = true;
-  const Layout saved = layout_;
-  draw(width);
-  layout_ = saved;
-  drawing_ghost_ = false;
-}
-
-void ChartView::paint() {
-  drawStaticLayer();
-
-  if (can_drop_) {
-    ImGui::GetWindowDrawList()->AddRect(layout_.rect.Min, layout_.rect.Max, ImGui::GetColorU32(ImGuiCol_Header), ImGui::GetStyle().ChildRounding, 0, 4.0f);
   }
 }
 
@@ -776,30 +670,20 @@ void ChartView::drawAxes() {
     // A popup is a descendant of the chart, but hovering its menu must not hover the plot underneath.
     layout_.plot_hovered = layout_.plot_area.Contains(ImGui::GetMousePos()) && ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
     drawSeries();
-    if (!drawing_ghost_) {
-      // Own plot clicks so custom scrubbing/zooming cannot also move the floating window.
-      const ImGuiID input_id = ImGui::GetID("plot_input");
-      if (ImGui::ItemAdd(layout_.plot_area, input_id)) {
-        bool hovered, held;
-        ImGui::ButtonBehavior(layout_.plot_area, input_id, &hovered, &held);
-      }
+    // Own plot clicks so custom scrubbing/zooming cannot also move the floating window.
+    const ImGuiID input_id = ImGui::GetID("plot_input");
+    if (ImGui::ItemAdd(layout_.plot_area, input_id)) {
+      bool hovered, held;
+      ImGui::ButtonBehavior(layout_.plot_area, input_id, &hovered, &held);
     }
-    if (sigs_.empty()) {
-      drawText(ImGui::GetWindowDrawList(), layout_.plot_area, "Use + to add signals, or drag them here", ImGui::GetColorU32(ImGuiCol_TextDisabled));
-    } else if (std::none_of(sigs_.begin(), sigs_.end(), [](const auto &s) { return !s.vals.empty(); })) {
-      const bool missing_source = std::any_of(sigs_.begin(), sigs_.end(), [](const auto &s) { return !sourceById(s.source_id); });
-      const bool missing_dbc = std::any_of(sigs_.begin(), sigs_.end(), [](const auto &s) { return s.path.empty() && !s.sig; });
-      const char *message = missing_source ? "Open the routes referenced by this chart" :
-                            missing_dbc ? "Load the matching DBC to display these signals" : "Waiting for signal samples";
-      drawText(ImGui::GetWindowDrawList(), layout_.plot_area, message, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+    if (std::none_of(sigs_.begin(), sigs_.end(), [](const auto &s) { return !s.vals.empty(); })) {
+      drawText(ImGui::GetWindowDrawList(), layout_.plot_area, emptyMessage().c_str(), ImGui::GetColorU32(ImGuiCol_TextDisabled));
     }
-    if (!drawing_ghost_ && layout_.plot_hovered && ImGui::GetIO().KeyCtrl) {
+    // Ctrl + wheel zooms around the pointer
+    if (layout_.plot_hovered && ImGui::GetIO().KeyCtrl) {
       ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGui::GetID("##plot"));
-    }
-    if (!drawing_ghost_ && layout_.plot_hovered && ImGui::GetIO().KeyCtrl && ImGui::GetIO().MouseWheel != 0 &&
-        mouse_mode_ == MouseMode::None) {
       const double duration = can->maxSeconds() - can->minSeconds();
-      if (duration > MIN_ZOOM_SECONDS) {
+      if (ImGui::GetIO().MouseWheel != 0 && mouse_mode_ == MouseMode::None && duration > MIN_ZOOM_SECONDS) {
         const double anchor = std::clamp(secondsAtPoint(ImGui::GetMousePos()), x_min_, x_max_);
         const double fraction = (anchor - x_min_) / (x_max_ - x_min_);
         const double width = std::clamp((x_max_ - x_min_) * std::pow(0.8, ImGui::GetIO().MouseWheel), MIN_ZOOM_SECONDS, duration);
@@ -813,29 +697,29 @@ void ChartView::drawAxes() {
     drawForeground();
     ImPlot::EndPlot();
   }
-  if (!drawing_ghost_ && ImGui::BeginDragDropTargetCustom(layout_.rect, ImGui::GetID("signal_drop"))) {
+  if (ImGui::BeginDragDropTargetCustom(layout_.rect, ImGui::GetID("signal_drop"))) {
     if (const auto *payload = ImGui::AcceptDragDropPayload("CABANA_SIGNAL")) {
       std::string error;
       const auto item = json11::Json::parse(static_cast<const char *>(payload->Data), error);
-      if (error.empty()) {
-        const auto source_id = item["source"].string_value();
-        if (!item["path"].string_value().empty()) addFields(item["path"].string_value(), {0, 114, 178}, source_id);
-        else if (auto id = MessageId::parse(item["message"].string_value())) {
-          auto *source = sourceById(source_id);
-          auto *message = source ? source->database()->msg(*id) : nullptr;
-          if (message) addSignal(*id, message->sig(item["signal"].string_value()), source_id);
-        }
-        charts_widget_->updateState();
-      }
-    }
-    if (const auto *payload = ImGui::AcceptDragDropPayload("CABANA_TELEMETRY")) {
-      addFields(static_cast<const char *>(payload->Data));
-      charts_widget_->updateState();
+      const auto source_id = item["source"].string_value();
+      if (!item["path"].string_value().empty()) addFields(source_id, item["path"].string_value());
+      else if (auto id = MessageId::parse(item["message"].string_value())) addSignal(source_id, *id, item["signal"].string_value());
     }
     ImGui::EndDragDropTarget();
   }
   ImPlot::PopStyleColor(5);
   ImPlot::PopStyleVar(3);
+}
+
+// why the plot has no samples
+std::string ChartView::emptyMessage() const {
+  if (sigs_.empty()) return "Use + to add signals, or drag them here";
+  for (const auto &s : sigs_) {
+    if (auto error = charts_widget_->equationError(s.source_id, s.path); !error.empty()) return s.path + ": " + error;
+  }
+  if (std::any_of(sigs_.begin(), sigs_.end(), [](const auto &s) { return !sourceById(s.source_id); })) return "Open the routes referenced by this chart";
+  if (std::any_of(sigs_.begin(), sigs_.end(), [](const auto &s) { return s.path.empty() && !s.sig; })) return "Load the matching DBC to display these signals";
+  return "Waiting for signal samples";
 }
 
 void ChartView::drawLegend() {
@@ -861,7 +745,7 @@ void ChartView::drawLegend() {
     }
     ImGui::SetItemTooltip("%s%s\nClick to show/hide · Right-click for transforms and statistics",
                           s.name().c_str(), s.transform.original() ? "" : " (transformed)");
-    if (!drawing_ghost_ && ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+    if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
       ImGui::OpenPopup("signal_analysis");
     }
     if (ImGui::BeginPopup("signal_analysis")) {
@@ -891,6 +775,7 @@ void ChartView::drawLegend() {
   }
 }
 
+// the short label of a path, or its full path when another series has the same label
 std::string ChartView::legendName(const SigItem &s) const {
   std::string label = s.label();
   if (!s.path.empty() && std::any_of(sigs_.begin(), sigs_.end(), [&](const auto &other) {
@@ -1035,7 +920,7 @@ CabanaColor ChartView::uniqueColor(CabanaColor color, const cabana::Signal *excl
   auto separation = [&](float hue) {
     float distance = 1.0f;
     for (const auto &s : sigs_) {
-      if (exclude && s.sig == exclude) continue;
+      if ((exclude && s.sig == exclude) || (s.path.empty() && !s.sig)) continue;  // unresolved signals have no color yet
       const float delta = std::abs(hue - s.color.hsv().hue);
       distance = std::min(distance, std::min(delta, 1.0f - delta));
     }
@@ -1061,29 +946,28 @@ std::string ChartView::windowName() const {
   return label + "###chart_" + widget_id;
 }
 
-void ChartView::addPendingSignal(const MessageId &id, const std::string &name, const std::string &source_id, CabanaColor color) {
-  sigs_.push_back({.source_id = source_id, .signal_name = name, .msg_id = id, .color = color});
-  resolveSignals();
-}
-
+// CAN signals are kept by name, and plotted once their source's DBC defines them
 void ChartView::resolveSignals() {
-  bool changed = false;
-  for (auto &s : sigs_) if (s.path.empty() && !s.sig) {
-    auto *source = sourceById(s.source_id);
-    if (!source) continue;
-    auto *message = source->database()->msg(s.msg_id);
-    if (message && (s.sig = message->sig(s.signal_name))) changed = true;
+  bool resolved = false;
+  for (auto &s : sigs_) {
+    auto *source = s.path.empty() && !s.sig ? sourceById(s.source_id) : nullptr;
+    auto *msg = source ? source->database()->msg(s.msg_id) : nullptr;
+    if (!msg || !(s.sig = msg->sig(s.signal_name))) continue;
+    s.color = uniqueColor(s.sig->color, s.sig);
+    loadSeries(s, nullptr);
+    resolved = true;
   }
-  if (changed) updateSeries();
+  if (resolved) updateAxisY();
 }
 
-void ChartView::detachSource(const std::string &id) {
-  ++fields_revision_;
-  fields_dirty_ = true;
-  for (auto &s : sigs_) if (s.source_id == id) {
+// forgets the CAN signal definitions of a source, and all of its samples unless only its DBC changed
+void ChartView::detachSource(const std::string &id, bool dbc_only) {
+  for (auto &s : sigs_) {
+    if (s.source_id != id || (dbc_only && !s.path.empty())) continue;
     s.sig = nullptr;
-    s.raw_vals.clear(); s.vals.clear(); s.step_vals.clear();
-    s.segment_tree = {};
-    s.track_pt = {};
+    s.raw_vals.clear();
+    buildSeries(s, 0, true);
   }
+  if (!dbc_only) updateFields();
+  updateAxisY();
 }

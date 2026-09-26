@@ -3,14 +3,16 @@
 #include "tools/cabana/commands.h"
 #include "tools/cabana/core/source.h"
 
+// zooms the source that was current when created; a no-op once that source is gone
 class ZoomCommand : public UndoCommand {
 public:
-  ZoomCommand(std::pair<double, double> range) : ZoomCommand(range, can->timeRange()) {}
-  ZoomCommand(std::pair<double, double> range, std::optional<std::pair<double, double>> previous)
-      : prev_range(previous), range(range), source_id_(can ? can->source_id : ""), source_alive_(can ? can->lifetime() : std::weak_ptr<bool>{}) {}
-  void undo() override { if (auto *source = source_alive_.expired() ? nullptr : sourceById(source_id_)) source->setTimeRange(prev_range); }
-  void redo() override { if (auto *source = source_alive_.expired() ? nullptr : sourceById(source_id_)) source->setTimeRange(range); }
+  ZoomCommand(std::pair<double, double> range, std::optional<std::pair<double, double>> previous = can->timeRange())
+      : prev_range(previous), range(range), source_(can), alive_(can->lifetime()) {}
+  void undo() override { if (!alive_.expired()) source_->setTimeRange(prev_range); }
+  void redo() override { if (!alive_.expired()) source_->setTimeRange(range); }
   std::optional<std::pair<double, double>> prev_range, range;
-  std::string source_id_;
-  std::weak_ptr<bool> source_alive_;
+
+private:
+  AbstractStream *source_;
+  std::weak_ptr<bool> alive_;
 };

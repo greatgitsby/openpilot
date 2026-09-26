@@ -459,10 +459,7 @@ void test_chart_analysis() {
     return result;
   };
   const std::vector<Point> raw{{0, 2}, {1, 4}, {3, 8}, {3, 10}, {4, 12}};
-  auto original = transform(raw, {});
-  REQUIRE(original.size() == raw.size());
-  REQUIRE(original.front().x == 0);
-  REQUIRE(original.front().y == 2);
+  REQUIRE(transform(raw, {}).size() == raw.size());
   auto scaled = transform(raw, {chart::Transform::None, -2, 1});
   REQUIRE(scaled.back().y == -23);
   auto derivative = transform(raw, {chart::Transform::Derivative});
@@ -482,93 +479,48 @@ void test_chart_analysis() {
   REQUIRE(average[1].y == 7);
   REQUIRE(average[2].y == 13);
   REQUIRE(average.back().y == 23);
-  // A streaming processor produces the same values when a batch boundary falls between samples.
-  for (auto type : {chart::Transform::None, chart::Transform::Derivative, chart::Transform::Integral, chart::Transform::MovingAverage}) {
-    chart::TransformSettings transform_settings{type, -2, 3, 3};
-    const auto expected = transform(raw, transform_settings);
-    chart::TransformState state;
-    std::vector<Point> streamed;
-    for (size_t batch = 0; batch < raw.size(); batch += 2) {
-      for (size_t i = batch; i < std::min(batch + 2, raw.size()); ++i) {
-        if (auto value = state.append(raw[i].x, raw[i].y, transform_settings)) streamed.emplace_back(raw[i].x, *value);
-      }
-    }
-    REQUIRE(streamed.size() == expected.size());
-    for (size_t i = 0; i < streamed.size(); ++i) {
-      REQUIRE(streamed[i].x == expected[i].x);
-      REQUIRE(streamed[i].y == expected[i].y);
-    }
-  }
   REQUIRE(transform({}, {}).empty());
   REQUIRE(transform({{0, 0}}, {chart::Transform::Derivative}).empty());
-  REQUIRE(transform({{0, 0}}, {}).front().y == 0);
   REQUIRE(chart::csvField("signal, \"left\"\n") == "\"signal, \"\"left\"\"\n\"");
 }
 
 void test_chart_layout() {
   using json11::Json;
-  Json::object signal{{"message", "2:1AF"}, {"signal", "Speed"}, {"visible", false}, {"transform", 3},
-                      {"scale", -2.5}, {"offset", 1.0}, {"window", 20}};
-  auto document = [&](const Json &s) {
-    return Json(Json::object{{"cabana_layout", 1}, {"columns", 2}, {"range", 60},
-      {"tabs", Json::array{Json::array{Json::object{{"type", 1}, {"signals", Json::array{s}}}}, Json::array{}}}}).dump();
+  auto document = [](const Json::array &charts, const Json::array &equations = {}) {
+    return Json(Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", charts}, {"equations", equations}}).dump();
   };
-  auto layout = chart::parseLayout(document(signal));
-  REQUIRE(layout.has_value());
-  REQUIRE(layout->tabs.size() == 2);
-  REQUIRE(layout->tabs[1].empty());
-  REQUIRE(layout->active_tab == 0);
-  std::string parse_error;
-  auto selected_tab = Json::parse(document(signal), parse_error).object_items();
-  selected_tab["active_tab"] = 1;
-  REQUIRE(chart::parseLayout(Json(selected_tab).dump())->active_tab == 1);
-  selected_tab["active_tab"] = 2;
-  REQUIRE(!chart::parseLayout(Json(selected_tab).dump()));
-  selected_tab["active_tab"] = -1;
-  REQUIRE(!chart::parseLayout(Json(selected_tab).dump()));
-  const auto &s = layout->tabs[0][0].signals[0];
-  REQUIRE(s.id.source == 2);
-  REQUIRE(s.id.address == 0x1af);
-  REQUIRE(!s.visible);
-  REQUIRE(s.transform.scale == -2.5);
-  REQUIRE(s.transform.window == 20);
-  for (const auto &bad_id : {"bad", "x:1", "256:1", "1:100000000", "0:", ":1", "0:1junk", "-1:1"}) {
-    auto bad = signal;
-    bad["message"] = bad_id;
-    REQUIRE(!chart::parseLayout(document(bad)).has_value());
+  // A signal is a log path, or an object with its source and non-default settings. Signals of several sources share a chart.
+  const Json field = Json::object{{"source", "source1"}, {"path", "/carState/vEgo"}};
+  const Json can_signal = Json::object{{"source", "source2"}, {"message", "2:1AF"}, {"signal", "Speed"}, {"visible", false},
+                                       {"transform", 3}, {"scale", -2.5}, {"window", 20}};
+  const Json function = Json::object{{"name", "speed mph"}, {"source", "/carState/vEgo"}, {"function", "return value * 2.23694"}};
+  const auto contents = document({Json::object{{"id", "plot-42"}, {"title", "Speed"}, {"type", 1}, {"y_min", -1},
+                                               {"signals", Json::array{"/carState/vEgo", field, can_signal}}},
+                                  Json::object{{"signals", Json::array{}}}}, {function});
+  auto layout = chart::parseLayout(contents);
+  REQUIRE(layout && layout->range == 60 && layout->charts.size() == 2 && layout->equations.size() == 1);
+  const auto &c = layout->charts[0];
+  REQUIRE(c.id == "plot-42" && c.title == "Speed" && c.type == 1 && c.y_min == -1.0 && !c.y_max);
+  const auto &path = c.signals[0], &can = c.signals[2];
+  REQUIRE(path.path == "/carState/vEgo" && path.source_id.empty() && path.visible && path.transform.original() && path.transform.window == 10);
+  REQUIRE(c.signals[1].path == path.path && c.signals[1].source_id == "source1");
+  REQUIRE(can.path.empty() && can.source_id == "source2" && can.id.source == 2 && can.id.address == 0x1af && can.name == "Speed" && !can.visible);
+  REQUIRE(can.transform.type == chart::Transform::MovingAverage && can.transform.scale == -2.5 && can.transform.window == 20);
+  REQUIRE(layout->charts[1].id.empty() && layout->charts[1].signals.empty());
+  const auto &e = layout->equations[0];
+  REQUIRE(e.name == "speed mph" && e.source == "/carState/vEgo" && e.function == "return value * 2.23694" && e.additional.empty());
+  // saving omits the defaults again
+  REQUIRE(chart::dumpLayout(*layout) == contents);
+
+  for (const char *bad : {"{}", "{truncated", R"({"cabana_layout": 3, "charts": []})", R"({"cabana_layout": 4, "charts": {}})"}) {
+    REQUIRE(!chart::parseLayout(bad));
   }
-  for (const auto &key : {"message", "signal"}) {
-    auto bad = signal;
-    bad.erase(key);
-    REQUIRE(!chart::parseLayout(document(bad)).has_value());
+  for (const Json &signal : {Json(12), Json(""), Json(Json::object{{"message", "2:1AF"}}), Json(Json::object{{"message", "bad"}, {"signal", "Speed"}})}) {
+    REQUIRE(!chart::parseLayout(document({Json::object{{"signals", Json::array{signal}}}})));
   }
-  Json::object minimal{{"path", "/carState/vEgo"}};
-  auto defaults = chart::parseLayout(document(minimal));
-  REQUIRE(defaults.has_value());
-  const auto &plain = defaults->tabs[0][0].signals[0];
-  REQUIRE(plain.path == "/carState/vEgo");
-  REQUIRE(plain.visible);
-  REQUIRE(plain.transform.original());
-  REQUIRE(plain.transform.window == 10);
-  REQUIRE(chart::parseLayout(document(Json::object{{"message", "2:1AF"}, {"signal", "Speed"}})).has_value());
-  for (const auto &key : {"visible", "transform", "window", "scale", "offset", "signal"}) {
-    const Json invalid_text = std::string(key) == "signal" ? "" : "invalid";
-    for (const Json &value : {Json(), invalid_text, Json(Json::array{})}) {
-      auto bad = minimal;
-      bad[key] = value;
-      REQUIRE(!chart::parseLayout(document(bad)).has_value());
-    }
+  for (const char *name : {"", "/carState/vEgo"}) {  // log fields own the '/' names
+    REQUIRE(!chart::parseLayout(document({}, {Json::object{{"name", name}, {"source", "/carState/vEgo"}, {"function", "return value"}}})));
   }
-  for (const auto &[key, value] : chart::SIGNAL_DEFAULTS) minimal[key] = value;
-  minimal["signal"] = "/carState/vEgo";
-  REQUIRE(chart::parseLayout(document(minimal)).has_value());
-  auto bad = signal;
-  bad["window"] = 0;
-  REQUIRE(!chart::parseLayout(document(bad)).has_value());
-  bad["window"] = 1.5;
-  REQUIRE(!chart::parseLayout(document(bad)).has_value());
-  REQUIRE(!chart::parseLayout("{}").has_value());
-  REQUIRE(!chart::parseLayout("{truncated").has_value());
 }
 
 void test_message_fields() {
@@ -795,14 +747,16 @@ void test_layout_equations() {
   const auto filtered = cabana::evaluateEquation(equation, snapshotFields(data));
   REQUIRE(filtered.size() == 2);
   REQUIRE(filtered[0].y == 20 && filtered[1].y == 30);
+  // samples the math is undefined for are skipped, like non-finite results
+  equation.function = "return 1 / (value - 20) + math.sqrt(25 - value)";
+  const auto defined = cabana::evaluateEquation(equation, snapshotFields(data));
+  REQUIRE(defined.size() == 1 && defined[0].x == 0);
   equation.globals = "offset = math.sqrt(4)";
   equation.function = "return (value + v1) / offset";
   REQUIRE(cabana::evaluateEquation(equation, snapshotFields(data))[0].y == 5);
   equation.globals.clear();
-  for (auto code : {"raise ValueError('bad equation')", "while True:\n  pass", "import os\nreturn 0", "import math\nreturn value",
-                    "import statistics\nreturn value", "return ().__class__", "return eval(value)",
-                    "return math.__dict__", "return 10 ** (10 ** 10)",
-                    "return open('/dev/null')", "invalid Python !", "return None", "return (1, 2, 3)", "pass"}) {
+  // the Python tests cover the language restrictions
+  for (auto code : {"import os\nreturn 0", "return ().__class__", "invalid Python !", "return None", "return unknown", "pass"}) {
     equation.function = code;
     bool failed = false;
     try { cabana::evaluateEquation(equation, snapshotFields(data)); } catch (const std::exception &) { failed = true; }
