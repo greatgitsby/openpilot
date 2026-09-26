@@ -501,12 +501,12 @@ void test_chart_layout() {
   REQUIRE(layout && layout->range == 60 && layout->charts.size() == 2 && layout->equations.size() == 1);
   const auto &c = layout->charts[0];
   REQUIRE(c.id == "plot-42" && c.title == "Speed" && c.type == 1 && c.y_min == -1.0 && !c.y_max);
-  const auto &path = c.signals[0], &can = c.signals[2];
+  const auto &path = c.signals[0], &message = c.signals[2];
   REQUIRE(path.path == "/carState/vEgo" && path.source_id.empty() && path.visible && path.transform.original() && path.transform.window == 10);
   REQUIRE(c.signals[1].path == path.path && c.signals[1].source_id == "source1" && !path.color);
   REQUIRE(c.signals[1].color && c.signals[1].color->r == 0x00 && c.signals[1].color->g == 0x9e && c.signals[1].color->b == 0x73);
-  REQUIRE(can.path.empty() && can.source_id == "source2" && can.id.source == 2 && can.id.address == 0x1af && can.name == "Speed" && !can.visible);
-  REQUIRE(can.transform.type == chart::Transform::MovingAverage && can.transform.scale == -2.5 && can.transform.window == 20);
+  REQUIRE(message.path.empty() && message.source_id == "source2" && message.id.source == 2 && message.id.address == 0x1af && message.name == "Speed" && !message.visible);
+  REQUIRE(message.transform.type == chart::Transform::MovingAverage && message.transform.scale == -2.5 && message.transform.window == 20);
   REQUIRE(layout->charts[1].id.empty() && layout->charts[1].signals.empty());
   const auto &e = layout->equations[0];
   REQUIRE(e.name == "speed mph" && e.source == "/carState/vEgo" && e.function == "return value * 2.23694" && e.additional.empty());
