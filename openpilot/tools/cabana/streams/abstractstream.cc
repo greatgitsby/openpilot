@@ -234,7 +234,8 @@ void AbstractStream::updateLastMsgsTo(double sec) {
       }
 
       auto prev = std::prev(it);
-      m.compute(id, (*prev)->dat, (*prev)->size, toSeconds((*prev)->mono_time), getSpeed(), {}, freq);
+      const double ts = toSeconds((*prev)->mono_time);
+      m.compute(id, (*prev)->dat, (*prev)->size, ts, getSpeed(), {}, freq > 0 ? freq : calc_freq(this, id, ts));
       m.count = std::distance(ev.begin(), prev) + 1;
     }
   }
@@ -340,10 +341,8 @@ void CanData::compute(const MessageId &msg_id, const uint8_t *can_data, const in
 
   if (auto sec = seconds_since_boot(); (sec - last_freq_update_ts) >= 1) {
     last_freq_update_ts = sec;
+    // Sources pass the frequency they computed on the UI thread; workers never read the event map.
     if (in_freq > 0) freq = in_freq;
-    // Worker updates use the frequency refreshed by their source on the UI
-    // thread. They must never read its event map while segments are merging.
-    else if (in_freq == 0 && can) freq = calc_freq(can, msg_id, ts);
   }
 
   if (dat.size() != size) {
