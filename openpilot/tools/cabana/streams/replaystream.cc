@@ -53,19 +53,8 @@ void ReplayStream::mergeSegments() {
       std::vector<const CanEvent *> new_events;
       new_events.reserve(seg->log->events.size());
       MessageEventsMap msg_events;
-      std::array<std::vector<double>, MAX_CAMERAS> new_frame_times;
       for (const Event &e : seg->log->events) {
         if (stopping_) return;
-        int camera = -1;
-        switch (e.which) {
-          case cereal::Event::Which::NARROW_ROAD_ENCODE_IDX: camera = NarrowRoadCam; break;
-          case cereal::Event::Which::CABIN_ENCODE_IDX: camera = CabinCam; break;
-          case cereal::Event::Which::WIDE_ROAD_ENCODE_IDX: camera = WideRoadCam; break;
-          default: break;
-        }
-        // LogReader adds a synthetic encode event at the frame SOF.
-        // The original log event can arrive later and is not another frame.
-        if (camera >= 0 && e.eidx_segnum != -1) new_frame_times[camera].push_back(toSeconds(e.mono_time));
         if (e.which == cereal::Event::Which::CAN) {
           capnp::FlatArrayMessageReader reader(e.data);
           auto event = reader.getRoot<cereal::Event>();
@@ -76,17 +65,7 @@ void ReplayStream::mergeSegments() {
           }
         }
       }
-      postToMainThreadAndWait([&]() {
-        for (int camera = 0; camera < MAX_CAMERAS; ++camera) {
-          auto &times = frame_times_[camera];
-          const auto &added = new_frame_times[camera];
-          const auto old_size = times.size();
-          times.insert(times.end(), added.begin(), added.end());
-          std::inplace_merge(times.begin(), times.begin() + old_size, times.end());
-          times.erase(std::unique(times.begin(), times.end()), times.end());
-        }
-        insertEvents(new_events, msg_events);
-      });
+      postToMainThreadAndWait([&]() { insertEvents(new_events, msg_events); });
       {
         std::lock_guard lock(fields_mutex_);
         pending_segments_.push_back(seg);
@@ -206,16 +185,20 @@ std::set<CameraType> ReplayStream::availableCameras() const {
   return cameras;
 }
 
+// The adjacent frame among cached events, within two seconds. LogReader adds an encode index event at each
+// frame's start of frame (eidx_segnum set); the original log event can arrive later and is not another frame.
 std::optional<double> ReplayStream::nextFrameTime(CameraType camera, double relative_sec, bool forward) const {
-  if (camera < 0 || camera >= MAX_CAMERAS) return std::nullopt;
-  const auto &times = frame_times_[camera];
-  constexpr double tolerance = 0.001;
+  static const cereal::Event::Which encode_index[] = {cereal::Event::Which::NARROW_ROAD_ENCODE_IDX,
+    cereal::Event::Which::CABIN_ENCODE_IDX, cereal::Event::Which::WIDE_ROAD_ENCODE_IDX};
+  const auto data = replay->getEventData();
+  const auto &events = data->events;
+  const uint64_t target = beginMonoTime() + (relative_sec + (forward ? 0.001 : -0.001)) * 1e9;
+  auto it = std::upper_bound(events.begin(), events.end(), target, [](uint64_t time, const Event &e) { return time < e.mono_time; });
+  auto frame = [&](const Event &e) { return e.which == encode_index[camera] && e.eidx_segnum != -1; };
   if (forward) {
-    auto it = std::upper_bound(times.begin(), times.end(), relative_sec + tolerance);
-    if (it != times.end()) return *it;
+    for (; it != events.end() && it->mono_time - target < 2e9; ++it) if (frame(*it)) return toSeconds(it->mono_time);
   } else {
-    auto it = std::lower_bound(times.begin(), times.end(), relative_sec - tolerance);
-    if (it != times.begin()) return *std::prev(it);
+    while (it != events.begin() && target - (--it)->mono_time < 2e9) if (frame(*it) && it->mono_time < target) return toSeconds(it->mono_time);
   }
   return std::nullopt;
 }

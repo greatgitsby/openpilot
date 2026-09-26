@@ -57,5 +57,4 @@ private:
   std::string route_reference_, data_directory_;
   double previous_update_ts_ = 0;
   mutable std::atomic<double> known_end_ = -1;
-  std::array<std::vector<double>, MAX_CAMERAS> frame_times_;
 };
