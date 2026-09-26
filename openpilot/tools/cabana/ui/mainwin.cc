@@ -378,10 +378,11 @@ void MainWindow::releaseView(SourceView &view) {
 }
 
 void MainWindow::openStream(std::unique_ptr<AbstractStream> stream, const std::string &dbc_file, const std::string &slot) {
-  if (!dynamic_cast<DummyStream *>(stream.get())) {
+  auto *incoming = stream.get();
+  if (!dynamic_cast<DummyStream *>(incoming)) {
     for (const auto &view : source_views_) {
       auto *existing = view->stream.get();
-      if (typeid(*existing) != typeid(*stream) || existing->routeName() != stream->routeName()) continue;
+      if (typeid(*existing) != typeid(*incoming) || existing->routeName() != stream->routeName()) continue;
       const auto id = existing->source_id;
       if (!slot.empty() && slot != id) mergeSourceSlot(slot, id);
       bindSourceSlots(id);

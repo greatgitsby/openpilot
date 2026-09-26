@@ -1,9 +1,12 @@
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <sys/resource.h>
 
 #include "tools/cabana/streams/devicestream.h"
 #include "tools/cabana/streams/pandastream.h"
@@ -141,6 +144,17 @@ std::optional<int> parseArgs(int argc, char *argv[], CabanaArgs &args) {
 }  // namespace
 
 int main(int argc, char *argv[]) {
+  // Each route uses up to 120 video buffer FDs, plus client copies and files.
+  // macOS shells commonly start with a soft limit of only 256.
+  struct rlimit fd_limit;
+  if (getrlimit(RLIMIT_NOFILE, &fd_limit) != 0) {
+    perror("cabana: getrlimit(RLIMIT_NOFILE)");
+  } else if (fd_limit.rlim_cur < 4096) {
+    fd_limit.rlim_cur = std::min<rlim_t>(4096, fd_limit.rlim_max);
+    if (setrlimit(RLIMIT_NOFILE, &fd_limit) != 0) {
+      perror("cabana: setrlimit(RLIMIT_NOFILE)");
+    }
+  }
 #ifdef __GLIBC__
   // Worker threads (sparklines, chart series, replay) would each get their own glibc malloc arena and the
   // arenas fragment without bound (RSS grew ~3 MB/min with charts open). macOS has a single allocator zone.
@@ -150,6 +164,7 @@ int main(int argc, char *argv[]) {
   const auto invocation_dir = std::filesystem::current_path();
   std::error_code ec;
   std::filesystem::current_path(executableDir(), ec);
+  if (!ec) setenv("PWD", std::filesystem::current_path().c_str(), 1);
 
   CabanaArgs args;
   if (auto code = parseArgs(argc, argv, args)) return *code;
