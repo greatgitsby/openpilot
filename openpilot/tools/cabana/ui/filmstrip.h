@@ -8,7 +8,8 @@
 #include "tools/cabana/ui/widgets/cameraview.h"
 #include "tools/cabana/streams/replaystream.h"
 
-// Independent, bounded thumbnail cache. Video decoders stay on the worker; textures stay on the UI thread.
+// Twelve route thumbnails, decoded on a worker from frames the replay has cached. A tile keeps its thumbnail
+// once filled, so segments leaving the cache don't blank it. Textures stay on the UI thread.
 class RouteFilmstrip {
 public:
   void update(ReplayStream *source);
@@ -16,15 +17,10 @@ public:
 
 private:
   static constexpr int COUNT = 12;
-  struct Result {
-    std::array<RgbImage, COUNT> images;
-    std::array<std::string, COUNT> keys;
-  };
+  using Images = std::array<RgbImage, COUNT>;
   std::array<GlTexture, COUNT> textures_;
   std::future<void> pending_;
-  std::shared_ptr<Result> result_;
-  std::array<std::string, COUNT> tile_keys_;
-  std::string pending_key_;
+  std::shared_ptr<Images> result_;
   std::string key_;
   double next_check_ = 0;
 };
