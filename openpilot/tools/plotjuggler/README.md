@@ -65,6 +65,8 @@ For a quick demo, go through the installation step and run this command:
 
 ## Layouts
 
+[Cabana](../cabana/README.md#plotting-and-analysis) bundles these layouts too: `../cabana/cabana --demo --layout ../cabana/layouts/tuning.json`.
+
 If you create a layout that's useful for others, consider upstreaming it.
 
 ### Tuning
