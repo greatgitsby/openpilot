@@ -128,7 +128,6 @@ void LiveStream::handleEvent(kj::ArrayPtr<capnp::word> data) {
 }
 
 void LiveStream::updateEvents() {
-
   if (first_update_ts == 0) {
     first_update_ts = nanos_since_boot();
     first_event_ts = current_event_ts = lastest_event_ts;
@@ -153,8 +152,8 @@ void LiveStream::updateEvents() {
     updateEvent(id, toSeconds(e->mono_time), e->dat, e->size);
     current_event_ts = e->mono_time;
   }
-  current_event_ts = std::min(last_ts, lastest_event_ts);
-  current_sec_ = (current_event_ts - begin_event_ts) / 1e9;
+  // The CAN cursor stays at the last processed event so late CAN isn't skipped. Fields advance with time.
+  current_sec_ = (std::min(last_ts, lastest_event_ts) - begin_event_ts) / 1e9;
   AbstractStream::updateLastMessages();
 }
 
