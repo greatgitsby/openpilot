@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <set>
 
 #include "tools/cabana/ui/chart/layout.h"
 #include "tools/replay/route.h"
@@ -46,7 +47,7 @@ inline std::string legacyBuiltinWorkspace(const json11::Json &document) {
   auto layout = chart::parseLayout(document["charts"].dump());
   if (!layout || !layout->equations.empty()) return {};
   size_t count = 0;
-  for (const auto &tab : layout->tabs) for (const auto &chart : tab) {
+  for (const auto &chart : layout->charts) {
     if (++count > 1 || !chart.signals.empty() || !chart.title.empty() || chart.y_min || chart.y_max) return {};
   }
   return name == "Default" ? "default" : "live";

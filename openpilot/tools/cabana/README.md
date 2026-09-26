@@ -205,8 +205,8 @@ a workspace or starting Cabana does not open saved routes automatically. Workspa
 do not embed logs, video, or DBC contents; referenced files must remain accessible.
 Without route references, a workspace can be reused with other routes.
 
-`--layout` loads a chart layout, including signals, equations, titles, colors, limits,
-and transforms. Older layouts are accepted, with their charts becoming individual widgets.
+`--layout` loads a chart layout, including signals, equations, titles, limits, and transforms.
+Series colors come from the DBC for CAN signals and from a fixed palette for openpilot fields.
 Missing openpilot fields show **No data** until samples arrive; decoded CAN needs the
 matching DBC. Use workspace export to preserve the complete arrangement.
 

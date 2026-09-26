@@ -771,15 +771,13 @@ void MainWindow::saveSessionState() {
 void MainWindow::restoreSessionState() {
   if (!charts_widget_) return;
   if (!pending_workspace_layout_.empty()) {
-    if (charts_widget_->restoreLayout(pending_workspace_layout_, true) == ChartsWidget::LayoutStatus::Restored)
-      pending_workspace_layout_.clear();
+    if (charts_widget_->restoreLayout(pending_workspace_layout_)) pending_workspace_layout_.clear();
   }
-  // CAN layouts may need the DBC loaded by eventsMerged(). dbcFileChanged() retries while definitions are missing.
+  // CAN signals of a layout are plotted once their source's DBC defines them.
   if (!startup_layout_.empty()) {
-    if (charts_widget_->openLayout(startup_layout_, true) != ChartsWidget::LayoutStatus::MissingCan) {
-      startup_layout_.clear();
-      pending_workspace_layout_.clear();
-    }
+    charts_widget_->openLayout(startup_layout_);
+    startup_layout_.clear();
+    pending_workspace_layout_.clear();
   }
   if (dynamic_cast<DummyStream *>(can) || dbc()->nonEmptyDBCCount() == 0) return;
   auto pending = pending_workspace_inspectors_.find(can->source_id);

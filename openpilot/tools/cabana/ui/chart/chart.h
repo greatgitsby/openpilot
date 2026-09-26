@@ -28,14 +28,27 @@ inline constexpr const char *SERIES_TYPE_NAMES[] = {"Line", "Step Line", "Scatte
 // the message part of a legend entry, drawn after the signal name
 inline std::string msgLabel(const MessageId &id) { return " " + msgName(id) + " " + id.toString(); }
 
-class ChartManager;
+class ChartsWidget;
 class ChartView {
 public:
   struct SigItem {
     std::string source_id;
+    std::string path;  // a log field or function; empty for a CAN signal
+    MessageId msg_id;
     std::string signal_name;
-    std::string path;  // cereal path or named equation; empty for decoded CAN
-    std::string name() const { return path.empty() ? (sig ? sig->name : signal_name) : path; }
+    const cabana::Signal *sig = nullptr;  // from the source's DBC, once it defines the signal
+    CabanaColor color;
+    bool visible = true;
+    chart::TransformSettings transform;
+    chart::TransformState transform_state;
+    std::vector<ImPlotPoint> raw_vals;  // before the transform
+    std::vector<ImPlotPoint> vals;
+    std::vector<ImPlotPoint> step_vals;
+    ImPlotPoint track_pt{};
+    SegmentTree segment_tree;  // not maintained for live sources
+    double min = 0;
+    double max = 0;
+    std::string name() const { return path.empty() ? signal_name : path; }
     std::string label() const {
       if (path.empty() || path.front() != '/') return name();
       const auto slash = path.rfind('/');
@@ -50,72 +63,44 @@ public:
       auto *source = sourceById(source_id);
       return " · " + (source ? source->source_label : source_id) + (path.empty() ? " · " + msg_id.toString() : "");
     }
-    MessageId msg_id;
-    const cabana::Signal *sig = nullptr;
-    CabanaColor color;
-    bool visible = true;
-    chart::TransformSettings transform;
-    chart::TransformState transform_state;
-    std::vector<ImPlotPoint> raw_vals;
-    std::vector<ImPlotPoint> vals;
-    std::vector<ImPlotPoint> step_vals;
-    ImPlotPoint track_pt{};
-    SegmentTree segment_tree;
-    double min = 0;
-    double max = 0;
   };
 
-  ChartView(const std::pair<double, double> &x_range, ChartManager *parent);
-  void addFields(const std::string &path, CabanaColor color = {0, 114, 178}, const std::string &source_id = {});
-  void addPendingSignal(const MessageId &id, const std::string &name, const std::string &source_id, CabanaColor color);
-  void resolveSignals();
-  void detachSource(const std::string &id);
-  std::string widget_id;
-  std::string windowName() const;
-  void updateFields();
-  void pollFields();
-  std::string title;
-  std::optional<double> limit_min, limit_max;
-  void addSignal(const MessageId &msg_id, const cabana::Signal *sig, const std::string &source_id = {});
+  ChartView(ChartsWidget *parent);
+  void addSignal(const std::string &source_id, const MessageId &msg_id, const std::string &name);
+  void addFields(const std::string &source_id, const std::string &path);
   bool hasSignal(const MessageId &msg_id, const cabana::Signal *sig) const;
-  void updateSeries(const cabana::Signal *sig = nullptr, const MessageEventsMap *msg_new_events = nullptr, const std::string &source_id = {});
   void updatePlot(double cur, double min, double max);
-  SeriesType seriesType() const { return series_type_; }
-  void configureSignal(size_t index, const chart::TransformSettings &transform, bool visible, std::optional<CabanaColor> color = std::nullopt);
   void setSeriesType(SeriesType type) { series_type_ = type; }
   void showTip(double sec);
   void hideTip();
-  void draw(float width);  // one chart of settings.chart_height
-  void drawGhost(float width);  // the same tile rendered again, without handling any input
+  void draw(float width);  // fills the window
   void removeIf(std::function<bool(const SigItem &)> predicate);
-  void takeSignalsFrom(ChartView *source);
-  // every signal but the first, with its original color, for a split into one chart per signal
-  std::vector<SigItem> takeExtraSignals();
-  void adoptSignal(SigItem s);
-  void setDropHighlight(bool highlight) { can_drop_ = highlight; }
   const std::vector<SigItem> &signals() const { return sigs_; }
-  const ImRect &rect() const { return layout_.rect; }  // the whole chart widget, screen coordinates
   bool plotHovered() const { return layout_.plot_hovered; }
+  std::string windowName() const;
   double secondsAtPoint(const ImVec2 &pt) const {
     return x_min_ + (pt.x - layout_.plot_area.Min.x) * (x_max_ - x_min_) / std::max(layout_.plot_area.GetWidth(), 1.0f);
   }
 
+  std::string widget_id, title;
+  std::optional<double> limit_min, limit_max;
+
 private:
   using PointIter = std::vector<ImPlotPoint>::const_iterator;
 
+  void add(SigItem item);
+  void resolveSignals();
+  void detachSource(const std::string &id, bool dbc_only = false);
   void signalUpdated(const cabana::Signal *sig);
   void manageSignals();
-  void msgRemoved(MessageId id) { removeIf([=](auto &s) { return s.path.empty() && s.msg_id.address == id.address && !dbc()->msg(id); }); }
-  void signalRemoved(const cabana::Signal *sig) { removeIf([=](auto &s) { return s.sig == sig; }); }
-
-  void appendCanEvents(const cabana::Signal *sig, const std::vector<const CanEvent *> &events,
-                       std::vector<ImPlotPoint> &vals, AbstractStream *source);
-  void rebuildSeries(SigItem &s, size_t begin = 0);
+  void updateSeries(const cabana::Signal *sig = nullptr, const MessageEventsMap *msg_new_events = nullptr, const std::string &source_id = {});
+  void loadSeries(SigItem &s, const MessageEventsMap *new_events);
   static void buildSeries(SigItem &s, size_t begin, bool build_tree);
-  std::future<void> fields_task_;
-  std::shared_ptr<std::vector<SigItem>> fields_result_;
-  bool fields_dirty_ = false;
-  size_t fields_revision_ = 0, fields_result_revision_ = 0;
+  void configureSignal(SigItem &s, const chart::TransformSettings &transform);
+  void updateFields() { ++fields_revision_; }
+  void pollFields();
+  CabanaColor nextColor() const;
+  std::string emptyMessage() const;
   void drawSignalAnalysis(SigItem &s);
   std::string legendName(const SigItem &s) const;
   static std::string signalUnit(const SigItem &s);
@@ -127,7 +112,6 @@ private:
   void handleMouseRelease();
   void updateLayout();
   void updateAxisY();
-  void paint();
   void drawStaticLayer();
   void drawAxes();
   void drawLegend();
@@ -145,6 +129,8 @@ private:
   const ImPlotPoint *lastPointBefore(const SigItem &s, double sec) const;
   // the samples inside [x_min_, x_max_)
   std::pair<PointIter, PointIter> visibleRange(const std::vector<ImPlotPoint> &points) const;
+  // the plot rows across the whole chart, where the value tip is shown
+  ImRect tipArea() const { return ImRect(layout_.rect.Min.x, layout_.plot_area.Min.y, layout_.rect.Max.x, layout_.plot_area.Max.y); }
   inline void clearTrackPoints() { for (auto &s : sigs_) s.track_pt = {}; }
   inline float xPos(double sec) const { return layout_.plot_area.Min.x + (sec - x_min_) / (x_max_ - x_min_) * layout_.plot_area.GetWidth(); }
   inline float yPos(double val) const { return layout_.plot_area.Max.y - (val - y_min_) / (y_max_ - y_min_) * layout_.plot_area.GetHeight(); }
@@ -152,18 +138,17 @@ private:
   // layout
   struct Layout {
     ImRect rect;  // the whole chart widget, screen coordinates
-    ImRect content_rect;  // the same inset on all four sides, including during a drag
+    ImRect content_rect;  // the same inset on all four sides
     ImRect plot_area;
-    ImRect move_icon_rect;
-    ImRect close_btn_rect;
+    ImRect add_btn_rect;
     ImRect manage_btn_rect;
     std::vector<ImRect> legend_rects;
     float header_bottom = 0;
     bool plot_hovered = false;
   } layout_;
   // axes
-  double x_min_;
-  double x_max_;
+  double x_min_ = 0;
+  double x_max_ = 1;
   double y_min_ = 0;
   double y_max_ = 1;
   int y_tick_count_ = 3;
@@ -177,16 +162,18 @@ private:
   std::optional<std::pair<double, double>> pan_previous_;
   ImRect rubber_rect_;
   bool resume_after_scrub_ = false;
-  bool drawing_ghost_ = false;  // drawing the drag preview: no mouse handling, no tip
+  bool focus_title_ = false;  // opens the menu with the title focused
   int pending_signal_removal_ = -1;
 
   TipLabel tip_label_;
   std::vector<SigItem> sigs_;
   double cur_sec_ = 0;
   SeriesType series_type_ = SeriesType::Line;
-  bool can_drop_ = false;
   double tooltip_x_ = -1;
-  ChartManager *charts_widget_;
-  Connections connections_;
-  friend class ChartManager;
+  ChartsWidget *charts_widget_;
+  // log fields and functions are copied and transformed in the background
+  std::future<void> fields_task_;
+  std::shared_ptr<std::vector<SigItem>> fields_result_;
+  size_t fields_revision_ = 0, fields_task_revision_ = 0;
+  friend class ChartsWidget;
 };

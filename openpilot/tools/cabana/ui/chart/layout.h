@@ -1,125 +1,104 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
-#include <set>
 
 #include "json11/json11.hpp"
 #include "tools/cabana/core/message_id.h"
-#include "tools/cabana/core/color.h"
 #include "tools/cabana/analysis/equations.h"
 #include "tools/cabana/ui/chart/analysis.h"
 
 namespace chart {
+// {"cabana_layout": 4, "range": seconds, "charts": [chart, ...], "equations": [equation, ...]}
+// chart: {"signals": [signal, ...]} with optional "id", "title", "type", "y_min" and "y_max".
+// signal: a log field path or function name, or an object with "path" or "message" ("bus:ADDRESS") and "signal",
+//   optional "source" (the current source when omitted) and SIGNAL_DEFAULTS. Colors are assigned when plotted.
+// equation: {"name", "source", "function"} with optional "globals" and "additional" inputs. Names cannot start with '/',
+//   which is reserved for log fields.
+// Defaults are omitted when saving.
 inline const json11::Json::object SIGNAL_DEFAULTS{{"visible", true}, {"transform", 0}, {"scale", 1}, {"offset", 0}, {"window", 10}};
 
 struct LayoutSignal {
   MessageId id;
-  std::string name;
+  std::string name, path, source_id;
   TransformSettings transform;
-  bool visible;
-  std::string path;
-  CabanaColor color{0, 114, 178};
-  std::string source_id;
+  bool visible = true;
 };
 struct LayoutChart {
-  int type;
-  std::vector<LayoutSignal> signals;
-  std::string title;
+  std::string id, title;
+  int type = 0;
   std::optional<double> y_min, y_max;
-  std::string widget_id;
+  std::vector<LayoutSignal> signals;
 };
 struct Layout {
-  int columns;
-  int range;
-  std::vector<std::vector<LayoutChart>> tabs;
-  std::vector<std::string> tab_names;
+  int range = 0;
+  std::vector<LayoutChart> charts;
   std::vector<cabana::Equation> equations;
-  int active_tab = 0;
 };
 
 inline std::optional<Layout> parseLayout(const std::string &contents) {
   using json11::Json;
   std::string error;
-  auto doc = Json::parse(contents, error);
-  if (doc["cabana_layout"].int_value() == 4) {
-    if (!doc["charts"].is_array()) return std::nullopt;
-    auto fields = doc.object_items();
-    fields["columns"] = 1;
-    fields["tabs"] = Json::array{doc["charts"]};
-    fields["active_tab"] = 0;
-    doc = fields;
-  }
-  auto integer = [](const Json &v, int min, int max) {
-    return v.is_number() && v.number_value() >= min && v.number_value() <= max && v.number_value() == v.int_value();
-  };
-  if (!error.empty() || !integer(doc["cabana_layout"], 1, 4) || !integer(doc["columns"], 1, 4) ||
-      !integer(doc["range"], 1, 86400) || !doc["tabs"].is_array() || doc["tabs"].array_items().empty()) return std::nullopt;
-  if ((!doc["tab_names"].is_null() && !doc["tab_names"].is_array()) ||
-      (!doc["equations"].is_null() && !doc["equations"].is_array())) return std::nullopt;
-  Layout result{doc["columns"].int_value(), doc["range"].int_value(), {}};
-  std::set<std::string> widget_ids;
-  for (const auto &tab : doc["tabs"].array_items()) {
-    if (!tab.is_array()) return std::nullopt;
-    auto &charts = result.tabs.emplace_back();
-    for (const auto &c : tab.array_items()) {
-      if (!integer(c["type"], 0, 2) || !c["signals"].is_array()) return std::nullopt;
-      auto &chart = charts.emplace_back(LayoutChart{c["type"].int_value(), {}});
-      chart.title = c["title"].string_value();
-      chart.widget_id = c["id"].string_value();
-      if (doc["cabana_layout"].int_value() == 4 || !c["id"].is_null()) {
-        if (!c["id"].is_string() || chart.widget_id.empty() || chart.widget_id.size() > 128 ||
-            chart.widget_id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != std::string::npos ||
-            !widget_ids.insert(chart.widget_id).second) return std::nullopt;
-      }
-      for (const auto &key : {"y_min", "y_max"}) {
-        if (c[key].is_null()) continue;
-        if (!c[key].is_number() || !std::isfinite(c[key].number_value())) return std::nullopt;
-        (std::string(key) == "y_min" ? chart.y_min : chart.y_max) = c[key].number_value();
-      }
-      if (chart.y_min && chart.y_max && *chart.y_min >= *chart.y_max) return std::nullopt;
-      for (const auto &raw : c["signals"].array_items()) {
-        auto fields = raw.object_items();
-        fields.insert(SIGNAL_DEFAULTS.begin(), SIGNAL_DEFAULTS.end());
-        fields.emplace("signal", raw["path"]);
-        const Json s(std::move(fields));
-        if ((!s["message"].is_string() && !s["path"].is_string()) || !s["signal"].is_string() || s["signal"].string_value().empty() || !s["visible"].is_bool() ||
-            !integer(s["transform"], 0, 3) || !integer(s["window"], 1, 100000) ||
-            !s["scale"].is_number() || !std::isfinite(s["scale"].number_value()) ||
-            !s["offset"].is_number() || !std::isfinite(s["offset"].number_value())) return std::nullopt;
-        if (!s["source"].is_null() && !s["source"].is_string()) return std::nullopt;
-        const std::string path = s["path"].string_value();
-        if (s["path"].is_string() && path.empty()) return std::nullopt;
-        const auto id = path.empty() ? MessageId::parse(s["message"].string_value()) : MessageId{};
-        const auto color = s["color"].is_null() ? CabanaColor{0, 114, 178} : CabanaColor::fromHex(s["color"].string_value());
-        if (!id || !color) return std::nullopt;
-        chart.signals.push_back({*id, s["signal"].string_value(),
-          {(Transform)s["transform"].int_value(), s["scale"].number_value(), s["offset"].number_value(), s["window"].int_value()},
-          s["visible"].bool_value(), path, *color, s["source"].string_value()});
-      }
+  const auto doc = Json::parse(contents, error);
+  if (doc["cabana_layout"] != 4 || !doc["charts"].is_array()) return std::nullopt;
+  auto number = [](const Json &v) { return v.is_number() && std::isfinite(v.number_value()) ? std::optional(v.number_value()) : std::nullopt; };
+  Layout layout{doc["range"].int_value()};
+  for (const auto &c : doc["charts"].array_items()) {
+    auto &chart = layout.charts.emplace_back(LayoutChart{c["id"].string_value(), c["title"].string_value(),
+                                                         std::clamp(c["type"].int_value(), 0, 2), number(c["y_min"]), number(c["y_max"])});
+    for (const auto &item : c["signals"].array_items()) {
+      auto fields = item.is_string() ? Json::object{{"path", item}} : item.object_items();
+      fields.insert(SIGNAL_DEFAULTS.begin(), SIGNAL_DEFAULTS.end());
+      const Json s(fields);
+      const auto id = MessageId::parse(s["message"].string_value());
+      if (s["path"].string_value().empty() && (!id || s["signal"].string_value().empty())) return std::nullopt;
+      chart.signals.push_back({id.value_or(MessageId{}), s["signal"].string_value(), s["path"].string_value(), s["source"].string_value(),
+                               {(Transform)std::clamp(s["transform"].int_value(), 0, 3), number(s["scale"]).value_or(1),
+                                number(s["offset"]).value_or(0), std::clamp(s["window"].int_value(), 1, 100000)},
+                               s["visible"].bool_value()});
     }
   }
-  for (const auto &name : doc["tab_names"].array_items()) {
-    if (!name.is_string()) return std::nullopt;
-    result.tab_names.push_back(name.string_value());
-  }
-  std::set<std::string> equation_names;
   for (const auto &e : doc["equations"].array_items()) {
-    if (!e["name"].is_string() || e["name"].string_value().empty() || !e["source"].is_string() ||
-        !e["globals"].is_string() || !e["function"].is_string() || !e["additional"].is_array() ||
-        !equation_names.insert(e["name"].string_value()).second) return std::nullopt;
-    cabana::Equation equation{e["name"].string_value(), e["source"].string_value(), e["globals"].string_value(), e["function"].string_value(), {}};
-    if (e["language"].string_value() != "python") return std::nullopt;
-    for (const auto &source : e["additional"].array_items()) {
-      if (!source.is_string()) return std::nullopt;
-      equation.additional.push_back(source.string_value());
+    auto &equation = layout.equations.emplace_back(cabana::Equation{e["name"].string_value(), e["source"].string_value(),
+                                                                    e["globals"].string_value(), e["function"].string_value()});
+    if (equation.name.empty() || equation.name[0] == '/' || equation.source.empty()) return std::nullopt;
+    for (const auto &input : e["additional"].array_items()) equation.additional.push_back(input.string_value());
+  }
+  return layout;
+}
+
+inline std::string dumpLayout(const Layout &layout) {
+  using json11::Json;
+  Json::array charts, equations;
+  for (const auto &c : layout.charts) {
+    Json::array signals;
+    for (const auto &s : c.signals) {
+      Json::object signal{{"source", s.source_id}, {"visible", s.visible}, {"transform", (int)s.transform.type},
+                          {"scale", s.transform.scale}, {"offset", s.transform.offset}, {"window", s.transform.window}};
+      for (const auto &[key, value] : SIGNAL_DEFAULTS) if (signal.at(key) == value) signal.erase(key);
+      if (s.source_id.empty()) signal.erase("source");
+      if (!s.path.empty() && signal.empty()) { signals.push_back(s.path); continue; }
+      if (s.path.empty()) { signal["message"] = s.id.toString(); signal["signal"] = s.name; }
+      else signal["path"] = s.path;
+      signals.push_back(signal);
     }
-    result.equations.push_back(std::move(equation));
+    Json::object chart{{"signals", signals}};
+    if (!c.id.empty()) chart["id"] = c.id;
+    if (!c.title.empty()) chart["title"] = c.title;
+    if (c.type) chart["type"] = c.type;
+    if (c.y_min) chart["y_min"] = *c.y_min;
+    if (c.y_max) chart["y_max"] = *c.y_max;
+    charts.push_back(chart);
   }
-  if (!doc["active_tab"].is_null()) {
-    if (!integer(doc["active_tab"], 0, result.tabs.size() - 1)) return std::nullopt;
-    result.active_tab = doc["active_tab"].int_value();
+  for (const auto &e : layout.equations) {
+    Json::object equation{{"name", e.name}, {"source", e.source}, {"function", e.function}};
+    if (!e.globals.empty()) equation["globals"] = e.globals;
+    if (!e.additional.empty()) equation["additional"] = Json::array(e.additional.begin(), e.additional.end());
+    equations.push_back(equation);
   }
-  return result;
+  Json::object doc{{"cabana_layout", 4}, {"range", layout.range}, {"charts", charts}};
+  if (!equations.empty()) doc["equations"] = equations;
+  return Json(doc).dump();
 }
 }  // namespace chart

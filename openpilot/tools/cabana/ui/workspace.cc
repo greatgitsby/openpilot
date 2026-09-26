@@ -253,7 +253,7 @@ void MainWindow::applyWorkspace(const Json &saved_document) {
     }) - saved_sources.begin();
   };
   std::stable_sort(source_views_.begin(), source_views_.end(), [&](const auto &a, const auto &b) { return source_rank(a) < source_rank(b); });
-  charts_widget_->restoreLayout(document["charts"].dump(), true);
+  charts_widget_->restoreLayout(document["charts"].dump());
   pending_workspace_inspectors_.clear();
   for (const auto &source : document["sources"].array_items()) if (source["inspector"].is_object()) {
     const auto id = source["id"].string_value();
@@ -342,7 +342,7 @@ void MainWindow::mergeSourceSlot(const std::string &old_id, const std::string &n
                         {"timeline", timeline_.snapshot()}, {"ui", inistate::save()}};
   doc = remapSource(doc, old_id, new_id);
   // Rebind existing widgets before discarding the placeholder stream.
-  charts_widget_->restoreLayout(doc["charts"].dump(), true);
+  charts_widget_->restoreLayout(doc["charts"].dump());
   for (auto &camera : camera_panes_) if (camera.source == old_id) {
     const bool crop = camera.widget->crop();
     camera.source = new_id;
@@ -465,7 +465,7 @@ void MainWindow::drawWorkspaceMenu() {
     Json::array source_slots;
     for (const auto &source : doc["sources"].array_items()) source_slots.push_back(Json::object{{"id", source["id"]}, {"label", source["label"]}});
     doc["sources"] = source_slots;
-    doc["charts"] = Json::object{{"cabana_layout", 3}, {"columns", 1}, {"range", 60}, {"tabs", Json::array{Json::array{}}}};
+    doc["charts"] = Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", Json::array{}}};
     workspaces_.push_back(doc); switchWorkspace(workspaces_.size() - 1);
   });
   if (dropdown::Item("Duplicate workspace")) nextFrame([this]() {
