@@ -490,7 +490,7 @@ void test_chart_layout() {
     return Json(Json::object{{"cabana_layout", 4}, {"range", 60}, {"charts", charts}, {"equations", equations}}).dump();
   };
   // A signal is a log path, or an object with its source and non-default settings. Signals of several sources share a chart.
-  const Json field = Json::object{{"source", "source1"}, {"path", "/carState/vEgo"}};
+  const Json field = Json::object{{"source", "source1"}, {"path", "/carState/vEgo"}, {"color", "#009e73"}};
   const Json can_signal = Json::object{{"source", "source2"}, {"message", "2:1AF"}, {"signal", "Speed"}, {"visible", false},
                                        {"transform", 3}, {"scale", -2.5}, {"window", 20}};
   const Json function = Json::object{{"name", "speed mph"}, {"source", "/carState/vEgo"}, {"function", "return value * 2.23694"}};
@@ -503,7 +503,8 @@ void test_chart_layout() {
   REQUIRE(c.id == "plot-42" && c.title == "Speed" && c.type == 1 && c.y_min == -1.0 && !c.y_max);
   const auto &path = c.signals[0], &can = c.signals[2];
   REQUIRE(path.path == "/carState/vEgo" && path.source_id.empty() && path.visible && path.transform.original() && path.transform.window == 10);
-  REQUIRE(c.signals[1].path == path.path && c.signals[1].source_id == "source1");
+  REQUIRE(c.signals[1].path == path.path && c.signals[1].source_id == "source1" && !path.color);
+  REQUIRE(c.signals[1].color && c.signals[1].color->r == 0x00 && c.signals[1].color->g == 0x9e && c.signals[1].color->b == 0x73);
   REQUIRE(can.path.empty() && can.source_id == "source2" && can.id.source == 2 && can.id.address == 0x1af && can.name == "Speed" && !can.visible);
   REQUIRE(can.transform.type == chart::Transform::MovingAverage && can.transform.scale == -2.5 && can.transform.window == 20);
   REQUIRE(layout->charts[1].id.empty() && layout->charts[1].signals.empty());

@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <optional>
 
 #include "json11/json11.hpp"
+#include "tools/cabana/core/color.h"
 #include "tools/cabana/core/message_id.h"
 #include "tools/cabana/analysis/equations.h"
 #include "tools/cabana/ui/chart/analysis.h"
@@ -13,7 +16,8 @@ namespace chart {
 // {"cabana_layout": 4, "range": seconds, "charts": [chart, ...], "equations": [equation, ...]}
 // chart: {"signals": [signal, ...]} with optional "id", "title", "type", "y_min" and "y_max".
 // signal: a log field path or function name, or an object with "path" or "message" ("bus:ADDRESS") and "signal",
-//   optional "source" (the current source when omitted) and SIGNAL_DEFAULTS. Colors are assigned when plotted.
+//   optional "source" (the current source when omitted), "color" ("#rrggbb", fields only; CAN signals use the DBC color)
+//   and SIGNAL_DEFAULTS. Fields without a color take the next free palette color.
 // equation: {"name", "source", "function"} with optional "globals" and "additional" inputs. Names cannot start with '/',
 //   which is reserved for log fields.
 // Defaults are omitted when saving.
@@ -24,6 +28,7 @@ struct LayoutSignal {
   std::string name, path, source_id;
   TransformSettings transform;
   bool visible = true;
+  std::optional<CabanaColor> color;
 };
 struct LayoutChart {
   std::string id, title;
@@ -53,10 +58,15 @@ inline std::optional<Layout> parseLayout(const std::string &contents) {
       const Json s(fields);
       const auto id = MessageId::parse(s["message"].string_value());
       if (s["path"].string_value().empty() && (!id || s["signal"].string_value().empty())) return std::nullopt;
+      std::optional<CabanaColor> color;
+      if (const auto &hex = s["color"].string_value(); hex.size() == 7 && hex[0] == '#') {
+        const auto rgb = std::strtoul(hex.c_str() + 1, nullptr, 16);
+        color = CabanaColor(rgb >> 16 & 0xff, rgb >> 8 & 0xff, rgb & 0xff);
+      }
       chart.signals.push_back({id.value_or(MessageId{}), s["signal"].string_value(), s["path"].string_value(), s["source"].string_value(),
                                {(Transform)std::clamp(s["transform"].int_value(), 0, 3), number(s["scale"]).value_or(1),
                                 number(s["offset"]).value_or(0), std::clamp(s["window"].int_value(), 1, 100000)},
-                               s["visible"].bool_value()});
+                               s["visible"].bool_value(), color});
     }
   }
   for (const auto &e : doc["equations"].array_items()) {
@@ -78,6 +88,11 @@ inline std::string dumpLayout(const Layout &layout) {
                           {"scale", s.transform.scale}, {"offset", s.transform.offset}, {"window", s.transform.window}};
       for (const auto &[key, value] : SIGNAL_DEFAULTS) if (signal.at(key) == value) signal.erase(key);
       if (s.source_id.empty()) signal.erase("source");
+      if (s.color) {
+        char hex[8];
+        snprintf(hex, sizeof(hex), "#%02x%02x%02x", s.color->r, s.color->g, s.color->b);
+        signal["color"] = hex;
+      }
       if (!s.path.empty() && signal.empty()) { signals.push_back(s.path); continue; }
       if (s.path.empty()) { signal["message"] = s.id.toString(); signal["signal"] = s.name; }
       else signal["path"] = s.path;

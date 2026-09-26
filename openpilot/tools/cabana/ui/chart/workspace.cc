@@ -33,7 +33,9 @@ std::string ChartsWidget::serializeLayout() const {
   chart::Layout layout{max_chart_range_, {}, equations_};
   for (const auto &c : charts_) {
     auto &saved = layout.charts.emplace_back(chart::LayoutChart{c->widget_id, c->title, (int)c->series_type_, c->limit_min, c->limit_max});
-    for (const auto &s : c->sigs_) saved.signals.push_back({s.msg_id, s.signal_name, s.path, s.source_id, s.transform, s.visible});
+    for (const auto &s : c->sigs_) {
+      saved.signals.push_back({s.msg_id, s.signal_name, s.path, s.source_id, s.transform, s.visible, s.path.empty() ? std::nullopt : std::optional(s.color)});
+    }
   }
   return chart::dumpLayout(layout);
 }
@@ -64,7 +66,7 @@ bool ChartsWidget::restoreLayout(const std::string &contents) {
     c->setSeriesType((SeriesType)saved.type);
     for (const auto &s : saved.signals) {
       c->sigs_.push_back({.source_id = s.source_id.empty() ? can->source_id : s.source_id, .path = s.path, .msg_id = s.id,
-                          .signal_name = s.name, .color = c->nextColor(), .visible = s.visible, .transform = s.transform});
+                          .signal_name = s.name, .color = s.color.value_or(c->nextColor()), .visible = s.visible, .transform = s.transform});
     }
   }
   for (auto &c : charts_) if (c->widget_id.empty()) c->widget_id = newChartId();
