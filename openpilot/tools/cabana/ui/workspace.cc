@@ -47,11 +47,14 @@ Json builtinWorkspace(const std::string &key, const std::string &name) {
 }
 }  // namespace
 
+// An id no open source uses, and that neither `document` nor the active workspace refers to.
 std::string MainWindow::newSourceId(const Json &document) {
+  const auto used = [&](const std::string &id) {
+    return sourceById(id) || document.dump().find('"' + id + '"') != std::string::npos ||
+           (!workspaces_.empty() && workspaces_[active_workspace_].dump().find('"' + id + '"') != std::string::npos);
+  };
   std::string id;
-  const auto &saved = document["sources"].array_items();
-  do { id = "source" + std::to_string(next_source_id_++); }
-  while (sourceById(id) || std::any_of(saved.begin(), saved.end(), [&](const auto &s) { return s["id"] == id; }));
+  do { id = "source" + std::to_string(next_source_id_++); } while (used(id));
   return id;
 }
 
