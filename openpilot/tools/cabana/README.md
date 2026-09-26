@@ -19,8 +19,7 @@ Options:
   --wide-road               load wide road camera (alias: --ecam)
   --cabin                   load cabin camera (alias: --dcam)
   --layout [LAYOUT]         open a Cabana JSON layout file
-  --stream                  read openpilot messages from local msgq (alias: --msgq)
-  --msgq                    read openpilot messages from local msgq
+  --msgq                    read openpilot messages from local msgq (alias: --stream)
   --panda                   read can messages from panda
   --panda-serial <serial>   read can messages from panda with given serial
   --socketcan <device>      read can messages from given SocketCAN device
@@ -58,54 +57,25 @@ To run Cabana with multiple cameras, use the following command:
 cabana "5beb9b58bd12b691/0000010a--a51155e496" --cabin --wide-road
 ```
 
-### Streaming openpilot Messages from a comma Device
+### Streaming from a comma Device
 
-Install this branch on the comma device and restart openpilot so manager and Athena
-pick up the streaming changes. On the computer, activate the openpilot Python
-environment (including the submodule and tools dependencies), then run from the
-repository root:
+With this branch on the device, stream its raw CAN and one live camera over Athena/WebRTC:
 
 ```shell
-python -m openpilot.tools.lib.auth
-scons -j8 openpilot/tools/cabana/cabana
-openpilot/tools/cabana/cabana --webrtc <dongle-id>
+python -m openpilot.tools.lib.auth   # once
+cabana --webrtc <dongle-id>          # or Device > Athena in the stream selector
 ```
 
-Use the 16-character device ID from comma Connect. You can also select
-**Device > Athena** in the stream selector. Remote ZMQ (`--zmq`) has
-been replaced; `--msgq` still reads local openpilot messages.
+Add a camera widget to pick Road, Driver, or Wide Road; switching cameras keeps the CAN stream.
+The session starts onroad or offroad, and one started offroad ends when the car starts. A new
+connection replaces any other viewer, including comma Connect. `--msgq` reads local openpilot messages.
 
-The connection carries raw CAN and video from Road, Driver, or Wide Road.
-Choose the camera through the workspace’s Add widget menu. A remote source has
-one camera pane; choosing another camera replaces that pane and keeps the same
-connection without interrupting CAN. It is available onroad and
-offroad, survives ignition changes, and has no five-minute session limit.
-Camera processes start on demand offroad; the WebRTC daemon is always available
-and the streaming encoder runs onroad. See the
-[libdatachannel workarounds](../../system/webrtc/patches/README.md) for the
-required native binding patches on both the computer and device. Only one viewer is supported: a new
-connection replaces an existing viewer, including comma Connect.
-
-Video always shows the live camera, even when CAN playback is paused or rewound.
-Only remote CAN is recorded. Reopen the stream after a network disconnect.
-
-While streaming from the device, Cabana will log the received messages to a local directory. By default, this directory is ~/cabana_live_stream/. You can change the log directory in Cabana by navigating to menu -> tools -> settings.
+While streaming from the device, Cabana will log the received CAN messages to a local directory. By default, this directory is ~/cabana_live_stream/. You can change the log directory in Cabana by navigating to menu -> tools -> settings.
 
 After disconnecting from the device, you can replay the logged messages from the stream selector dialog -> browse local route.
 
-### Joystick controls over WebRTC
-
-The Joystick dock appears beside the source inspectors. Drag its title bar to move or float it;
-use View → Joystick to reopen it. Its position and visibility are saved.
-
-For a car, enable **Device joystick mode** while offroad, then start the car.
-Comma body uses its existing joystick mode. Select **Arm controls** in the dock,
-then hold **W/S** for gas/brake and **A/D** for left/right steering, or drag the
-mouse pad. Keyboard output is ±1.0 and the mouse pad ranges up to ±1.0, with a 0.20 minimum
-for a displaced axis, matching Connect. The output limit defaults to 100%. Releasing the keys or mouse centers
-the controls; Escape, focus loss, or hiding the dock disarms them. Arming is
-never saved across sessions. Commands use Connect's `testJoystick` protocol at
-20 Hz. The device must run the accompanying Athena and webrtcd changes.
+The **Joystick** dock drives a connected comma body: check **Arm controls**, then hold **W/S** and **A/D**
+or drag the pad. Releasing centers the controls; Escape, focus loss, or hiding the dock disarms.
 
 ### Streaming CAN Messages from Panda
 
