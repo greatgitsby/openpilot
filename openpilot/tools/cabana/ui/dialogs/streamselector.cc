@@ -40,7 +40,6 @@ void OpenReplayWidget::draw() {
       }
     }));
   }
-
 }
 
 void OpenReplayWidget::drawPopups() {
@@ -63,9 +62,7 @@ std::unique_ptr<AbstractStream> OpenReplayWidget::open() {
     Connection err = replay_stream->error.connect([](const std::string &msg) {
       MessageBox::warning("Error", msg);
     });
-    const uint32_t flags = REPLAY_FLAG_NONE;
-
-    if (replay_stream->loadRoute(route, data_dir, flags)) {
+    if (replay_stream->loadRoute(route, data_dir)) {
       return replay_stream;
     }
   }

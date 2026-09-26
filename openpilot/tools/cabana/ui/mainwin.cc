@@ -209,6 +209,9 @@ void MainWindow::createDockWidgets() {
   source.messages = std::make_unique<MessagesWidget>();
   source.inspector.setChartsWidget(charts_widget_.get());
   const std::string id = can->source_id;
+  source.inspector.browseMessages = [this, id]() {
+    withSource(id, [this]() { currentSource().messages_visible = true; selectPanelTab(panelName("can").c_str()); });
+  };
   source.connections.push_back(source.messages->msgSelectionChanged.connect([this, id](const MessageId &message) {
     withSource(id, [this, message]() { showMessage(message); });
   }));
@@ -1102,44 +1105,9 @@ void MainWindow::drawVideoPanel() {
 }
 
 void MainWindow::drawDetailsPanel() {
-  auto *detail = currentSource().inspector.getDetailWidget();
-  const std::string title = panelName("inspector");
-  if (beginDockablePanel(title.c_str(), &currentSource().inspector_visible, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-    if (detail) {
-      currentSource().inspector.draw();
-    } else {
-      const auto &style = ImGui::GetStyle();
-      const ImVec2 origin = ImGui::GetCursorScreenPos();
-      const ImVec2 avail = ImGui::GetContentRegionAvail();
-      const float padding = style.WindowPadding.x * 2;
-      const float text_width = std::max(1.0f, std::min(avail.x - padding * 2, ImGui::GetFontSize() * 32));
-      const char *heading = "No CAN message selected";
-      const char *description = "Select a CAN message to inspect its bits, signals, and history.";
-      pushBoldFont();
-      const ImVec2 heading_size = ImGui::CalcTextSize(heading, nullptr, false, text_width);
-      popBoldFont();
-      const ImVec2 description_size = ImGui::CalcTextSize(description, nullptr, false, text_width);
-      const float height = heading_size.y + description_size.y + ImGui::GetFrameHeight() + style.ItemSpacing.y * 2;
-      float y = origin.y + std::max(padding, (avail.y - height) * 0.5f);
-      auto text = [&](const char *value, const ImVec2 &size) {
-        ImGui::SetCursorScreenPos(ImVec2(origin.x + std::max(0.0f, (avail.x - size.x) * 0.5f), y));
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + text_width);
-        ImGui::TextUnformatted(value);
-        ImGui::PopTextWrapPos();
-        y += size.y + style.ItemSpacing.y;
-      };
-      pushBoldFont();
-      text(heading, heading_size);
-      popBoldFont();
-      text(description, description_size);
-      const float button_width = ImGui::CalcTextSize("Browse CAN").x + style.FramePadding.x * 2;
-      ImGui::SetCursorScreenPos(ImVec2(origin.x + std::max(0.0f, (avail.x - button_width) * 0.5f), y));
-      if (ImGui::Button("Browse CAN")) {
-        currentSource().messages_visible = true;
-        selectPanelTab(panelName("can").c_str());
-      }
-    }
-    if (detail && help_overlay_.visible()) {
+  if (beginDockablePanel(panelName("inspector"), &currentSource().inspector_visible, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    currentSource().inspector.draw();
+    if (auto *detail = currentSource().inspector.getDetailWidget(); detail && help_overlay_.visible()) {
       for (const auto &[text, rect] : detail->helpRects()) help_overlay_.add(text, rect);
     }
   }

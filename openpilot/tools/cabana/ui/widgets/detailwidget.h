@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <set>
 #include <string>
@@ -110,6 +111,7 @@ public:
   DetailWidget* ensureDetailWidget();
   void clear();
   void draw();  // the welcome widget until a message is selected, then the DetailWidget
+  std::function<void()> browseMessages;
 
 private:
   void drawWelcomeWidget();

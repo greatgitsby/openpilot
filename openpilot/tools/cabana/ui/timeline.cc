@@ -134,8 +134,9 @@ void PlaybackTimeline::stepFrame(bool forward) {
   if (!master || master->liveStreaming()) return;
   setPaused(true);
   auto *replay = dynamic_cast<ReplayStream *>(master);
-  const CameraType camera = selected_camera_ == VISION_STREAM_CABIN ? CabinCam :
-                            selected_camera_ == VISION_STREAM_WIDE_ROAD ? WideRoadCam : NarrowRoadCam;
+  CameraType camera = selected_camera_ == VISION_STREAM_CABIN ? CabinCam :
+                      selected_camera_ == VISION_STREAM_WIDE_ROAD ? WideRoadCam : NarrowRoadCam;
+  if (replay && !replay->availableCameras().count(camera)) camera = NarrowRoadCam;
   auto target = replay ? replay->nextFrameTime(camera, master->currentSec(), forward) : std::nullopt;
   status_ = target ? "" : "No adjacent camera frame is loaded at this position.";
   if (target) seek(*target);

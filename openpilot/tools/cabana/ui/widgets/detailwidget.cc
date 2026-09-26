@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cfloat>
 #include <cstdio>
+#include <tuple>
 #include <utility>
 
 #include "imgui.h"
@@ -401,36 +402,26 @@ void CenterWidget::draw() {
 }
 
 void CenterWidget::drawWelcomeWidget() {
-  const ImVec2 avail = ImGui::GetContentRegionAvail();
-  const ImVec2 origin = ImGui::GetCursorPos();
-  auto centered = [&](const char *text, float y) {
-    const ImVec2 size = ImGui::CalcTextSize(text);
-    ImGui::SetCursorPos(ImVec2(origin.x + (avail.x - size.x) * 0.5f, y));
+  const auto &style = ImGui::GetStyle();
+  const ImVec2 origin = ImGui::GetCursorScreenPos(), avail = ImGui::GetContentRegionAvail();
+  const float wrap = std::max(1.0f, std::min(avail.x - style.WindowPadding.x * 4, ImGui::GetFontSize() * 32));
+  const char *heading = "No CAN message selected", *description = "Select a CAN message to inspect its bits, signals, and history.";
+  pushBoldFont();
+  const ImVec2 heading_size = ImGui::CalcTextSize(heading, nullptr, false, wrap);
+  popBoldFont();
+  const ImVec2 description_size = ImGui::CalcTextSize(description, nullptr, false, wrap);
+  const float height = heading_size.y + description_size.y + ImGui::GetFrameHeight() + style.ItemSpacing.y * 2;
+  float y = origin.y + std::max(style.WindowPadding.x * 2, (avail.y - height) * 0.5f);
+  auto center = [&](float width) { ImGui::SetCursorScreenPos(ImVec2(origin.x + std::max(0.0f, (avail.x - width) * 0.5f), y)); };
+  for (auto [text, size, bold] : {std::tuple{heading, heading_size, true}, {description, description_size, false}}) {
+    center(size.x);
+    if (bold) pushBoldFont();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
     ImGui::TextUnformatted(text);
-  };
-  ImGui::PushStyleColor(ImGuiCol_Text, palette().text_disabled);
-  float y = origin.y + avail.y * 0.5f - 90.0f;
-  pushLargeFont();
-  centered("CABANA", y);
-  y += ImGui::GetTextLineHeightWithSpacing();
-  popLargeFont();
-
-  auto newShortcutRow = [&](const char *title, const char *key) {
-    const float w = ImGui::CalcTextSize(title).x + ImGui::CalcTextSize(key).x + 40.0f;
-    ImGui::SetCursorPos(ImVec2(origin.x + (avail.x - w) * 0.5f, y));
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(title);
-    ImGui::SameLine();
-    ImGui::BeginDisabled();
-    ImGui::SmallButton(key);
-    ImGui::EndDisabled();
-    y += ImGui::GetFrameHeightWithSpacing();
-  };
-
-  centered("<- Select a message to view details", y);
-  y += ImGui::GetTextLineHeightWithSpacing();
-  newShortcutRow("Pause", "Space");
-  newShortcutRow("Help", "F1");
-  newShortcutRow("What's This?", "Shift+F1");
-  ImGui::PopStyleColor();
+    ImGui::PopTextWrapPos();
+    if (bold) popBoldFont();
+    y += size.y + style.ItemSpacing.y;
+  }
+  center(ImGui::CalcTextSize("Browse CAN").x + style.FramePadding.x * 2);
+  if (ImGui::Button("Browse CAN") && browseMessages) browseMessages();
 }

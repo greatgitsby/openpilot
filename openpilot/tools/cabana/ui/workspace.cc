@@ -16,7 +16,7 @@
 using json11::Json;
 
 namespace {
-// Also renames the source's panels in the ImGui ini, both by window name and by hashed window id.
+// Also renames the source's panels in the ImGui ini, so they keep their docking.
 Json remapSource(const Json &input, const std::string &from, const std::string &to) {
   auto document = cabana::remapWorkspaceSource(input, from, to).object_items();
   std::string ui = document["ui"].string_value();
@@ -26,10 +26,10 @@ Json remapSource(const Json &input, const std::string &from, const std::string &
   for (const char *kind : {"can", "logs", "inspector"}) {
     const auto old_name = std::string("###") + kind + "_" + from, new_name = std::string("###") + kind + "_" + to;
     replace(old_name + "]", new_name + "]");
-    char old_hash[16], new_hash[16];
-    snprintf(old_hash, sizeof(old_hash), "0x%08X", ImHashStr(old_name.c_str()));
-    snprintf(new_hash, sizeof(new_hash), "0x%08X", ImHashStr(new_name.c_str()));
-    replace(old_hash, new_hash);
+    char old_tab[16], new_tab[16];  // dock nodes remember their selected tab by the window's tab id
+    snprintf(old_tab, sizeof(old_tab), "0x%08X", ImHashStr("#TAB", 4, ImHashStr(old_name.c_str())));
+    snprintf(new_tab, sizeof(new_tab), "0x%08X", ImHashStr("#TAB", 4, ImHashStr(new_name.c_str())));
+    replace(old_tab, new_tab);
   }
   document["ui"] = ui;
   return document;

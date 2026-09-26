@@ -130,7 +130,8 @@ void Replay::seekTo(double seconds, bool relative) {
 
   interruptStream([&]() {
     current_segment_.store(target_segment);
-    cur_mono_time_ = route_start_ts_ + target_time * 1e9;
+    // Round: truncation can land 1 ns before a stepped-to frame, which then previews the previous frame.
+    cur_mono_time_ = route_start_ts_ + (uint64_t)std::llround(target_time * 1e9);
     cur_which_ = cereal::Event::Which::INIT_DATA;
     seeking_to_.store(target_time, std::memory_order_relaxed);
     return false;

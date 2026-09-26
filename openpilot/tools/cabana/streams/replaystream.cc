@@ -122,7 +122,6 @@ bool ReplayStream::loadRoute(const std::string &route, const std::string &data_d
   route_reference_ = route;
   data_directory_ = data_dir;
   replay_flags |= REPLAY_FLAG_CABIN_CAMERA | REPLAY_FLAG_WIDE_ROAD;
-  replay_flags |= REPLAY_FLAG_CABIN_CAMERA | REPLAY_FLAG_WIDE_ROAD;
   replay.reset(new Replay(route, {},
                           {}, nullptr, replay_flags, data_dir, auto_source, camera_endpoint_));
   replay->setSegmentCacheLimit(settings.max_cached_minutes);
@@ -221,13 +220,14 @@ std::optional<double> ReplayStream::nextFrameTime(CameraType camera, double rela
   return std::nullopt;
 }
 
+// The exact end is known once the last segment has loaded. Keep it, so the range doesn't change as segments unload.
 double ReplayStream::maxSeconds() const {
   const auto data = replay->getEventData();
   const auto &segments = replay->route().segments();
-  if (data && !segments.empty()) {
+  if (known_end_ < 0 && data && !segments.empty()) {
     auto last = data->segments.find(segments.rbegin()->first);
     if (last != data->segments.end() && last->second->log && !last->second->log->events.empty())
-      return std::min(replay->maxSeconds(), toSeconds(last->second->log->events.back().mono_time));
+      known_end_ = std::min(replay->maxSeconds(), toSeconds(last->second->log->events.back().mono_time));
   }
-  return replay->maxSeconds();
+  return known_end_ >= 0 ? known_end_.load() : replay->maxSeconds();
 }

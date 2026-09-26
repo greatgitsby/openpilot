@@ -116,7 +116,7 @@ void AbstractStream::updateMasks() {
 
 void AbstractStream::suppressDefinedSignals(bool suppress) {
   settings.suppress_defined_signals = suppress;
-  updateMasks();
+  for (auto *source : ::sources()) source->updateMasks();
 }
 
 size_t AbstractStream::suppressHighlighted() {
@@ -202,8 +202,9 @@ bool AbstractStream::isMessageActive(const MessageId &id) const {
     return false;
   }
   // Check if the message is active based on time difference and frequency
+  // Compare with the time the last messages were taken, not the live replay cursor.
   const auto &m = lastMessage(id);
-  float delta = currentSec() - m.ts;
+  float delta = current_sec_ - m.ts;
 
   if (m.freq < std::numeric_limits<double>::epsilon()) {
     return delta < 1.5;
